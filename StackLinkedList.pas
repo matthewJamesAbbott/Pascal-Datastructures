@@ -24,7 +24,7 @@ type
         procedure addNode(inputData: integer);
         procedure deleteFirstNode();
         procedure deleteLastNode();
-
+        function countNodes(): integer;
     end;
 var 
     head : node;
@@ -71,6 +71,28 @@ begin
             temp1 := temp1^.next;
         end;
         temp1 := temp2;
-    end;
+
+end;
+
+function TStackLinkedList.countNodes(): integer;
+var
+    index, indexAdd: integer;
+    temp: node;
+begin
+    if head = nil then
+        countNodes := 0
+    else
+        begin
+            index := 1;
+            temp := head;
+            while temp^.next <> nil do
+                begin
+                    temp := temp^.next;
+                    indexAdd := index;
+                    index := indexAdd + 1;
+                end;
+            countNodes := index;
+        end;
+end;
 
 end.
