@@ -124,8 +124,9 @@ var
     index: integer;
 
 begin
+    temp := head;
     if nodeNumber = 1 then
-        temp := head
+        returnSpecificNodesData := temp^.data
     else
         begin
             for index := 2 to nodeNumber do
@@ -133,6 +134,7 @@ begin
                     temp := temp^.next;
                 end;
         end;
+    
     returnSpecificNodesData := temp^.data;
 end;
 
