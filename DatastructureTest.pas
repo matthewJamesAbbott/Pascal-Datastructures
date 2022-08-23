@@ -72,6 +72,21 @@ begin
         begin
             writeln('extracting data from node ', index , ' : ' , stackLinkedListVar.returnSpecificNodesData(index));
         end;
-        
+    stackLinkedListVar.deleteFirstNode();
+    writeln('deleted first node of list');
+    writeln('there are ' , stackLinkedListVar.countNodes() , ' items in the list');
+
+    for index := 1 to stackLinkedListVar.countNodes() do
+        begin
+            writeln('extracting data from node ', index , ' : ' , stackLinkedListVar.                  returnSpecificNodesData(index));
+        end;
+    stackLinkedListVar.deleteLastNode();
+    writeln('deleted last node of list');
+    for index := 1 to stackLinkedListVar.countNodes() do
+         begin
+             writeln('extracting data from node ', index , ' : ' , stackLinkedListVar.                     returnSpecificNodesData(index));
+         end;
+
+
 
 end.

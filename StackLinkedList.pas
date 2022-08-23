@@ -72,10 +72,13 @@ begin
     temp1 := head;
     while temp1^.next <> nil do
         begin
-            temp2 := temp1;
+            if temp1^.next <> nil then
+                begin
+                    temp2 := temp1;
+                end;
             temp1 := temp1^.next;
         end;
-        temp1 := temp2;
+        temp2^.next := nil;;
 
 end;
 
