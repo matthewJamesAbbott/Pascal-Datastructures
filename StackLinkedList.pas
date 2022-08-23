@@ -25,6 +25,7 @@ type
         procedure deleteFirstNode();
         procedure deleteLastNode();
         function countNodes(): integer;
+        function returnSpecificNodesData(nodeNumber: integer): integer;
     end;
 var 
     head : node;
@@ -95,4 +96,21 @@ begin
         end;
 end;
 
+function TStackLinkedList.returnSpecificNodesData(nodeNumber: integer): integer;
+var
+    temp: node;
+    index: integer;
+
+begin
+    if nodeNumber = 1 then
+        temp := head
+    else
+        begin
+            for index := 2 to nodeNumber do
+                begin
+                    temp := temp^.next;
+                end;
+        end;
+    returnSpecificNodesData := temp^.data;
+end;
 end.
