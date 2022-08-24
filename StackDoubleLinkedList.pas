@@ -27,6 +27,8 @@ type
         procedure deleteLast();
         function deleteNodeForFirstInstanceOfData(key: integer): boolean;
         function insertAfter(key, inputData: integer): boolean;
+        function returnSpecificNodesData(nodeNumber: integer): integer;
+        function countNodes(): integer;
     end;
 
 
@@ -169,4 +171,45 @@ begin
     insertAfter := true;
 end;
 
+function TStackDoubleLinkedList.returnSpecificNodesData(nodeNumber: integer): integer;
+
+var
+    temp: doubleNode;
+    index: integer;
+
+begin
+    temp := head;
+    if nodeNumber = 1 then
+        returnSpecificNodesData := temp^.data
+        else
+            begin
+                for index := 2 to nodeNumber do
+                    begin
+                        temp := temp^.next;
+                    end;
+            end;
+    returnSpecificNodesData := temp^.data;
+end;
+
+function TStackDoubleLinkedList.countNodes(): integer;
+
+var
+    index: integer;
+    temp: doubleNode;
+
+begin
+    if head = nil then
+            countNodes := 0
+        else
+            begin
+                index := 1;
+                temp := head;
+                while temp^.next <> nil do
+                    begin
+                        temp := temp^.next;
+                        inc(index);
+                    end;
+                countNodes := index;
+            end;
+end;
 end.
