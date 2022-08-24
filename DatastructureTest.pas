@@ -98,7 +98,7 @@ begin
          end;
     writeln('extracting data from node 13 : ', stackLinkedListVar.returnSpecificNodesData(13));
     writeln('extracting data from head node : ', stackLinkedListVar.returnHeadsData());
-    writeln('extracting data from tail node', stackLinkedListVar.returnTailsData());
+    writeln('extracting data from tail node : ', stackLinkedListVar.returnTailsData());
     writeln('the number 5 first instance found at node : ', stackLinkedListVar.returnNodeNumberOfFirstInstanceOfData(5));
 
 
