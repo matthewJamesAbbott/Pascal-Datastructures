@@ -78,7 +78,7 @@ begin
 
     for index := 1 to stackLinkedListVar.countNodes() do
         begin
-            writeln('extracting data from node ', index , ' : ' , stackLinkedListVar.                  returnSpecificNodesData(index));
+            writeln('extracting data from node ', index , ' : ' , stackLinkedListVar.returnSpecificNodesData(index));
         end;
     stackLinkedListVar.deleteLastNode();
     writeln('deleted last node of list');
@@ -86,7 +86,7 @@ begin
 
     for index := 1 to stackLinkedListVar.countNodes() do
          begin
-             writeln('extracting data from node ', index , ' : ' , stackLinkedListVar.                     returnSpecificNodesData(index));
+             writeln('extracting data from node ', index , ' : ' , stackLinkedListVar.returnSpecificNodesData(index));
          end;
     stackLinkedListVar.deleteSpecificNode(13);
     writeln('deleted the 13th node of list');
@@ -94,9 +94,12 @@ begin
 
     for index := 1 to stackLinkedListVar.countNodes() do
          begin
-             writeln('extracting data from node ', index , ' : ' , stackLinkedListVar.                     returnSpecificNodesData(index));
+             writeln('extracting data from node ', index , ' : ' , stackLinkedListVar.returnSpecificNodesData(index));
          end;
-
+    writeln('extracting data from node 13 : ', stackLinkedListVar.returnSpecificNodesData(13));
+    writeln('extracting data from head node : ', stackLinkedListVar.returnHeadsData());
+    writeln('extracting data from tail node', stackLinkedListVar.returnTailsData());
+    writeln('the number 5 first instance found at node : ', stackLinkedListVar.returnNodeNumberOfFirstInstanceOfData(5));
 
 
 end.
