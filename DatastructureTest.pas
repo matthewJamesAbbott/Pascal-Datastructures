@@ -142,7 +142,7 @@ begin
     writeln('inserted the number 3 into list');
     stackDoubleLinkedListVar.insertFirst(1);
     writeln('inserted the number 1 into list');
-    writeln('there are : ', stackDoubleLinkedListVar.countNodes(), ' nodes in list');
+    writeln('there are ', stackDoubleLinkedListVar.countNodes(), ' nodes in list');
     for index := 1 to stackDoubleLinkedListVar.countNodes() do
          begin
              writeln('extracting data from node ', index , ' : ' , stackDoubleLinkedListVar.returnSpecificNodesData(index));
