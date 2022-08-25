@@ -211,7 +211,12 @@ begin
                 writeln('extracting data from node ', index , ' : ' , stackDoubleLinkedListVar.returnSpecificNodesData(index));
            end;
 
+    writeln();
+    writeln();
+    writeln('{ -----END PROCSS TESTS FOR StackDoubleLinkedList.pas----- }');
+    writeln();
+    writeln();
 
+           
     { -----END PROCSS TESTS FOR StackDoubleLinkedList.pas----- }
-
 end.
