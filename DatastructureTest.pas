@@ -6,12 +6,13 @@ program DataStructureTest;
 
 uses
     StackLinkedList in './StackLinkedList.pas',
-    StackDoubleLinkedList in './StackDoubleLinkedList.pat';
-
+    StackDoubleLinkedList in './StackDoubleLinkedList.pas',
+    StackBinaryTree in './StackBinaryTree.pas';
     
 var
     stackLinkedListVar: TStackLinkedList;
     stackDoubleLinkedListVar: TStackDoubleLinkedList;
+    stackBinaryTreeVar: TStackBinaryTree;
     index: integer;
 
 begin
@@ -103,6 +104,13 @@ begin
     writeln('extracting data from head node : ', stackLinkedListVar.returnHeadsData());
     writeln('extracting data from tail node : ', stackLinkedListVar.returnTailsData());
     writeln('the number 5 first instance found at node : ', stackLinkedListVar.returnNodeNumberOfFirstInstanceOfData(5));
+
+    writeln();
+    writeln();
+    writeln('{ -----END PROCESS TESTS FOR StackLinkedList.pas----- }');
+    writeln();
+    writeln();
+
 
     { -----END PROCESS TESTS FOR StackLinkedList.pas----- }
 
@@ -219,4 +227,58 @@ begin
 
            
     { -----END PROCESS TESTS FOR StackDoubleLinkedList.pas----- }
+
+    { -----START PROCESS TEST FOR StackBinaryTree.pas----- }
+
+    writeln();
+    writeln();
+    writeln('{ -----START PROCESS TESTS FOR StackBinaryTree.pas----- }');
+    writeln();
+    writeln();
+
+    stackBinaryTreeVar.create();
+    writeln('created tree object');
+    stackBinaryTreeVar.insertData(4);
+    writeln('inserted the number 4 into tree');
+    stackBinaryTreeVar.insertData(6);
+    writeln('inserted the number 6 into tree');
+    stackBinaryTreeVar.insertData(3);
+    writeln('inserted the number 3 into tree');
+    stackBinaryTreeVar.insertData(5);
+    writeln('inserted the number 5 into tree');
+    stackBinaryTreeVar.insertData(8);
+    writeln('inserted the number 8 into tree');
+    stackBinaryTreeVar.insertData(7);
+    writeln('inserted the number 7 into tree');
+    stackBinaryTreeVar.insertData(0);
+    writeln('inserted the number 0 into tree');
+    stackBinaryTreeVar.insertData(2);
+    writeln('inserted the number 2 into tree');
+    stackBinaryTreeVar.insertData(30);
+    writeln('inserted the number 30 into tree');
+    stackBinaryTreeVar.insertData(1);
+    writeln('inserted the number 1 into tree');
+    stackBinaryTreeVar.insertData(5);
+    writeln('inserted the number 5 into tree');
+    stackBinaryTreeVar.insertData(9);
+    writeln('inserted the number 9 into tree');
+    stackBinaryTreeVar.insertData(5);
+    writeln('inserted the number 5 into tree');
+    stackBinaryTreeVar.insertData(4);
+    writeln('inserted the number 4 into tree');
+    writeln('there are ', stackBinaryTreeVar.countNodes(), ' nodes on the tree');
+    writeln('the number 4 was found at node number ', stackBinaryTreeVar.findNodeNumber(4));
+    writeln('the number 8 was found at node number ', stackBinaryTreeVar.findNodeNumber(8));
+    stackBinaryTreeVar.deleteNode(8);
+    writeln('the node for number 8 has been deleted');
+    writeln('there are ', stackBinaryTreeVar.countNodes(), ' nodes on the tree');
+    
+
+    writeln();
+    writeln();
+    writeln('{ -----END OF PROCESS TESTS FOR StackBinaryTree.pas----- }');
+    writeln();
+    writeln();
+
+    { -----END OF PROCESS TESTS FOR StackBinaryTree.pas----- }
 end.
