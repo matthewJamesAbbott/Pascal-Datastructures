@@ -213,10 +213,10 @@ begin
 
     writeln();
     writeln();
-    writeln('{ -----END PROCSS TESTS FOR StackDoubleLinkedList.pas----- }');
+    writeln('{ -----END PROCESS TESTS FOR StackDoubleLinkedList.pas----- }');
     writeln();
     writeln();
 
            
-    { -----END PROCSS TESTS FOR StackDoubleLinkedList.pas----- }
+    { -----END PROCESS TESTS FOR StackDoubleLinkedList.pas----- }
 end.
