@@ -1,0 +1,354 @@
+{ -----START PROCESS TESTS FOR StackLinkedList.pas----- }
+
+
+created List object
+inserted the number 5 into list
+inserted the number 2 into list
+inserted the number 3 into list
+inserted the number 7 into list
+inserted the number 1 into list
+inserted the number 5 into list
+inserted the number 2 into list
+inserted the number 3 into list
+inserted the number 7 into list
+inserted the number 1 into list
+inserted the number 5 into list
+inserted the number 2 into list
+inserted the number 3 into list
+inserted the number 7 into list
+inserted the number 1 into list
+inserted the number 5 into list
+inserted the number 2 into list
+inserted the number 3 into list
+inserted the number 7 into list
+inserted the number 1 into list
+inserted the number 5 into list
+inserted the number 2 into list
+inserted the number 3 into list
+inserted the number 7 into list
+inserted the number 1 into list
+there are 25 items in the list
+extracting data from node 1 : 5
+extracting data from node 2 : 2
+extracting data from node 3 : 3
+extracting data from node 4 : 7
+extracting data from node 5 : 1
+extracting data from node 6 : 5
+extracting data from node 7 : 2
+extracting data from node 8 : 3
+extracting data from node 9 : 7
+extracting data from node 10 : 1
+extracting data from node 11 : 5
+extracting data from node 12 : 2
+extracting data from node 13 : 3
+extracting data from node 14 : 7
+extracting data from node 15 : 1
+extracting data from node 16 : 5
+extracting data from node 17 : 2
+extracting data from node 18 : 3
+extracting data from node 19 : 7
+extracting data from node 20 : 1
+extracting data from node 21 : 5
+extracting data from node 22 : 2
+extracting data from node 23 : 3
+extracting data from node 24 : 7
+extracting data from node 25 : 1
+deleted first node of list
+there are 24 items in the list
+extracting data from node 1 : 2
+extracting data from node 2 : 3
+extracting data from node 3 : 7
+extracting data from node 4 : 1
+extracting data from node 5 : 5
+extracting data from node 6 : 2
+extracting data from node 7 : 3
+extracting data from node 8 : 7
+extracting data from node 9 : 1
+extracting data from node 10 : 5
+extracting data from node 11 : 2
+extracting data from node 12 : 3
+extracting data from node 13 : 7
+extracting data from node 14 : 1
+extracting data from node 15 : 5
+extracting data from node 16 : 2
+extracting data from node 17 : 3
+extracting data from node 18 : 7
+extracting data from node 19 : 1
+extracting data from node 20 : 5
+extracting data from node 21 : 2
+extracting data from node 22 : 3
+extracting data from node 23 : 7
+extracting data from node 24 : 1
+deleted last node of list
+there are 23 items in the list
+extracting data from node 1 : 2
+extracting data from node 2 : 3
+extracting data from node 3 : 7
+extracting data from node 4 : 1
+extracting data from node 5 : 5
+extracting data from node 6 : 2
+extracting data from node 7 : 3
+extracting data from node 8 : 7
+extracting data from node 9 : 1
+extracting data from node 10 : 5
+extracting data from node 11 : 2
+extracting data from node 12 : 3
+extracting data from node 13 : 7
+extracting data from node 14 : 1
+extracting data from node 15 : 5
+extracting data from node 16 : 2
+extracting data from node 17 : 3
+extracting data from node 18 : 7
+extracting data from node 19 : 1
+extracting data from node 20 : 5
+extracting data from node 21 : 2
+extracting data from node 22 : 3
+extracting data from node 23 : 7
+deleted the 13th node of list
+there are 22 items in the list
+extracting data from node 1 : 2
+extracting data from node 2 : 3
+extracting data from node 3 : 7
+extracting data from node 4 : 1
+extracting data from node 5 : 5
+extracting data from node 6 : 2
+extracting data from node 7 : 3
+extracting data from node 8 : 7
+extracting data from node 9 : 1
+extracting data from node 10 : 5
+extracting data from node 11 : 2
+extracting data from node 12 : 3
+extracting data from node 13 : 1
+extracting data from node 14 : 5
+extracting data from node 15 : 2
+extracting data from node 16 : 3
+extracting data from node 17 : 7
+extracting data from node 18 : 1
+extracting data from node 19 : 5
+extracting data from node 20 : 2
+extracting data from node 21 : 3
+extracting data from node 22 : 7
+extracting data from node 13 : 1
+extracting data from head node : 2
+extracting data from tail node : 7
+the number 5 first instance found at node : 19
+
+
+{ -----END PROCESS TESTS FOR StackLinkedList.pas----- }
+
+
+
+
+{ -----START PROCESS TEST FOR StackDoubleLinkList.pas----- }
+
+
+created list object
+inserted the number 3 into First position of list
+inserted the number 2 into First position of list
+inserted the number 7 into First position of list
+inserted the number 5 into First position of list
+inserted the number 3 into First position of list
+inserted the number 5 into First position of list
+inserted the number 1 into First position of list
+inserted the number 3 into First position of list
+inserted the number 9 into First position of list
+inserted the number 4 into First position of list
+inserted the number 8 into First position of list
+inserted the number 3 into First position of list
+inserted the number 1 into First position of list
+there are 13 nodes in list
+extracting data from node 1 : 1
+extracting data from node 2 : 3
+extracting data from node 3 : 8
+extracting data from node 4 : 4
+extracting data from node 5 : 9
+extracting data from node 6 : 3
+extracting data from node 7 : 1
+extracting data from node 8 : 5
+extracting data from node 9 : 3
+extracting data from node 10 : 5
+extracting data from node 11 : 7
+extracting data from node 12 : 2
+extracting data from node 13 : 3
+inserted the number 3 into last position of the list
+inserted the number 6 into last position of the list
+inserted the number 8 into last position of the list
+inserted the number 9 into last position of the list
+inserted the number 6 into last position of the list
+inserted the number 0 into last position of the list
+inserted the number 2 into last position of the list
+inserted the number 7 into last position of the list
+inserted the number 5 into last position of the list
+inserted the number 3 into last position of the list
+inserted the number 3 into last position of the list
+inserted the number 3 into last position of the list
+inserted the number 8 into last position of the list
+inserted the number 6 into last position of the list
+inserted the number 4 into last position of the list
+inserted the number 0 into last position of the list
+inserted the number 4 into last position of the list
+inserted the number 1 into last position of the list
+there are 31 nodes in list
+extracting data from node 1 : 1
+extracting data from node 2 : 3
+extracting data from node 3 : 8
+extracting data from node 4 : 4
+extracting data from node 5 : 9
+extracting data from node 6 : 3
+extracting data from node 7 : 1
+extracting data from node 8 : 5
+extracting data from node 9 : 3
+extracting data from node 10 : 5
+extracting data from node 11 : 7
+extracting data from node 12 : 2
+extracting data from node 13 : 3
+extracting data from node 14 : 3
+extracting data from node 15 : 6
+extracting data from node 16 : 8
+extracting data from node 17 : 9
+extracting data from node 18 : 6
+extracting data from node 19 : 0
+extracting data from node 20 : 2
+extracting data from node 21 : 7
+extracting data from node 22 : 5
+extracting data from node 23 : 3
+extracting data from node 24 : 3
+extracting data from node 25 : 3
+extracting data from node 26 : 8
+extracting data from node 27 : 6
+extracting data from node 28 : 4
+extracting data from node 29 : 0
+extracting data from node 30 : 4
+extracting data from node 31 : 1
+the first node has been deleted
+there are 30 nodes in list
+extracting data from node 1 : 3
+extracting data from node 2 : 8
+extracting data from node 3 : 4
+extracting data from node 4 : 9
+extracting data from node 5 : 3
+extracting data from node 6 : 1
+extracting data from node 7 : 5
+extracting data from node 8 : 3
+extracting data from node 9 : 5
+extracting data from node 10 : 7
+extracting data from node 11 : 2
+extracting data from node 12 : 3
+extracting data from node 13 : 3
+extracting data from node 14 : 6
+extracting data from node 15 : 8
+extracting data from node 16 : 9
+extracting data from node 17 : 6
+extracting data from node 18 : 0
+extracting data from node 19 : 2
+extracting data from node 20 : 7
+extracting data from node 21 : 5
+extracting data from node 22 : 3
+extracting data from node 23 : 3
+extracting data from node 24 : 3
+extracting data from node 25 : 8
+extracting data from node 26 : 6
+extracting data from node 27 : 4
+extracting data from node 28 : 0
+extracting data from node 29 : 4
+extracting data from node 30 : 1
+inserted 8 after the first instance of 8
+extracting data from node 1 : 3
+extracting data from node 2 : 8
+extracting data from node 3 : 8
+extracting data from node 4 : 4
+extracting data from node 5 : 9
+extracting data from node 6 : 3
+extracting data from node 7 : 1
+extracting data from node 8 : 5
+extracting data from node 9 : 3
+extracting data from node 10 : 5
+extracting data from node 11 : 7
+extracting data from node 12 : 2
+extracting data from node 13 : 3
+extracting data from node 14 : 3
+extracting data from node 15 : 6
+extracting data from node 16 : 8
+extracting data from node 17 : 9
+extracting data from node 18 : 6
+extracting data from node 19 : 0
+extracting data from node 20 : 2
+extracting data from node 21 : 7
+extracting data from node 22 : 5
+extracting data from node 23 : 3
+extracting data from node 24 : 3
+extracting data from node 25 : 3
+extracting data from node 26 : 8
+extracting data from node 27 : 6
+extracting data from node 28 : 4
+extracting data from node 29 : 0
+extracting data from node 30 : 4
+extracting data from node 31 : 1
+node 23 contains : 3
+the last node of the list has been deleted
+there are 30 nodes in list
+extracting data from node 1 : 3
+extracting data from node 2 : 8
+extracting data from node 3 : 8
+extracting data from node 4 : 4
+extracting data from node 5 : 9
+extracting data from node 6 : 3
+extracting data from node 7 : 1
+extracting data from node 8 : 5
+extracting data from node 9 : 3
+extracting data from node 10 : 5
+extracting data from node 11 : 7
+extracting data from node 12 : 2
+extracting data from node 13 : 3
+extracting data from node 14 : 3
+extracting data from node 15 : 6
+extracting data from node 16 : 8
+extracting data from node 17 : 9
+extracting data from node 18 : 6
+extracting data from node 19 : 0
+extracting data from node 20 : 2
+extracting data from node 21 : 7
+extracting data from node 22 : 5
+extracting data from node 23 : 3
+extracting data from node 24 : 3
+extracting data from node 25 : 3
+extracting data from node 26 : 8
+extracting data from node 27 : 6
+extracting data from node 28 : 4
+extracting data from node 29 : 0
+extracting data from node 30 : 4
+
+
+{ -----END PROCESS TESTS FOR StackDoubleLinkedList.pas----- }
+
+
+
+
+{ -----START PROCESS TESTS FOR StackBinaryTree.pas----- }
+
+
+created tree object
+inserted the number 4 into tree
+inserted the number 6 into tree
+inserted the number 3 into tree
+inserted the number 5 into tree
+inserted the number 8 into tree
+inserted the number 7 into tree
+inserted the number 0 into tree
+inserted the number 2 into tree
+inserted the number 30 into tree
+inserted the number 1 into tree
+inserted the number 5 into tree
+inserted the number 9 into tree
+inserted the number 5 into tree
+inserted the number 4 into tree
+there are 14 nodes on the tree
+the number 4 was found at node number 1
+the number 8 was found at node number 5
+the node for number 8 has been deleted
+there are 13 nodes on the tree
+
+
+{ -----END OF PROCESS TESTS FOR StackBinaryTree.pas----- }
+
+
