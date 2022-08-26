@@ -10,11 +10,14 @@ unit StackBinaryTree;
 interface
 
 type
+
     treeNode = ^TreeNodeRec;
     TreeNodeRec = record
         data, nodeNumber: integer;
         leftChild, rightChild: treeNode;
     end;
+	
+   stackArray = array of treeNode;
 
     TStackBinaryTree = object
 
@@ -32,7 +35,19 @@ type
         function getSuccessor(delNode: treeNode): treeNode;
     end;
         
+            TStack = object
+
+    public
+        constructor create(maxSizeInput: integer);
+        procedure push(inputNode: treeNode);
+        function pop(): treeNode;
+        function isEmpty(): boolean;
+
+    end;
+
     var
+        top, maxSize: integer;
+        stackArrayVar: stackArray;
         root: treeNode;
         counter, nodeCount: integer;
 
@@ -239,6 +254,34 @@ begin
         end;
     findNodeNumber := current^.nodeNumber;
     
+end;
+
+constructor TStack.create(maxSizeInput: integer);
+begin
+    maxSize := maxSizeInput;
+    setLength(stackArrayVar, maxSizeInput);
+    top := 0;
+end;
+
+procedure TStack.push(inputNode: treeNode);
+
+begin
+    inc(top);
+    stackArrayVar[top] := inputNode;
+end;
+
+function TStack.pop(): treeNode;
+begin
+    dec(top);
+    pop := stackArrayVar[top + 1];
+end;
+
+function TStack.isEmpty(): boolean;
+begin
+    if top = -1 then
+        isEmpty := true
+        else
+            isEmpty := false;
 end;
 
 end.
