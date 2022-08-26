@@ -17,7 +17,7 @@ type
         leftChild, rightChild: treeNode;
     end;
 	
-   stackArray = array of treeNode;
+    stackArray = array of treeNode;
 
     TStackBinaryTree = object
 
@@ -35,7 +35,7 @@ type
         function getSuccessor(delNode: treeNode): treeNode;
     end;
         
-            TStack = object
+    TStack = object
 
     public
         constructor create(maxSizeInput: integer);
