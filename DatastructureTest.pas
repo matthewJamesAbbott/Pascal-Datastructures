@@ -250,12 +250,12 @@ begin
     writeln('inserted the number 8 into tree');
     stackBinaryTreeVar.insertData(7);
     writeln('inserted the number 7 into tree');
-    stackBinaryTreeVar.insertData(0);
+    stackBinaryTreeVar.insertData(9);
     writeln('inserted the number 0 into tree');
     stackBinaryTreeVar.insertData(2);
     writeln('inserted the number 2 into tree');
-    stackBinaryTreeVar.insertData(30);
-    writeln('inserted the number 30 into tree');
+    stackBinaryTreeVar.insertData(3);
+    writeln('inserted the number 3 into tree');
     stackBinaryTreeVar.insertData(1);
     writeln('inserted the number 1 into tree');
     stackBinaryTreeVar.insertData(5);
@@ -269,10 +269,12 @@ begin
     writeln('there are ', stackBinaryTreeVar.countNodes(), ' nodes on the tree');
     writeln('the number 4 was found at node number ', stackBinaryTreeVar.findNodeNumber(4));
     writeln('the number 8 was found at node number ', stackBinaryTreeVar.findNodeNumber(8));
-    stackBinaryTreeVar.deleteNode(8);
+    stackBinaryTreeVar.printTree();
+    writeln(stackBinaryTreeVar.deleteNode(8));
     writeln('the node for number 8 has been deleted');
     writeln('there are ', stackBinaryTreeVar.countNodes(), ' nodes on the tree');
-    
+    stackBinaryTreeVar.printTree();
+    writeln('tree printed to terminal');    
 
     writeln();
     writeln();

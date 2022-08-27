@@ -24,11 +24,13 @@ type
     public
         constructor create();
         procedure insertData(inputData: integer);
+        procedure printTree();
         function deleteNode(key: integer): boolean;
         function countNodes(): integer;
         function findNodeNumber(key: integer): integer;
     
     private
+        procedure printPreOrder(p: treeNode; indent: integer);
         procedure preOrder(localRoot: treeNode);
         procedure inOrder(localRoot: treeNode);
         procedure postOrder(localRoot: treeNode);
@@ -42,7 +44,7 @@ type
         procedure push(inputNode: treeNode);
         function pop(): treeNode;
         function isEmpty(): boolean;
-
+        
     end;
 
     var
@@ -117,6 +119,7 @@ begin
     isLeftChild := true;
     while current^.data <> key do
         begin
+            writeln(current^.data);
             parent := current;
             if key < current^.data then
                 begin
@@ -132,6 +135,7 @@ begin
                 begin
                     deleteNode := false;
                 end;
+        end;
             if current^.leftChild = nil then
                 begin
                     if current^.rightChild = nil then
@@ -149,9 +153,9 @@ begin
                         if current = root then
                             root := current^.leftChild
                         else if isLeftChild = true then
-                            parent^.leftChild := current^.rightChild
+                            parent^.leftChild := current^.leftChild
                         else
-                            parent^.rightChild := current^.rightChild;
+                            parent^.rightChild := current^.leftChild;
                     end
                 else if current^.leftChild = nil then
                     begin
@@ -171,11 +175,11 @@ begin
                                 parent^.leftChild := successor
                             else
                                 parent^.rightChild := successor;
-                        successor^.leftChild := current^.leftChild;
+                            successor^.leftChild := current^.leftChild;
                     end;
             deleteNode := true;
 
-        end;
+        
 
 end;
 
@@ -204,7 +208,7 @@ end;
 
 function TStackBinaryTree.countNodes(): integer;
 begin
-    counter := 1;
+    counter := 0;
     preOrder(root);
     countNodes := counter;
 end;
@@ -284,4 +288,37 @@ begin
             isEmpty := false;
 end;
 
+procedure TStackBinaryTree.printTree();
+begin
+    printPreOrder(root, 0);
+end;
+
+procedure TStackBinaryTree.printPreOrder(p: treeNode; indent: integer);
+
+var
+    i: integer;
+
+begin
+    if indent <> 0 then
+        begin
+            for i := 0 to indent do
+                begin
+                    write(' ');
+                end;
+        end;
+ 
+    writeln(p^.data);
+
+
+    if p^.leftChild <> nil then
+        begin
+            printPreOrder(p^.leftChild, indent + 4);
+        end;
+    if p^.rightChild <> nil then
+        begin
+            printPreOrder(p^.rightChild, indent + 4);
+        end;
+
+         
+end;
 end.
