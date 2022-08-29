@@ -13,7 +13,6 @@ uses
     HeapNode in './HeapNode.pas';
 
 type
-    PHeapNode = ^THeapNode;
 
     THeapLinkedList = class
 
