@@ -7,12 +7,14 @@ program DataStructureTest;
 uses
     StackLinkedList in './StackLinkedList.pas',
     StackDoubleLinkedList in './StackDoubleLinkedList.pas',
-    StackBinaryTree in './StackBinaryTree.pas';
+    StackBinaryTree in './StackBinaryTree.pas',
+    HeapLinkedList in './HeapLinkedList.pas';
     
 var
     stackLinkedListVar: TStackLinkedList;
     stackDoubleLinkedListVar: TStackDoubleLinkedList;
     stackBinaryTreeVar: TStackBinaryTree;
+    heapLinkedListVar: THeapLinkedList;
     index: integer;
 
 begin
@@ -282,5 +284,104 @@ begin
     writeln();
     writeln();
 
+
     { -----END OF PROCESS TESTS FOR StackBinaryTree.pas----- }
+
+
+    { -----START PROCESS TESTS FOR HeapLinkedList.pas----- }
+
+    writeln('{ -----START PROCESS TESTS FOR HeapLinkedList.pas----- }');
+    writeln();
+    writeln();
+    
+    
+    heapLinkedListVar.create();
+    writeln('created List object');
+    heapLinkedListVar.addNode(5);
+    writeln('inserted the number 5 into list');
+    heapLinkedListVar.addNode(2);
+    writeln('inserted the number 2 into list');
+    heapLinkedListVar.addNode(3);
+    writeln('inserted the number 3 into list');
+    heapLinkedListVar.addNode(7);
+    writeln('inserted the number 7 into list');
+    heapLinkedListVar.addNode(1);
+    writeln('inserted the number 1 into list');
+    heapLinkedListVar.addNode(5);
+    writeln('inserted the number 5 into list');
+    heapLinkedListVar.addNode(2);
+    writeln('inserted the number 2 into list');
+    heapLinkedListVar.addNode(3);
+    writeln('inserted the number 3 into list');
+    heapLinkedListVar.addNode(7);
+    writeln('inserted the number 7 into list');
+    heapLinkedListVar.addNode(1);
+    writeln('inserted the number 1 into list');
+    heapLinkedListVar.addNode(5);
+    writeln('inserted the number 5 into list');
+    heapLinkedListVar.addNode(2);
+    writeln('inserted the number 2 into list');
+    heapLinkedListVar.addNode(3);
+    writeln('inserted the number 3 into list');
+    heapLinkedListVar.addNode(7);
+    writeln('inserted the number 7 into list');
+    heapLinkedListVar.addNode(1);
+    writeln('inserted the number 1 into list');
+    heapLinkedListVar.addNode(5);
+    writeln('inserted the number 5 into list');
+    heapLinkedListVar.addNode(2);
+    writeln('inserted the number 2 into list');
+  heapLinkedListVar.addNode(3);
+    writeln('inserted the number 3 into list');
+    heapLinkedListVar.addNode(7);
+    writeln('inserted the number 7 into list');
+    heapLinkedListVar.addNode(1);
+    writeln('inserted the number 1 into list');
+    heapLinkedListVar.addNode(5);
+    writeln('inserted the number 5 into list');
+    heapLinkedListVar.addNode(2);
+    writeln('inserted the number 2 into list');
+    heapLinkedListVar.addNode(3);
+    writeln('inserted the number 3 into list');
+    heapLinkedListVar.addNode(7);
+    writeln('inserted the number 7 into list');
+    heapLinkedListVar.addNode(1);
+    writeln('inserted the number 1 into list');    
+    writeln('there are ' , heapLinkedListVar.countNodes() , ' items in the list');
+    for index := 1 to heapLinkedListVar.countNodes() do
+        begin
+            writeln('extracting data from node ', index , ' : ' , heapLinkedListVar.returnSpecificNodesData(index));
+        end;
+    heapLinkedListVar.deleteFirstNode();
+    writeln('deleted first node of list');
+    writeln('there are ' , heapLinkedListVar.countNodes() , ' items in the list');
+    for index := 1 to heapLinkedListVar.countNodes() do
+        begin
+            writeln('extracting data from node ', index , ' : ' , heapLinkedListVar.returnSpecificNodesData(index));
+        end;
+    heapLinkedListVar.deleteLastNode();
+    writeln('deleted last node of list');
+    writeln('there are ' , heapLinkedListVar.countNodes() , ' items in the list');
+    for index := 1 to heapLinkedListVar.countNodes() do
+         begin
+             writeln('extracting data from node ', index , ' : ' , heapLinkedListVar.returnSpecificNodesData(index));
+         end;
+    heapLinkedListVar.deleteSpecificNode(13);
+    writeln('deleted the 13th node of list');
+    writeln('there are ' , heapLinkedListVar.countNodes() , ' items in the list');
+    for index := 1 to heapLinkedListVar.countNodes() do
+         begin
+             writeln('extracting data from node ', index , ' : ' , heapLinkedListVar.returnSpecificNodesData(index));
+         end;
+    writeln('extracting data from node 13 : ', heapLinkedListVar.returnSpecificNodesData(13));
+    writeln('extracting data from head node : ', heapLinkedListVar.returnHeadsData());
+    writeln('extracting data from tail node : ', heapLinkedListVar.returnTailsData());
+    writeln('the number 5 first instance found at node : ', heapLinkedListVar.returnNodeNumberOfFirstInstanceOfData(5));
+
+    writeln();
+    writeln();
+    writeln('{ -----END PROCESS TESTS FOR heapLinkedList.pas----- }');
+    writeln();
+    writeln();
+
 end.

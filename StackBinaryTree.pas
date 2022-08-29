@@ -37,7 +37,7 @@ type
         function getSuccessor(delNode: treeNode): treeNode;
     end;
         
-    TStack = object
+    TtreeStack = object
 
     public
         constructor create(maxSizeInput: integer);
@@ -260,27 +260,27 @@ begin
     
 end;
 
-constructor TStack.create(maxSizeInput: integer);
+constructor TtreeStack.create(maxSizeInput: integer);
 begin
     maxSize := maxSizeInput;
     setLength(stackArrayVar, maxSizeInput);
     top := 0;
 end;
 
-procedure TStack.push(inputNode: treeNode);
+procedure TtreeStack.push(inputNode: treeNode);
 
 begin
     inc(top);
     stackArrayVar[top] := inputNode;
 end;
 
-function TStack.pop(): treeNode;
+function TtreeStack.pop(): treeNode;
 begin
     dec(top);
     pop := stackArrayVar[top + 1];
 end;
 
-function TStack.isEmpty(): boolean;
+function TtreeStack.isEmpty(): boolean;
 begin
     if top = -1 then
         isEmpty := true
