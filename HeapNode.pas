@@ -31,6 +31,7 @@ begin
     next := nil;
 end;
 
+
 procedure THeapNode.setNext(inputNode: THeapNode);
 begin
     next := inputNode;

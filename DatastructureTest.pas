@@ -295,7 +295,7 @@ begin
     writeln();
     
     
-    heapLinkedListVar.create();
+    heapLinkedListVar := THeapLinkedList.create();
     writeln('created List object');
     heapLinkedListVar.addNode(5);
     writeln('inserted the number 5 into list');
@@ -377,7 +377,9 @@ begin
     writeln('extracting data from head node : ', heapLinkedListVar.returnHeadsData());
     writeln('extracting data from tail node : ', heapLinkedListVar.returnTailsData());
     writeln('the number 5 first instance found at node : ', heapLinkedListVar.returnNodeNumberOfFirstInstanceOfData(5));
-
+    heapLinkedListVar.destroyNodes();
+    writeln('linked list has been destroyed and all of its nodes taken out of heap memory');
+    heapLinkedListVar.destroy();
     writeln();
     writeln();
     writeln('{ -----END PROCESS TESTS FOR heapLinkedList.pas----- }');

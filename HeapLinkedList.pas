@@ -18,6 +18,7 @@ type
 
     public
         constructor create();
+        procedure destroyNodes();
         procedure addNode(inputData: integer);
         procedure deleteFirstNode();
         procedure deleteLastNode();
@@ -37,6 +38,17 @@ constructor THeapLinkedList.create();
 begin
 end;
 
+procedure THeapLinkedList.destroyNodes();
+
+var
+    iterator: integer;
+
+begin
+    for iterator := 1 to countNodes() -1 do
+        begin
+            deleteLastNode();
+        end;
+end;
 procedure THeapLinkedList.addNode(inputData: integer);
 var
     temp, newNode: THeapNode;
@@ -58,8 +70,13 @@ begin
 end;
 
 procedure THeapLinkedList.deleteFirstNode();
+
+var
+    temp: THeapNode;
 begin
+    temp := head;
     head := head.getNext;
+    temp.destroy;
 end;
 
 procedure THeapLinkedList.deleteLastNode();
@@ -76,7 +93,7 @@ begin
             temp1 := temp1.getNext;
         end;
         temp2.setNext(nil);
-
+        temp2.destroy;
 end;
 
 procedure THeapLinkedList.deleteSpecificNode(nodeNumber: integer);
