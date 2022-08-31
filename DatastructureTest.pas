@@ -8,13 +8,15 @@ uses
     StackLinkedList in './StackLinkedList.pas',
     StackDoubleLinkedList in './StackDoubleLinkedList.pas',
     StackBinaryTree in './StackBinaryTree.pas',
-    HeapLinkedList in './HeapLinkedList.pas';
-    
+    HeapLinkedList in './HeapLinkedList.pas',
+    HeapDoubleLinkedList in './HeapDoubleLinkedList.pas';
+
 var
     stackLinkedListVar: TStackLinkedList;
     stackDoubleLinkedListVar: TStackDoubleLinkedList;
     stackBinaryTreeVar: TStackBinaryTree;
     heapLinkedListVar: THeapLinkedList;
+    heapDoubleLinkedListVar: THeapDoubleLinkedList;
     index: integer;
 
 begin
@@ -385,5 +387,126 @@ begin
     writeln('{ -----END PROCESS TESTS FOR heapLinkedList.pas----- }');
     writeln();
     writeln();
+    
+ 
+        { -----START PROCESS TEST FOR HeapDoubleLinkedList.pas----- }
+
+    writeln();
+    writeln();
+    writeln('{ -----START PROCESS TEST FOR HeapDoubleLinkedList.pas----- }');
+    writeln();
+    writeln();
+
+    heapDoubleLinkedListVar := THeapDoubleLinkedList.create();
+    writeln('created list object');
+    heapDoubleLinkedListVar.insertFirst(3);
+    writeln('inserted the number 3 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(2);
+    writeln('inserted the number 2 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(7);
+    writeln('inserted the number 7 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(5);
+    writeln('inserted the number 5 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(3);
+    writeln('inserted the number 3 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(5);
+    writeln('inserted the number 5 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(1);
+    writeln('inserted the number 1 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(3);
+    writeln('inserted the number 3 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(9);
+    writeln('inserted the number 9 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(4);
+    writeln('inserted the number 4 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(8);
+    writeln('inserted the number 8 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(3);
+    writeln('inserted the number 3 into First position of list');
+    heapDoubleLinkedListVar.insertFirst(1);
+    writeln('inserted the number 1 into First position of list');
+    writeln('there are ', heapDoubleLinkedListVar.countNodes(), ' nodes in list');
+    for index := 1 to heapDoubleLinkedListVar.countNodes() do
+         begin
+             writeln('extracting data from node ', index , ' : ' , heapDoubleLinkedListVar.returnSpecificNodesData(index));
+         end;
+
+    heapDoubleLinkedListVar.insertLast(3);
+    writeln('inserted the number 3 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(6);
+    writeln('inserted the number 6 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(8);
+    writeln('inserted the number 8 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(9);
+    writeln('inserted the number 9 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(6);
+    writeln('inserted the number 6 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(0);
+    writeln('inserted the number 0 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(2);
+    writeln('inserted the number 2 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(7);
+    writeln('inserted the number 7 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(5);
+    writeln('inserted the number 5 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(3);
+    writeln('inserted the number 3 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(3);
+    writeln('inserted the number 3 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(3);
+    writeln('inserted the number 3 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(8);
+    writeln('inserted the number 8 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(6);
+    writeln('inserted the number 6 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(4);
+    writeln('inserted the number 4 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(0);
+    writeln('inserted the number 0 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(4);
+    writeln('inserted the number 4 into last position of the list');
+    heapDoubleLinkedListVar.insertLast(1);
+    writeln('inserted the number 1 into last position of the list');
+    writeln('there are ', heapDoubleLinkedListVar.countNodes(), ' nodes in list');
+    for index := 1 to heapDoubleLinkedListVar.countNodes() do
+          begin
+              writeln('extracting data from node ', index , ' : ' , heapDoubleLinkedListVar.returnSpecificNodesData(index));
+          end;
+    heapDoubleLinkedListVar.deleteFirst();
+    writeln('the first node has been deleted');
+    writeln('there are ', heapDoubleLinkedListVar.countNodes(), ' nodes in list');
+    for index := 1 to heapDoubleLinkedListVar.countNodes() do
+           begin
+               writeln('extracting data from node ', index , ' : ' , heapDoubleLinkedListVar.returnSpecificNodesData(index));
+           end;
+    heapDoubleLinkedListVar.insertAfter(5,5);
+    writeln('inserted 8 after the first instance of 8');
+    for index := 1 to heapDoubleLinkedListVar.countNodes() do
+           begin
+               writeln('extracting data from node ', index , ' : ' , heapDoubleLinkedListVar.returnSpecificNodesData(index));
+           end;
+    writeln('node 23 contains : ', heapDoubleLinkedListVar.returnSpecificNodesData(23));
+    heapDoubleLinkedListVar.deleteLast();
+    writeln('the last node of the list has been deleted');
+    writeln('there are ', heapDoubleLinkedListVar.countNodes(), ' nodes in list');
+    for index := 1 to heapDoubleLinkedListVar.countNodes() do
+           begin
+                writeln('extracting data from node ', index , ' : ' , heapDoubleLinkedListVar.returnSpecificNodesData(index));
+           end;
+    writeln('last node contains : ', heapDoubleLinkedListVar.returnLastNodesData);
+    heapDoubleLinkedListVar.destroyNodes();
+    heapDoubleLinkedListVar.destroy();
+    writeln('double linked list has been destroyed and all of its nodes taken out of heap memory');
+
+    writeln();
+    writeln();
+    writeln('{ -----END PROCESS TESTS FOR HeapDoubleLinkedList.pas----- }');
+    writeln();
+    writeln();
+
+           
+    { -----END PROCESS TESTS FOR HeapDoubleLinkedList.pas----- }
+
+    
 
 end.

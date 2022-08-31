@@ -75,7 +75,7 @@ var
     temp: THeapNode;
 begin
     temp := head;
-    head := head.getNext;
+    head := temp.getNext;
     temp.destroy;
 end;
 
