@@ -479,8 +479,9 @@ begin
            begin
                writeln('extracting data from node ', index , ' : ' , heapDoubleLinkedListVar.returnSpecificNodesData(index));
            end;
-    heapDoubleLinkedListVar.insertAfter(5,5);
+    heapDoubleLinkedListVar.insertAfter(8,8);
     writeln('inserted 8 after the first instance of 8');
+    writeln('notice the disconnect on the previous node hence there being no nodes before 8 and no insertion');
     for index := 1 to heapDoubleLinkedListVar.countNodes() do
            begin
                writeln('extracting data from node ', index , ' : ' , heapDoubleLinkedListVar.returnSpecificNodesData(index));
@@ -493,7 +494,6 @@ begin
            begin
                 writeln('extracting data from node ', index , ' : ' , heapDoubleLinkedListVar.returnSpecificNodesData(index));
            end;
-    writeln('last node contains : ', heapDoubleLinkedListVar.returnLastNodesData);
     heapDoubleLinkedListVar.destroyNodes();
     heapDoubleLinkedListVar.destroy();
     writeln('double linked list has been destroyed and all of its nodes taken out of heap memory');
