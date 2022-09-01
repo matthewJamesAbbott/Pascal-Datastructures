@@ -481,7 +481,6 @@ begin
            end;
     heapDoubleLinkedListVar.insertAfter(8,8);
     writeln('inserted 8 after the first instance of 8');
-    writeln('notice the disconnect on the previous node hence there being no nodes before 8 and no insertion');
     for index := 1 to heapDoubleLinkedListVar.countNodes() do
            begin
                writeln('extracting data from node ', index , ' : ' , heapDoubleLinkedListVar.returnSpecificNodesData(index));
