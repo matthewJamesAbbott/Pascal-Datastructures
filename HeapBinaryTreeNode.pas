@@ -13,7 +13,7 @@ type
 
     THeapBinaryTreeNode = class
     private
-        data: integer;
+        data, nodeNumber: integer;
         leftChild, rightChild: THeapBinaryTreeNode;
 
     public
@@ -24,6 +24,8 @@ type
         function getRightChild: THeapBinaryTreeNode;
         procedure setData(inputData: integer);
         function getData: integer;
+        procedure setNodeNumber(inputNumber: integer);
+        function getNodeNumber: integer;
     end;
 
 implementation
@@ -64,6 +66,15 @@ begin
     getData := data;
 end;
 
+function THeapBinaryTreeNode.getNodeNumber: integer;
+begin
+    getNodeNumber := nodeNumber;
+end;
+
+procedure THeapBinaryTreeNode.setNodeNumber(inputNumber: integer);
+begin
+    nodeNumber := inputNumber;
+end;
 end.
 
 
