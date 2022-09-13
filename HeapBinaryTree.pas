@@ -1,5 +1,5 @@
 //
-// Created by Matthew Abbott 31/8/22 two days till lord of the rings rings of power.
+// Created by Matthew Abbott 31/8/22 two days till lord of the rings rings of power. edit on 13/9/22 it really sucked what a let down.
 //
 
 {$mode objfpc}
