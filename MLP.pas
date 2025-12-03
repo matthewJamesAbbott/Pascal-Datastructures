@@ -478,7 +478,8 @@ var
    MLP, MLP2: TMultiLayerPerceptron;
    Accuracy, Precision, Recall, F1ScoreVar: Double;
 begin
-
+   Randomize;
+   
    // Create data inputs
    SetLength(Data, 7500);
    for i := 0 to 2499 do
