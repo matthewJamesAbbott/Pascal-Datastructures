@@ -52,6 +52,6 @@ This software is provided "as is" without warranty of any kind, express or impli
 
 ---
 
-**First Published:** [TODAY'S DATE - December 6, 2024]  
+**First Published:** [TODAY'S DATE - December 3, 2025]  
 **Last Updated:** [TODAY'S DATE]  
 **Timestamped via:** GitHub commit history, Internet Archive
