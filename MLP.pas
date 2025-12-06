@@ -231,7 +231,7 @@ var
    NumInputs, LayerCount, i, j, k: Integer;
 begin
    AssignFile(F, Filename);
-   Reset(F, 1);
+   Rewrite(F, 1);
    LayerCount := Length(HiddenLayers);
    // Write hyperparameters and learning rate
    BlockWrite(F, LayerCount, SizeOf(Integer));
