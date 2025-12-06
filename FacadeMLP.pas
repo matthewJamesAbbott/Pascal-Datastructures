@@ -31,8 +31,7 @@ type
    TLayerArray = array of TLayer;
    PLayer = ^TLayer;
 
-   { Layer Facade - Provides unified access to MLP layers
-     Similar to BmpArrayFacade which unified access across bitmap array segments }
+   { Layer Facade - Provides unified access to MLP layers }
    TLayerFacade = class
    private
       refLayers: array of PLayer;
@@ -82,8 +81,7 @@ var
    OutputSize: integer = 3;
 
 { ==================== TLayerFacade Implementation ==================== }
-{ This facade provides unified access to all layers of the MLP,
-  similar to how BmpArrayFacade provides unified access to bitmap array segments }
+{ This facade provides unified access to all layers of the MLP }
 
 constructor TLayerFacade. Create(var InputLayer: TLayer; var HiddenLayers: TLayerArray; var OutputLayer: TLayer);
 var
@@ -538,7 +536,7 @@ var
    NumInputs, LayerCount, i, j, k: Integer;
 begin
    AssignFile(F, Filename);
-   Reset(F, 1);
+   Rewrite(F, 1);
    LayerCount := Length(HiddenLayers);
    // Write hyperparameters and learning rate
    BlockWrite(F, LayerCount, SizeOf(Integer));
