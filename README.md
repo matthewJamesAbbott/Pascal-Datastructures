@@ -28,10 +28,6 @@ A collection of Pascal implementations of useful data structures and classical a
   3. Output is printed to the terminal after generation.
 - The code can be used as a library or a reference for understanding transformer inner workings.
 
-### GPT-2-cli.pas
-
-- Minimal standalone CLI for GGUF GPT-2 model evaluation and prompt generation.
-
 ### arrays.pas, matrix.pas
 
 - Basic dynamic arrays and matrix utilities (flat and nested representations).
