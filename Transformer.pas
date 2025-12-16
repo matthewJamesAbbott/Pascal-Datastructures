@@ -123,7 +123,7 @@ type
       destructor Destroy; override;
       function LoadModel(const GGUFPath: string): Boolean;
       function LoadTokenizer(const TokenizerPath: string): Boolean;
-      function Generate(const Prompt: string; MaxTokens: Integer): string;
+      function Generate(const Prompt: string; MaxTokens: Integer; Temperature: Double = 1.0): string;
       function IsModelLoaded: Boolean;
       function IsTokenizerLoaded: Boolean;
    end;
@@ -1301,12 +1301,12 @@ begin
    Result := ComputeLogits(Hidden, SeqLen);
 end;
 
-function TTransformerModel.Generate(const Prompt: string; MaxTokens: Integer): string;
+function TTransformerModel.Generate(const Prompt: string; MaxTokens: Integer; Temperature: Double = 1.0): string;
 var
    TokenIDs: TIntArray;
-   Logits: TDoubleArray;
-   I, J, BestID: Integer;
-   BestLogit: Double;
+   Logits, Probs: TDoubleArray;
+   I, J, BestID, SelectedID: Integer;
+   BestLogit, R, CumulativeProb: Double;
    StartTime: TDateTime;
    ElapsedSecs: Double;
 begin
@@ -1327,6 +1327,7 @@ begin
    WriteLn('Encoding prompt...');
    TokenIDs := FTokenizer.Encode(Prompt);
    WriteLn('Input tokens: ', Length(TokenIDs));
+   WriteLn('Temperature: ', Temperature:0:2);
    
    if Length(TokenIDs) = 0 then
    begin
@@ -1355,7 +1356,7 @@ begin
          Break;
       end;
 
-      // Greedy: argmax
+      // Find best for display
       BestID := 0;
       BestLogit := Logits[0];
       for J := 1 to High(Logits) do
@@ -1367,7 +1368,37 @@ begin
          end;
       end;
 
-      WriteLn('Generated token: ', BestID, ' = "', FTokenizer.IDToToken(BestID), '" (logit: ', BestLogit:0:4, ')');
+      // Temperature sampling
+      if Temperature <= 0.01 then
+      begin
+         // Near-zero temperature: greedy
+         SelectedID := BestID;
+      end
+      else
+      begin
+         // Apply temperature scaling to logits
+         for J := 0 to High(Logits) do
+            Logits[J] := Logits[J] / Temperature;
+         
+         // Convert to probabilities via softmax
+         Probs := Softmax(Logits);
+         
+         // Sample from distribution
+         R := Random;
+         CumulativeProb := 0.0;
+         SelectedID := 0;
+         for J := 0 to High(Probs) do
+         begin
+            CumulativeProb := CumulativeProb + Probs[J];
+            if R <= CumulativeProb then
+            begin
+               SelectedID := J;
+               Break;
+            end;
+         end;
+      end;
+
+      WriteLn('Generated token: ', SelectedID, ' = "', FTokenizer.IDToToken(SelectedID), '" (best was: ', BestID, ' logit: ', BestLogit:0:4, ')');
       
       // Show top 5 logits
       Write('Top logits: ');
@@ -1377,10 +1408,10 @@ begin
 
       // Append new token
       SetLength(TokenIDs, Length(TokenIDs) + 1);
-      TokenIDs[High(TokenIDs)] := BestID;
+      TokenIDs[High(TokenIDs)] := SelectedID;
 
       // Check for EOS
-      if BestID = 50256 then
+      if SelectedID = 50256 then
       begin
          WriteLn('[EOS token reached]');
          Break;
@@ -1400,6 +1431,7 @@ var
    Model: TTransformerModel;
    GGUFPath, TokenizerPath, Prompt: string;
    MaxTokens: Integer;
+   Temperature: Double;
    GeneratedText: string;
    ShowTensors: Boolean;
 
@@ -1411,10 +1443,10 @@ begin
 
    if ParamCount < 2 then
    begin
-      WriteLn('Usage: ', ParamStr(0), ' <model.gguf> <tokenizer.json> [prompt] [max_tokens] [--list-tensors]');
+      WriteLn('Usage: ', ParamStr(0), ' <model.gguf> <tokenizer.json> [prompt] [max_tokens] [temperature] [--list-tensors]');
       WriteLn;
       WriteLn('Example:');
-      WriteLn('  ', ParamStr(0), ' gpt2-f32.gguf tokenizer.json "Hello world" 10');
+      WriteLn('  ', ParamStr(0), ' gpt2-f32.gguf tokenizer.json "Hello world" 10 0.8');
       WriteLn('  ', ParamStr(0), ' gpt2-f32.gguf tokenizer.json --list-tensors');
       Halt(1);
    end;
@@ -1442,6 +1474,15 @@ begin
    end
    else
       MaxTokens := 5;
+
+   Temperature := 1.0;
+   if ParamCount >= 5 then
+   begin
+      if ParamStr(5) = '--list-tensors' then
+         ShowTensors := True
+      else
+         Temperature := StrToFloatDef(ParamStr(5), 1.0);
+   end;
 
    Randomize;
    Model := TTransformerModel.Create;
@@ -1471,9 +1512,10 @@ begin
       WriteLn('========================================');
       WriteLn('Prompt: "', Prompt, '"');
       WriteLn('Max tokens: ', MaxTokens);
+      WriteLn('Temperature: ', Temperature:0:2);
       WriteLn('========================================');
 
-      GeneratedText := Model.Generate(Prompt, MaxTokens);
+      GeneratedText := Model.Generate(Prompt, MaxTokens, Temperature);
 
       WriteLn;
       WriteLn('========================================');
