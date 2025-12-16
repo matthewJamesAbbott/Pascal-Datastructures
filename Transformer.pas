@@ -1,631 +1,1488 @@
 //
-// Transformer Neural Network Implementation
-// Based on "Attention Is All You Need" architecture
+// GGUF f32 CLI Transformer
+// Matthew Abbott 2025
 //
 
-{$mode objfpc}
-{$M+}
+{$mode objfpc}{$H+}
+{$modeswitch advancedrecords}
 
-program TransformerTest;
+program Transformer;
 
-uses Classes, Math, SysUtils;
+uses
+   Classes, Math, SysUtils, fpjson, jsonparser;
+
+const
+   MAX_SEQ_LEN = 1024;
+   GGUF_MAGIC = 'GGUF';
 
 type
-   Darray = array of Double;
-   D2array = array of array of Double;
-   
-   TSequenceData = record
-      Tokens: array of Darray;  // [seq_len][embedding_dim]
-      Target: Darray;
+   TDoubleArray = array of Double;
+   TSingleArray = array of Single;
+   TIntArray = array of Integer;
+   TInt64Array = array of Int64;
+
+   TGGUFTensor = record
+      Name: string;
+      Shape: TInt64Array;
+      NumDims: Integer;
+      DType: Integer;
+      DataOffset: Int64;
+      DataLoaded: Boolean;
+      Data: TSingleArray;
    end;
-   
-   TAttentionHead = record
-      QueryWeights: D2array;    // [embed_dim][head_dim]
-      KeyWeights: D2array;      // [embed_dim][head_dim]
-      ValueWeights: D2array;    // [embed_dim][head_dim]
-      
-      QueryBias: Darray;
-      KeyBias: Darray;
-      ValueBias: Darray;
-      
-      // Temporary storage for forward pass
-      Queries: D2array;         // [seq_len][head_dim]
-      Keys: D2array;            // [seq_len][head_dim]
-      Values: D2array;          // [seq_len][head_dim]
-      AttentionScores: D2array; // [seq_len][seq_len]
-      Output: D2array;          // [seq_len][head_dim]
-   end;
-   
-   TMultiHeadAttention = record
-      Heads: array of TAttentionHead;
-      OutputWeights: D2array;   // [num_heads * head_dim][embed_dim]
-      OutputBias: Darray;
-      Output: D2array;          // [seq_len][embed_dim]
-   end;
-   
-   TNeuron = record
-      Weights: array of Double;
-      Bias: Double;
-      Output: Double;
-      Error: Double;
-   end;
-   
-   TFeedForwardLayer = record
-      Neurons: array of TNeuron;
-   end;
-   
-   TFeedForwardNetwork = record
-      Layer1: TFeedForwardLayer;
-      Layer2: TFeedForwardLayer;
-      Output: D2array;  // [seq_len][embed_dim]
-   end;
-   
-   TTransformerBlock = record
-      Attention: TMultiHeadAttention;
-      FFN: TFeedForwardNetwork;
-      
-      // Layer normalization parameters
-      LN1_Gamma: Darray;  // After attention
-      LN1_Beta: Darray;
-      LN2_Gamma: Darray;  // After FFN
-      LN2_Beta: Darray;
-      
-      // Temporary storage
-      AttentionOutput: D2array;
-      FFNOutput: D2array;
-   end;
-   
-   TTransformer = class
+   TGGUFTensorArray = array of TGGUFTensor;
+
+   { TTokenizer }
+   TTokenizer = class
    private
-      LearningRate: Double;
-      MaxIterations: Integer;
-      EmbeddingDim: Integer;
-      NumHeads: Integer;
-      HeadDim: Integer;
-      FFNHiddenDim: Integer;
-      MaxSeqLen: Integer;
-      
-      Blocks: array of TTransformerBlock;
-      PositionalEncoding: D2array;  // [max_seq_len][embed_dim]
-      OutputLayer: TFeedForwardLayer;
-      
-      procedure InitializeAttentionHead(var Head: TAttentionHead; EmbedDim: Integer; AHeadDim: Integer);
-      procedure InitializeMultiHeadAttention(var MHA: TMultiHeadAttention; EmbedDim: Integer; 
-                                            ANumHeads: Integer; AHeadDim: Integer);
-      procedure InitializeFeedForward(var FFN: TFeedForwardNetwork; EmbedDim: Integer; HiddenDim: Integer);
-      procedure InitializeTransformerBlock(var Block: TTransformerBlock; EmbedDim: Integer; 
-                                          ANumHeads: Integer; AHeadDim: Integer; AFFNHiddenDim: Integer);
-      procedure InitializeLayer(var Layer: TFeedForwardLayer; NumNeurons: Integer; NumInputs: Integer);
-      procedure CreatePositionalEncoding(var AMaxSeqLen: Integer; EmbedDim: Integer);
-      
-      procedure AttentionHeadForward(var Head: TAttentionHead; const Input: D2array; SeqLen: Integer);
-      procedure MultiHeadAttentionForward(var MHA: TMultiHeadAttention; const Input: D2array; SeqLen: Integer);
-      procedure FeedForwardForward(var FFN: TFeedForwardNetwork; const Input: D2array; SeqLen: Integer);
-      procedure LayerNorm(var Output: D2array; const Input: D2array; const Gamma: Darray; 
-                         const Beta: Darray; SeqLen: Integer; EmbedDim: Integer);
-      procedure TransformerBlockForward(var Block: TTransformerBlock; var Input: D2array; SeqLen: Integer);
-      
-      function Softmax(const Input: Darray): Darray;
-      function ReLU(x: Double): Double;
-      function Sigmoid(x: Double): Double;
-      
+      FTokenToID: TStringList;
+      FIDToToken: TStringList;
+      FVocabSize: Integer;
+      FLoaded: Boolean;
    public
-      constructor Create(EmbedDim: Integer; ANumHeads: Integer; NumBlocks: Integer; 
-                        AFFNHiddenDim: Integer; AMaxSeqLen: Integer; OutputSize: Integer);
-      function Predict(var Sequence: TSequenceData): Darray;
-      procedure Train(var Sequence: TSequenceData; Target: Darray);
-      procedure SaveTransformerModel(const Filename: string);
+      constructor Create;
+      destructor Destroy; override;
+      function LoadFromFile(const Filename: string): Boolean;
+      function Encode(const Text: string): TIntArray;
+      function Decode(const IDs: TIntArray): string;
+      function TokenToID(const Token: string): Integer;
+      function IDToToken(ID: Integer): string;
+      property VocabSize: Integer read FVocabSize;
+      property Loaded: Boolean read FLoaded;
    end;
 
-constructor TTransformer.Create(EmbedDim: Integer; ANumHeads: Integer; NumBlocks: Integer; 
-                               AFFNHiddenDim: Integer; AMaxSeqLen: Integer; OutputSize: Integer);
-var
-   i: Integer;
+   { TGGUFLoader }
+   TGGUFLoader = class
+   private
+      FStream: TFileStream;
+      FFilename: string;
+      FTensors: TGGUFTensorArray;
+      FTensorMap: TStringList;
+      FTensorDataStart: Int64;
+      FEmbedDim: Integer;
+      FNumLayers: Integer;
+      FNumHeads: Integer;
+      FFFNDim: Integer;
+      FVocabSize: Integer;
+      FMaxSeqLen: Integer;
+      FLoaded: Boolean;
+
+      function ReadUInt32: UInt32;
+      function ReadUInt64: UInt64;
+      function ReadInt32: Int32;
+      function ReadFloat32: Single;
+      function ReadString: string;
+      procedure SkipMetadataValue(ValueType: Integer);
+      procedure ParseHeader;
+      function Float16ToFloat32(H: Word): Single;
+      function BFloat16ToFloat32(BF: Word): Single;
+      function LoadTensorByIndex(Idx: Integer): Boolean;
+   public
+      constructor Create;
+      destructor Destroy; override;
+      function LoadFromFile(const Filename: string): Boolean;
+      function GetTensor(const Names: array of string): TSingleArray;
+      function GetTensorShape(const Names: array of string): TInt64Array;
+      function HasTensor(const Name: string): Boolean;
+      procedure PrintAllTensorNames;
+      property EmbedDim: Integer read FEmbedDim;
+      property NumLayers: Integer read FNumLayers;
+      property NumHeads: Integer read FNumHeads;
+      property FFNDim: Integer read FFFNDim;
+      property VocabSize: Integer read FVocabSize;
+      property MaxSeqLen: Integer read FMaxSeqLen;
+      property Loaded: Boolean read FLoaded;
+   end;
+
+   { TTransformerModel }
+   TTransformerModel = class
+   private
+      FLoader: TGGUFLoader;
+      FTokenizer: TTokenizer;
+      FEmbedDim: Integer;
+      FNumHeads: Integer;
+      FHeadDim: Integer;
+      FNumLayers: Integer;
+      FFFNDim: Integer;
+      FVocabSize: Integer;
+
+      function GELU(X: Double): Double;
+      function Softmax(const Input: TDoubleArray): TDoubleArray;
+      function LayerNorm(const Input: TDoubleArray; const Gamma, Beta: TSingleArray; Dim: Integer): TDoubleArray;
+      
+      // All use flat arrays with explicit indexing
+      function EmbedTokens(const TokenIDs: TIntArray): TDoubleArray; // Returns [seq_len * embed_dim]
+      function AttentionBlock(const Input: TDoubleArray; SeqLen, LayerIdx: Integer): TDoubleArray;
+      function FFNBlock(const Input: TDoubleArray; SeqLen, LayerIdx: Integer): TDoubleArray;
+      function TransformerBlock(const Input: TDoubleArray; SeqLen, LayerIdx: Integer): TDoubleArray;
+      function ComputeLogits(const Input: TDoubleArray; SeqLen: Integer): TDoubleArray;
+      function Forward(const TokenIDs: TIntArray): TDoubleArray;
+
+   public
+      constructor Create;
+      destructor Destroy; override;
+      function LoadModel(const GGUFPath: string): Boolean;
+      function LoadTokenizer(const TokenizerPath: string): Boolean;
+      function Generate(const Prompt: string; MaxTokens: Integer): string;
+      function IsModelLoaded: Boolean;
+      function IsTokenizerLoaded: Boolean;
+   end;
+
+// ==================== TTokenizer Implementation ====================
+
+constructor TTokenizer.Create;
 begin
-   LearningRate := 0.001;
-   Self.EmbeddingDim := EmbedDim;
-   Self.NumHeads := ANumHeads;
-   Self.HeadDim := EmbedDim div ANumHeads;
-   Self.FFNHiddenDim := AFFNHiddenDim;
-   Self.MaxSeqLen := AMaxSeqLen;
-   
-   // Initialize transformer blocks
-   SetLength(Blocks, NumBlocks);
-   for i := 0 to NumBlocks - 1 do
-      InitializeTransformerBlock(Blocks[i], EmbedDim, NumHeads, HeadDim, FFNHiddenDim);
-   
-   // Create positional encoding
-   CreatePositionalEncoding(MaxSeqLen, EmbedDim);
-   
-   // Initialize output layer
-   InitializeLayer(OutputLayer, OutputSize, EmbedDim);
+   inherited;
+   FTokenToID := TStringList.Create;
+   FTokenToID.CaseSensitive := True;
+   FIDToToken := TStringList.Create;
+   FLoaded := False;
+   FVocabSize := 0;
 end;
 
-procedure TTransformer.InitializeLayer(var Layer: TFeedForwardLayer; NumNeurons: Integer; NumInputs: Integer);
-var
-   i, j: Integer;
+destructor TTokenizer.Destroy;
 begin
-   SetLength(Layer.Neurons, NumNeurons);
-   for i := 0 to NumNeurons - 1 do
+   FTokenToID.Free;
+   FIDToToken.Free;
+   inherited;
+end;
+
+function TTokenizer.LoadFromFile(const Filename: string): Boolean;
+var
+   JSONData: TJSONData;
+   JSONObj, ModelObj, VocabObj, AddedObj: TJSONObject;
+   AddedTokensArr: TJSONArray;
+   FileStream: TFileStream;
+   Parser: TJSONParser;
+   I: Integer;
+   TokenStr: string;
+   TokenID: Integer;
+begin
+   Result := False;
+   FLoaded := False;
+
+   if not FileExists(Filename) then
    begin
-      SetLength(Layer.Neurons[i].Weights, NumInputs);
-      for j := 0 to NumInputs - 1 do
-         Layer.Neurons[i].Weights[j] := (Random - 0.5) * Sqrt(2.0 / NumInputs);
-      Layer.Neurons[i].Bias := 0.0;
+      WriteLn('Tokenizer file not found: ', Filename);
+      Exit;
    end;
-end;
 
-procedure TTransformer.InitializeAttentionHead(var Head: TAttentionHead; EmbedDim: Integer; AHeadDim: Integer);
-var
-   i, j: Integer;
-   Scale: Double;
-begin
-   HeadDim := AHeadDim;
-   Scale := Sqrt(2.0 / EmbedDim);
-   // head := AHead;
-   SetLength(Head.QueryWeights, EmbedDim, HeadDim);
-   SetLength(Head.KeyWeights, EmbedDim, HeadDim);
-   SetLength(Head.ValueWeights, EmbedDim, HeadDim);
-   
-   SetLength(Head.QueryBias, HeadDim);
-   SetLength(Head.KeyBias, HeadDim);
-   SetLength(Head.ValueBias, HeadDim);
-   
-   for i := 0 to EmbedDim - 1 do
-      for j := 0 to HeadDim - 1 do
-      begin
-         Head.QueryWeights[i][j] := (Random - 0.5) * Scale;
-         Head.KeyWeights[i][j] := (Random - 0.5) * Scale;
-         Head.ValueWeights[i][j] := (Random - 0.5) * Scale;
+   try
+      FileStream := TFileStream.Create(Filename, fmOpenRead or fmShareDenyWrite);
+      try
+         Parser := TJSONParser.Create(FileStream);
+         try
+            JSONData := Parser.Parse;
+            if not Assigned(JSONData) then Exit;
+
+            JSONObj := TJSONObject(JSONData);
+
+            // Get vocab from model.vocab
+            if JSONObj.Find('model') <> nil then
+            begin
+               ModelObj := JSONObj.Objects['model'];
+               if ModelObj.Find('vocab') <> nil then
+               begin
+                  VocabObj := ModelObj.Objects['vocab'];
+                  for I := 0 to VocabObj.Count - 1 do
+                  begin
+                     TokenStr := VocabObj.Names[I];
+                     TokenID := VocabObj.Items[I].AsInteger;
+                     FTokenToID.AddObject(TokenStr, TObject(PtrInt(TokenID)));
+                     
+                     while FIDToToken.Count <= TokenID do
+                        FIDToToken.Add('');
+                     FIDToToken[TokenID] := TokenStr;
+                     
+                     if TokenID >= FVocabSize then
+                        FVocabSize := TokenID + 1;
+                  end;
+               end;
+            end;
+
+            // Also load added_tokens
+            if JSONObj.Find('added_tokens') <> nil then
+            begin
+               AddedTokensArr := JSONObj.Arrays['added_tokens'];
+               for I := 0 to AddedTokensArr.Count - 1 do
+               begin
+                  AddedObj := AddedTokensArr.Objects[I];
+                  TokenStr := AddedObj.Strings['content'];
+                  TokenID := AddedObj.Integers['id'];
+                  
+                  if FTokenToID.IndexOf(TokenStr) < 0 then
+                  begin
+                     FTokenToID.AddObject(TokenStr, TObject(PtrInt(TokenID)));
+                     while FIDToToken.Count <= TokenID do
+                        FIDToToken.Add('');
+                     FIDToToken[TokenID] := TokenStr;
+                     if TokenID >= FVocabSize then
+                        FVocabSize := TokenID + 1;
+                  end;
+               end;
+            end;
+
+            FLoaded := FVocabSize > 0;
+            Result := FLoaded;
+            
+            if FLoaded then
+               WriteLn('Tokenizer loaded: ', FVocabSize, ' tokens');
+
+         finally
+            Parser.Free;
+         end;
+      finally
+         FileStream.Free;
       end;
-   
-   for i := 0 to HeadDim - 1 do
-   begin
-      Head.QueryBias[i] := 0.0;
-      Head.KeyBias[i] := 0.0;
-      Head.ValueBias[i] := 0.0;
+   except
+      on E: Exception do
+         WriteLn('Error loading tokenizer: ', E.Message);
    end;
 end;
 
-procedure TTransformer.InitializeMultiHeadAttention(var MHA: TMultiHeadAttention; EmbedDim: Integer; 
-                                                   ANumHeads: Integer; AHeadDim: Integer);
+function TTokenizer.TokenToID(const Token: string): Integer;
 var
-   i, j: Integer;
-   OutputDim: Integer;
+   Idx: Integer;
 begin
-   NumHeads := ANumHeads;
-   HeadDim := AHeadDim;
-   SetLength(MHA.Heads, NumHeads);
-   for i := 0 to NumHeads - 1 do
-      InitializeAttentionHead(MHA.Heads[i], EmbedDim, HeadDim);
-   
-   OutputDim := NumHeads * HeadDim;
-   SetLength(MHA.OutputWeights, OutputDim, EmbedDim);
-   SetLength(MHA.OutputBias, EmbedDim);
-   
-   for i := 0 to OutputDim - 1 do
-      for j := 0 to EmbedDim - 1 do
-         MHA.OutputWeights[i][j] := (Random - 0.5) * Sqrt(2.0 / OutputDim);
-   
-   for i := 0 to EmbedDim - 1 do
-      MHA.OutputBias[i] := 0.0;
+   Idx := FTokenToID.IndexOf(Token);
+   if Idx >= 0 then
+      Result := PtrInt(FTokenToID.Objects[Idx])
+   else
+      Result := -1;
 end;
 
-procedure TTransformer.InitializeFeedForward(var FFN: TFeedForwardNetwork; EmbedDim: Integer; HiddenDim: Integer);
+function TTokenizer.IDToToken(ID: Integer): string;
 begin
-   InitializeLayer(FFN.Layer1, HiddenDim, EmbedDim);
-   InitializeLayer(FFN.Layer2, EmbedDim, HiddenDim);
+   if (ID >= 0) and (ID < FIDToToken.Count) then
+      Result := FIDToToken[ID]
+   else
+      Result := '';
 end;
 
-procedure TTransformer.InitializeTransformerBlock(var Block: TTransformerBlock; EmbedDim: Integer; 
-                                                 ANumHeads: Integer; AHeadDim: Integer; AFFNHiddenDim: Integer);
+function TTokenizer.Encode(const Text: string): TIntArray;
 var
-   i: Integer;
+   I, J: Integer;
+   Tokens: TStringList;
+   Token: string;
+   ID: Integer;
+   Ch: Char;
+   CurrentWord: string;
 begin
-   NumHeads := ANumHeads;
-   HeadDim := AHeadDim;
-   FFNHiddenDim := AFFNHiddenDim;
-   InitializeMultiHeadAttention(Block.Attention, EmbedDim, NumHeads, HeadDim);
-   InitializeFeedForward(Block.FFN, EmbedDim, FFNHiddenDim);
-   
-   // Initialize layer norm parameters
-   SetLength(Block.LN1_Gamma, EmbedDim);
-   SetLength(Block.LN1_Beta, EmbedDim);
-   SetLength(Block.LN2_Gamma, EmbedDim);
-   SetLength(Block.LN2_Beta, EmbedDim);
-   
-   for i := 0 to EmbedDim - 1 do
-   begin
-      Block.LN1_Gamma[i] := 1.0;
-      Block.LN1_Beta[i] := 0.0;
-      Block.LN2_Gamma[i] := 1.0;
-      Block.LN2_Beta[i] := 0.0;
-   end;
-end;
+   SetLength(Result, 0);
+   if not FLoaded then Exit;
 
-procedure TTransformer.CreatePositionalEncoding(var AMaxSeqLen: Integer; EmbedDim: Integer);
-var
-   pos, i: Integer;
-   angle: Double;
-begin
-   MaxSeqLen := AMaxSeqLen;
-   SetLength(PositionalEncoding, MaxSeqLen, EmbedDim);
-   
-   for pos := 0 to MaxSeqLen - 1 do
-   begin
-      for i := 0 to EmbedDim - 1 do
+   Tokens := TStringList.Create;
+   try
+      CurrentWord := '';
+      for I := 1 to Length(Text) do
       begin
-         angle := pos / Power(10000.0, (2.0 * (i div 2)) / EmbedDim);
-         if i mod 2 = 0 then
-            PositionalEncoding[pos][i] := Sin(angle)
+         Ch := Text[I];
+         if Ch = ' ' then
+         begin
+            if CurrentWord <> '' then
+               Tokens.Add(CurrentWord);
+            CurrentWord := 'Ġ';
+         end
          else
-            PositionalEncoding[pos][i] := Cos(angle);
+            CurrentWord := CurrentWord + Ch;
+      end;
+      if CurrentWord <> '' then
+         Tokens.Add(CurrentWord);
+
+      for I := 0 to Tokens.Count - 1 do
+      begin
+         Token := Tokens[I];
+         ID := TokenToID(Token);
+         
+         if ID >= 0 then
+         begin
+            SetLength(Result, Length(Result) + 1);
+            Result[High(Result)] := ID;
+         end
+         else
+         begin
+            for J := 1 to Length(Token) do
+            begin
+               ID := TokenToID(Token[J]);
+               if ID >= 0 then
+               begin
+                  SetLength(Result, Length(Result) + 1);
+                  Result[High(Result)] := ID;
+               end;
+            end;
+         end;
+      end;
+   finally
+      Tokens.Free;
+   end;
+end;
+
+function TTokenizer.Decode(const IDs: TIntArray): string;
+var
+   I: Integer;
+   Token: string;
+begin
+   Result := '';
+   for I := 0 to High(IDs) do
+   begin
+      Token := IDToToken(IDs[I]);
+      Token := StringReplace(Token, 'Ġ', ' ', [rfReplaceAll]);
+      Token := StringReplace(Token, 'Ċ', #10, [rfReplaceAll]);
+      Result := Result + Token;
+   end;
+end;
+
+// ==================== TGGUFLoader Implementation ====================
+
+constructor TGGUFLoader.Create;
+begin
+   inherited;
+   FStream := nil;
+   FTensorMap := TStringList.Create;
+   FTensorMap.CaseSensitive := True;
+   FLoaded := False;
+   FEmbedDim := 768;
+   FNumLayers := 12;
+   FNumHeads := 12;
+   FFFNDim := 3072;
+   FVocabSize := 50257;
+   FMaxSeqLen := 1024;
+end;
+
+destructor TGGUFLoader.Destroy;
+begin
+   if Assigned(FStream) then
+      FStream.Free;
+   FTensorMap.Free;
+   inherited;
+end;
+
+function TGGUFLoader.ReadUInt32: UInt32;
+begin
+   FStream.Read(Result, 4);
+end;
+
+function TGGUFLoader.ReadUInt64: UInt64;
+begin
+   FStream.Read(Result, 8);
+end;
+
+function TGGUFLoader.ReadInt32: Int32;
+begin
+   FStream.Read(Result, 4);
+end;
+
+function TGGUFLoader.ReadFloat32: Single;
+begin
+   FStream.Read(Result, 4);
+end;
+
+function TGGUFLoader.ReadString: string;
+var
+   Len: UInt64;
+   Bytes: array of Byte;
+begin
+   Len := ReadUInt64;
+   if Len > 10000000 then
+   begin
+      Result := '';
+      Exit;
+   end;
+   SetLength(Bytes, Len);
+   if Len > 0 then
+      FStream.Read(Bytes[0], Len);
+   SetString(Result, PAnsiChar(@Bytes[0]), Len);
+end;
+
+function TGGUFLoader.Float16ToFloat32(H: Word): Single;
+var
+   Sign, Exponent, Mantissa: Integer;
+   M, E: Double;
+begin
+   Sign := (H shr 15) and 1;
+   Exponent := (H shr 10) and $1F;
+   Mantissa := H and $3FF;
+
+   if Exponent = 0 then
+   begin
+      if Mantissa = 0 then
+         Result := 0
+      else
+      begin
+         E := -14;
+         M := Mantissa / 1024;
+         while M < 1 do begin M := M * 2; E := E - 1; end;
+         if Sign = 1 then Result := -M * Power(2, E) else Result := M * Power(2, E);
+      end;
+   end
+   else if Exponent = 31 then
+   begin
+      if Mantissa <> 0 then Result := NaN
+      else if Sign = 1 then Result := NegInfinity
+      else Result := Infinity;
+   end
+   else
+   begin
+      if Sign = 1 then Result := -(1 + Mantissa / 1024) * Power(2, Exponent - 15)
+      else Result := (1 + Mantissa / 1024) * Power(2, Exponent - 15);
+   end;
+end;
+
+function TGGUFLoader.BFloat16ToFloat32(BF: Word): Single;
+var
+   F32Bits: UInt32;
+begin
+   F32Bits := UInt32(BF) shl 16;
+   Move(F32Bits, Result, 4);
+end;
+
+procedure TGGUFLoader.SkipMetadataValue(ValueType: Integer);
+var
+   I: Integer;
+   ArrType: UInt32;
+   ArrCount: UInt64;
+   StrLen: UInt64;
+begin
+   case ValueType of
+      0, 1: FStream.Seek(1, soCurrent);        // UINT8, INT8
+      2, 3: FStream.Seek(2, soCurrent);        // UINT16, INT16
+      4, 5, 6: FStream.Seek(4, soCurrent);     // UINT32, INT32, FLOAT32
+      7: FStream.Seek(1, soCurrent);           // BOOL
+      8: begin                                  // STRING
+         StrLen := ReadUInt64;
+         FStream.Seek(StrLen, soCurrent);
+      end;
+      9: begin                                  // ARRAY
+         ArrType := ReadUInt32;
+         ArrCount := ReadUInt64;
+         for I := 0 to Min(Int64(ArrCount) - 1, 999999) do
+            SkipMetadataValue(ArrType);
+      end;
+      10, 11, 12: FStream.Seek(8, soCurrent);  // UINT64, INT64, FLOAT64
+   end;
+end;
+
+procedure TGGUFLoader.ParseHeader;
+var
+   Magic: array[0..3] of Char;
+   Version: UInt32;
+   TensorCount, MetadataCount: UInt64;
+   I, J: Integer;
+   Key: string;
+   ValueType: UInt32;
+   IntVal: Int64;
+begin
+   FStream.Read(Magic, 4);
+   if Magic <> GGUF_MAGIC then
+      raise Exception.Create('Invalid GGUF magic: ' + Magic);
+
+   Version := ReadUInt32;
+   TensorCount := ReadUInt64;
+   MetadataCount := ReadUInt64;
+
+   WriteLn('GGUF Version: ', Version);
+   WriteLn('Tensors: ', TensorCount);
+   WriteLn('Metadata entries: ', MetadataCount);
+
+   // Parse metadata - skip values but extract config
+   for I := 0 to MetadataCount - 1 do
+   begin
+      Key := ReadString;
+      ValueType := ReadUInt32;
+      
+      // Extract config values we care about
+      if (Key = 'gpt2.embedding_length') and (ValueType in [4, 5, 10]) then
+      begin
+         if ValueType = 10 then IntVal := ReadUInt64
+         else IntVal := ReadUInt32;
+         FEmbedDim := IntVal;
+      end
+      else if (Key = 'gpt2.block_count') and (ValueType in [4, 5, 10]) then
+      begin
+         if ValueType = 10 then IntVal := ReadUInt64
+         else IntVal := ReadUInt32;
+         FNumLayers := IntVal;
+      end
+      else if (Key = 'gpt2.attention.head_count') and (ValueType in [4, 5, 10]) then
+      begin
+         if ValueType = 10 then IntVal := ReadUInt64
+         else IntVal := ReadUInt32;
+         FNumHeads := IntVal;
+      end
+      else if (Key = 'gpt2.feed_forward_length') and (ValueType in [4, 5, 10]) then
+      begin
+         if ValueType = 10 then IntVal := ReadUInt64
+         else IntVal := ReadUInt32;
+         FFFNDim := IntVal;
+      end
+      else if (Key = 'gpt2.context_length') and (ValueType in [4, 5, 10]) then
+      begin
+         if ValueType = 10 then IntVal := ReadUInt64
+         else IntVal := ReadUInt32;
+         FMaxSeqLen := IntVal;
+      end
+      else
+         SkipMetadataValue(ValueType);
+   end;
+
+   WriteLn('Config: embed=', FEmbedDim, ' layers=', FNumLayers, 
+           ' heads=', FNumHeads, ' ffn=', FFFNDim);
+
+   // Parse tensor info (metadata only, no data loading)
+   SetLength(FTensors, TensorCount);
+   for I := 0 to TensorCount - 1 do
+   begin
+      FTensors[I].Name := ReadString;
+      FTensors[I].NumDims := ReadUInt32;
+      SetLength(FTensors[I].Shape, FTensors[I].NumDims);
+      for J := 0 to FTensors[I].NumDims - 1 do
+         FTensors[I].Shape[J] := ReadUInt64;
+      FTensors[I].DType := ReadUInt32;
+      FTensors[I].DataOffset := ReadUInt64;
+      FTensors[I].DataLoaded := False;
+      SetLength(FTensors[I].Data, 0);
+      
+      FTensorMap.AddObject(FTensors[I].Name, TObject(PtrInt(I)));
+   end;
+
+   // Align to 32 bytes for tensor data
+   FTensorDataStart := FStream.Position;
+   if FTensorDataStart mod 32 <> 0 then
+      FTensorDataStart := FTensorDataStart + (32 - (FTensorDataStart mod 32));
+   
+   WriteLn('Tensor data starts at offset: ', FTensorDataStart);
+end;
+
+function TGGUFLoader.LoadTensorByIndex(Idx: Integer): Boolean;
+var
+   J: Integer;
+   NumElements: Int64;
+   ActualOffset: Int64;
+   F16Data: array of Word;
+begin
+   Result := False;
+   if (Idx < 0) or (Idx > High(FTensors)) then Exit;
+   if FTensors[Idx].DataLoaded then
+   begin
+      Result := True;
+      Exit;
+   end;
+   
+   NumElements := 1;
+   for J := 0 to High(FTensors[Idx].Shape) do
+      NumElements := NumElements * FTensors[Idx].Shape[J];
+
+   ActualOffset := FTensorDataStart + FTensors[Idx].DataOffset;
+   
+   if ActualOffset >= FStream.Size then
+   begin
+      WriteLn('  ERROR: Offset ', ActualOffset, ' beyond file size ', FStream.Size);
+      Exit;
+   end;
+
+   try
+      SetLength(FTensors[Idx].Data, NumElements);
+      FStream.Position := ActualOffset;
+
+      case FTensors[Idx].DType of
+         0: // F32
+            FStream.Read(FTensors[Idx].Data[0], NumElements * 4);
+         1: // F16
+            begin
+               SetLength(F16Data, NumElements);
+               FStream.Read(F16Data[0], NumElements * 2);
+               for J := 0 to NumElements - 1 do
+                  FTensors[Idx].Data[J] := Float16ToFloat32(F16Data[J]);
+            end;
+         20: // BF16
+            begin
+               SetLength(F16Data, NumElements);
+               FStream.Read(F16Data[0], NumElements * 2);
+               for J := 0 to NumElements - 1 do
+                  FTensors[Idx].Data[J] := BFloat16ToFloat32(F16Data[J]);
+            end;
+      else
+         WriteLn('  WARNING: Unsupported dtype ', FTensors[Idx].DType);
+         Exit;
+      end;
+      
+      FTensors[Idx].DataLoaded := True;
+      Result := True;
+   except
+      on E: Exception do
+      begin
+         WriteLn('  ERROR loading tensor: ', E.Message);
+         SetLength(FTensors[Idx].Data, 0);
       end;
    end;
 end;
 
-function TTransformer.Softmax(const Input: Darray): Darray;
+function TGGUFLoader.LoadFromFile(const Filename: string): Boolean;
+begin
+   Result := False;
+   FLoaded := False;
+   FFilename := Filename;
+
+   if not FileExists(Filename) then
+   begin
+      WriteLn('GGUF file not found: ', Filename);
+      Exit;
+   end;
+
+   try
+      WriteLn('Loading GGUF: ', Filename);
+      FStream := TFileStream.Create(Filename, fmOpenRead or fmShareDenyWrite);
+      ParseHeader;
+      FLoaded := True;
+      Result := True;
+      WriteLn('GGUF parsed successfully (', Length(FTensors), ' tensors)');
+   except
+      on E: Exception do
+         WriteLn('Error loading GGUF: ', E.Message);
+   end;
+end;
+
+procedure TGGUFLoader.PrintAllTensorNames;
 var
-   i: Integer;
-   MaxVal, Sum: Double;
+   I: Integer;
+   ShapeStr: string;
+   J: Integer;
+begin
+   WriteLn('=== All Tensor Names ===');
+   for I := 0 to High(FTensors) do
+   begin
+      ShapeStr := '[';
+      for J := 0 to High(FTensors[I].Shape) do
+      begin
+         if J > 0 then ShapeStr := ShapeStr + ',';
+         ShapeStr := ShapeStr + IntToStr(FTensors[I].Shape[J]);
+      end;
+      ShapeStr := ShapeStr + ']';
+      WriteLn(Format('  %3d: %s %s dtype=%d', [I, FTensors[I].Name, ShapeStr, FTensors[I].DType]));
+   end;
+   WriteLn('========================');
+end;
+
+function TGGUFLoader.HasTensor(const Name: string): Boolean;
+begin
+   Result := FTensorMap.IndexOf(Name) >= 0;
+end;
+
+function TGGUFLoader.GetTensor(const Names: array of string): TSingleArray;
+var
+   I, MapIdx, TensorIdx: Integer;
+   FoundName: string;
+begin
+   SetLength(Result, 0);
+   
+   // Try each name until we find one
+   for I := 0 to High(Names) do
+   begin
+      MapIdx := FTensorMap.IndexOf(Names[I]);
+      if MapIdx >= 0 then
+      begin
+         FoundName := Names[I];
+         TensorIdx := PtrInt(FTensorMap.Objects[MapIdx]);
+         
+         if not FTensors[TensorIdx].DataLoaded then
+         begin
+            Write('  Loading: ', FoundName, ' ... ');
+            if LoadTensorByIndex(TensorIdx) then
+               WriteLn('OK (', Length(FTensors[TensorIdx].Data), ' floats)')
+            else
+            begin
+               WriteLn('FAILED');
+               Exit;
+            end;
+         end;
+         
+         Result := FTensors[TensorIdx].Data;
+         Exit;
+      end;
+   end;
+   
+   // Not found
+   Write('  WARNING: Tensor not found, tried: ');
+   for I := 0 to High(Names) do
+   begin
+      if I > 0 then Write(', ');
+      Write(Names[I]);
+   end;
+   WriteLn;
+end;
+
+function TGGUFLoader.GetTensorShape(const Names: array of string): TInt64Array;
+var
+   I, MapIdx, TensorIdx: Integer;
+begin
+   SetLength(Result, 0);
+   for I := 0 to High(Names) do
+   begin
+      MapIdx := FTensorMap.IndexOf(Names[I]);
+      if MapIdx >= 0 then
+      begin
+         TensorIdx := PtrInt(FTensorMap.Objects[MapIdx]);
+         Result := FTensors[TensorIdx].Shape;
+         Exit;
+      end;
+   end;
+end;
+
+// ==================== TTransformerModel Implementation ====================
+
+constructor TTransformerModel.Create;
+begin
+   inherited;
+   FLoader := TGGUFLoader.Create;
+   FTokenizer := TTokenizer.Create;
+end;
+
+destructor TTransformerModel.Destroy;
+begin
+   FLoader.Free;
+   FTokenizer.Free;
+   inherited;
+end;
+
+function TTransformerModel.IsModelLoaded: Boolean;
+begin
+   Result := FLoader.Loaded;
+end;
+
+function TTransformerModel.IsTokenizerLoaded: Boolean;
+begin
+   Result := FTokenizer.Loaded;
+end;
+
+function TTransformerModel.LoadModel(const GGUFPath: string): Boolean;
+var
+   TokenEmb, PosEmb: TSingleArray;
+begin
+   Result := FLoader.LoadFromFile(GGUFPath);
+   if Result then
+   begin
+      FEmbedDim := FLoader.EmbedDim;
+      FNumHeads := FLoader.NumHeads;
+      FHeadDim := FEmbedDim div FNumHeads;
+      FNumLayers := FLoader.NumLayers;
+      FFFNDim := FLoader.FFNDim;
+      FVocabSize := FLoader.VocabSize;
+
+      WriteLn;
+      WriteLn('Model config:');
+      WriteLn('  embed_dim = ', FEmbedDim);
+      WriteLn('  num_heads = ', FNumHeads);
+      WriteLn('  head_dim  = ', FHeadDim);
+      WriteLn('  num_layers = ', FNumLayers);
+      WriteLn('  ffn_dim   = ', FFFNDim);
+      WriteLn('  vocab_size = ', FVocabSize);
+      
+      // Test loading key tensors
+      WriteLn;
+      WriteLn('Verifying key tensors...');
+      
+      TokenEmb := FLoader.GetTensor(['token_embd.weight', 'wte.weight', 'model.wte.weight']);
+      if Length(TokenEmb) > 0 then
+      begin
+         WriteLn('  Token embeddings: ', Length(TokenEmb), ' values');
+         WriteLn('    Sample [0..4]: ', TokenEmb[0]:0:6, ', ', TokenEmb[1]:0:6, ', ', 
+                 TokenEmb[2]:0:6, ', ', TokenEmb[3]:0:6, ', ', TokenEmb[4]:0:6);
+      end
+      else
+         WriteLn('  ERROR: Token embeddings not found!');
+      
+      PosEmb := FLoader.GetTensor(['position_embd.weight', 'wpe.weight', 'model.wpe.weight']);
+      if Length(PosEmb) > 0 then
+      begin
+         WriteLn('  Position embeddings: ', Length(PosEmb), ' values');
+         WriteLn('    Sample [0..4]: ', PosEmb[0]:0:6, ', ', PosEmb[1]:0:6, ', ', 
+                 PosEmb[2]:0:6, ', ', PosEmb[3]:0:6, ', ', PosEmb[4]:0:6);
+      end
+      else
+         WriteLn('  ERROR: Position embeddings not found!');
+   end;
+end;
+
+function TTransformerModel.LoadTokenizer(const TokenizerPath: string): Boolean;
+begin
+   Result := FTokenizer.LoadFromFile(TokenizerPath);
+   if Result then
+      FVocabSize := FTokenizer.VocabSize;
+end;
+
+function TTransformerModel.GELU(X: Double): Double;
+var
+   Inner: Double;
+begin
+   if IsNan(X) or IsInfinite(X) then
+   begin
+      if X > 0 then Result := X else Result := 0;
+      Exit;
+   end;
+   if X > 10 then begin Result := X; Exit; end;
+   if X < -10 then begin Result := 0; Exit; end;
+   Inner := Sqrt(2.0 / Pi) * (X + 0.044715 * X * X * X);
+   if Inner > 20 then Inner := 20;
+   if Inner < -20 then Inner := -20;
+   Result := 0.5 * X * (1.0 + Tanh(Inner));
+end;
+
+function TTransformerModel.Softmax(const Input: TDoubleArray): TDoubleArray;
+var
+   I, J, ValidCount: Integer;
+   MaxVal, Sum, Val, ExpVal: Double;
 begin
    SetLength(Result, Length(Input));
+   if Length(Input) = 0 then Exit;
    
-   // Find max for numerical stability
-   MaxVal := Input[0];
-   for i := 1 to High(Input) do
-      if Input[i] > MaxVal then
-         MaxVal := Input[i];
+   MaxVal := -1e30;
+   ValidCount := 0;
+   for I := 0 to High(Input) do
+   begin
+      Val := Input[I];
+      if IsNan(Val) then Continue;
+      if IsInfinite(Val) and (Val < 0) then Continue;
+      if IsInfinite(Val) and (Val > 0) then
+      begin
+         for J := 0 to High(Result) do Result[J] := 0;
+         Result[I] := 1.0;
+         Exit;
+      end;
+      Inc(ValidCount);
+      if Val > MaxVal then MaxVal := Val;
+   end;
    
-   // Compute exp and sum
+   if ValidCount = 0 then
+   begin
+      for I := 0 to High(Result) do
+         Result[I] := 1.0 / Length(Result);
+      Exit;
+   end;
+   
+   if MaxVal < -1e20 then MaxVal := 0;
+
    Sum := 0.0;
-   for i := 0 to High(Input) do
+   for I := 0 to High(Input) do
    begin
-      Result[i] := Exp(Input[i] - MaxVal);
-      Sum := Sum + Result[i];
+      Val := Input[I];
+      if IsNan(Val) or IsInfinite(Val) then
+      begin
+         Result[I] := 0;
+         Continue;
+      end;
+      Val := Val - MaxVal;
+      if Val < -88 then
+         ExpVal := 0
+      else
+         ExpVal := Exp(Val);
+      Result[I] := ExpVal;
+      Sum := Sum + ExpVal;
    end;
-   
-   // Normalize
-   for i := 0 to High(Result) do
-      Result[i] := Result[i] / Sum;
-end;
 
-function TTransformer.ReLU(x: Double): Double;
-begin
-   if x > 0 then
-      Result := x
+   if Sum > 1e-30 then
+      for I := 0 to High(Result) do
+         Result[I] := Result[I] / Sum
    else
-      Result := 0.0;
+      for I := 0 to High(Result) do
+         Result[I] := 1.0 / Length(Result);
 end;
 
-function TTransformer.Sigmoid(x: Double): Double;
-begin
-   Result := 1.0 / (1.0 + Exp(-x));
-end;
-
-procedure TTransformer.AttentionHeadForward(var Head: TAttentionHead; const Input: D2array; SeqLen: Integer);
+function TTransformerModel.LayerNorm(const Input: TDoubleArray; const Gamma, Beta: TSingleArray; Dim: Integer): TDoubleArray;
 var
-   i, j, k: Integer;
-   Sum: Double;
-   ScalingFactor: Double;
-   AttentionRow: Darray;
-begin
-   ScalingFactor := Sqrt(HeadDim);
-   
-   // Allocate temporary arrays
-   SetLength(Head.Queries, SeqLen, HeadDim);
-   SetLength(Head.Keys, SeqLen, HeadDim);
-   SetLength(Head.Values, SeqLen, HeadDim);
-   SetLength(Head.AttentionScores, SeqLen, SeqLen);
-   SetLength(Head.Output, SeqLen, HeadDim);
-   
-   // Compute Q, K, V for each position
-   for i := 0 to SeqLen - 1 do
-   begin
-      // Query
-      for j := 0 to HeadDim - 1 do
-      begin
-         Sum := Head.QueryBias[j];
-         for k := 0 to EmbeddingDim - 1 do
-            Sum := Sum + Input[i][k] * Head.QueryWeights[k][j];
-         Head.Queries[i][j] := Sum;
-      end;
-      
-      // Key
-      for j := 0 to HeadDim - 1 do
-      begin
-         Sum := Head.KeyBias[j];
-         for k := 0 to EmbeddingDim - 1 do
-            Sum := Sum + Input[i][k] * Head.KeyWeights[k][j];
-         Head.Keys[i][j] := Sum;
-      end;
-      
-      // Value
-      for j := 0 to HeadDim - 1 do
-      begin
-         Sum := Head.ValueBias[j];
-         for k := 0 to EmbeddingDim - 1 do
-            Sum := Sum + Input[i][k] * Head.ValueWeights[k][j];
-         Head.Values[i][j] := Sum;
-      end;
-   end;
-   
-   // Compute attention scores: Q * K^T / sqrt(d_k)
-   for i := 0 to SeqLen - 1 do
-   begin
-      SetLength(AttentionRow, SeqLen);
-      for j := 0 to SeqLen - 1 do
-      begin
-         Sum := 0.0;
-         for k := 0 to HeadDim - 1 do
-            Sum := Sum + Head.Queries[i][k] * Head.Keys[j][k];
-         AttentionRow[j] := Sum / ScalingFactor;
-      end;
-      
-      // Apply softmax
-      AttentionRow := Softmax(AttentionRow);
-      for j := 0 to SeqLen - 1 do
-         Head.AttentionScores[i][j] := AttentionRow[j];
-   end;
-   
-   // Compute output: Attention * V
-   for i := 0 to SeqLen - 1 do
-   begin
-      for j := 0 to HeadDim - 1 do
-      begin
-         Sum := 0.0;
-         for k := 0 to SeqLen - 1 do
-            Sum := Sum + Head.AttentionScores[i][k] * Head.Values[k][j];
-         Head.Output[i][j] := Sum;
-      end;
-   end;
-end;
-
-procedure TTransformer.MultiHeadAttentionForward(var MHA: TMultiHeadAttention; const Input: D2array; SeqLen: Integer);
-var
-   h, i, j, k: Integer;
-   Sum: Double;
-   ConcatOutput: D2array;
-begin
-   // Run each attention head
-   for h := 0 to High(MHA.Heads) do
-      AttentionHeadForward(MHA.Heads[h], Input, SeqLen);
-   
-   // Concatenate head outputs
-   SetLength(ConcatOutput, SeqLen, NumHeads * HeadDim);
-   for i := 0 to SeqLen - 1 do
-   begin
-      for h := 0 to High(MHA.Heads) do
-      begin
-         for j := 0 to HeadDim - 1 do
-            ConcatOutput[i][h * HeadDim + j] := MHA.Heads[h].Output[i][j];
-      end;
-   end;
-   
-   // Apply output projection
-   SetLength(MHA.Output, SeqLen, EmbeddingDim);
-   for i := 0 to SeqLen - 1 do
-   begin
-      for j := 0 to EmbeddingDim - 1 do
-      begin
-         Sum := MHA.OutputBias[j];
-         for k := 0 to NumHeads * HeadDim - 1 do
-            Sum := Sum + ConcatOutput[i][k] * MHA.OutputWeights[k][j];
-         MHA.Output[i][j] := Sum;
-      end;
-   end;
-end;
-
-procedure TTransformer.FeedForwardForward(var FFN: TFeedForwardNetwork; const Input: D2array; SeqLen: Integer);
-var
-   i, j, k: Integer;
-   Sum: Double;
-   Hidden: D2array;
-begin
-   SetLength(Hidden, SeqLen, Length(FFN.Layer1.Neurons));
-   SetLength(FFN.Output, SeqLen, EmbeddingDim);
-   
-   // First layer with ReLU
-   for i := 0 to SeqLen - 1 do
-   begin
-      for j := 0 to High(FFN.Layer1.Neurons) do
-      begin
-         Sum := FFN.Layer1.Neurons[j].Bias;
-         for k := 0 to EmbeddingDim - 1 do
-            Sum := Sum + Input[i][k] * FFN.Layer1.Neurons[j].Weights[k];
-         Hidden[i][j] := ReLU(Sum);
-         FFN.Layer1.Neurons[j].Output := Hidden[i][j];
-      end;
-   end;
-   
-   // Second layer
-   for i := 0 to SeqLen - 1 do
-   begin
-      for j := 0 to High(FFN.Layer2.Neurons) do
-      begin
-         Sum := FFN.Layer2.Neurons[j].Bias;
-         for k := 0 to High(FFN.Layer1.Neurons) do
-            Sum := Sum + Hidden[i][k] * FFN.Layer2.Neurons[j].Weights[k];
-         FFN.Output[i][j] := Sum;
-         FFN.Layer2.Neurons[j].Output := Sum;
-      end;
-   end;
-end;
-
-procedure TTransformer.LayerNorm(var Output: D2array; const Input: D2array; const Gamma: Darray; 
-                                 const Beta: Darray; SeqLen: Integer; EmbedDim: Integer);
-var
-   i, j: Integer;
-   Mean, Variance, StdDev: Double;
+   I: Integer;
+   Mean, Variance, StdDev, Val, Normalized, BetaVal: Double;
    Epsilon: Double;
 begin
-   Epsilon := 1e-6;
-   SetLength(Output, SeqLen, EmbedDim);
+   Epsilon := 1e-5;
+   SetLength(Result, Dim);
    
-   for i := 0 to SeqLen - 1 do
+   if Length(Input) < Dim then
    begin
-      // Compute mean
-      Mean := 0.0;
-      for j := 0 to EmbedDim - 1 do
-         Mean := Mean + Input[i][j];
-      Mean := Mean / EmbedDim;
-      
-      // Compute variance
-      Variance := 0.0;
-      for j := 0 to EmbedDim - 1 do
-         Variance := Variance + Sqr(Input[i][j] - Mean);
-      Variance := Variance / EmbedDim;
-      StdDev := Sqrt(Variance + Epsilon);
-      
-      // Normalize and scale
-      for j := 0 to EmbedDim - 1 do
-         Output[i][j] := Gamma[j] * ((Input[i][j] - Mean) / StdDev) + Beta[j];
+      for I := 0 to Dim - 1 do Result[I] := 0;
+      Exit;
+   end;
+   if Length(Gamma) < Dim then
+   begin
+      Move(Input[0], Result[0], Dim * SizeOf(Double));
+      Exit;
+   end;
+
+   Mean := 0.0;
+   for I := 0 to Dim - 1 do
+   begin
+      Val := Input[I];
+      if IsNan(Val) or IsInfinite(Val) then Val := 0;
+      Mean := Mean + Val;
+   end;
+   Mean := Mean / Dim;
+
+   Variance := 0.0;
+   for I := 0 to Dim - 1 do
+   begin
+      Val := Input[I];
+      if IsNan(Val) or IsInfinite(Val) then Val := 0;
+      Variance := Variance + Sqr(Val - Mean);
+   end;
+   Variance := Variance / Dim;
+   
+   if Variance < 0 then Variance := 0;
+   StdDev := Sqrt(Variance + Epsilon);
+   if StdDev < Epsilon then StdDev := Epsilon;
+
+   for I := 0 to Dim - 1 do
+   begin
+      Val := Input[I];
+      if IsNan(Val) or IsInfinite(Val) then Val := 0;
+      Normalized := (Val - Mean) / StdDev;
+      if Normalized > 100 then Normalized := 100;
+      if Normalized < -100 then Normalized := -100;
+      if (Length(Beta) > I) then
+         BetaVal := Beta[I]
+      else
+         BetaVal := 0;
+      Result[I] := Gamma[I] * Normalized + BetaVal;
    end;
 end;
 
-procedure TTransformer.TransformerBlockForward(var Block: TTransformerBlock; var Input: D2array; SeqLen: Integer);
+function TTransformerModel.EmbedTokens(const TokenIDs: TIntArray): TDoubleArray;
 var
-   i, j: Integer;
-   TempInput, NormOutput: D2array;
+   TokenEmb, PosEmb: TSingleArray;
+   SeqLen, I, J, Idx: Integer;
 begin
-   // Multi-head attention
-   MultiHeadAttentionForward(Block.Attention, Input, SeqLen);
+   SeqLen := Length(TokenIDs);
+   SetLength(Result, SeqLen * FEmbedDim);
    
-   // Residual connection + Layer norm
-   SetLength(TempInput, SeqLen, EmbeddingDim);
-   for i := 0 to SeqLen - 1 do
-      for j := 0 to EmbeddingDim - 1 do
-         TempInput[i][j] := Input[i][j] + Block.Attention.Output[i][j];
+   TokenEmb := FLoader.GetTensor(['token_embd.weight', 'wte.weight']);
+   PosEmb := FLoader.GetTensor(['position_embd.weight', 'wpe.weight']);
    
-   LayerNorm(Block.AttentionOutput, TempInput, Block.LN1_Gamma, Block.LN1_Beta, SeqLen, EmbeddingDim);
+   if (Length(TokenEmb) = 0) or (Length(PosEmb) = 0) then
+   begin
+      WriteLn('ERROR: Missing embeddings');
+      Exit;
+   end;
    
-   // Feed-forward network
-   FeedForwardForward(Block.FFN, Block.AttentionOutput, SeqLen);
-   
-   // Residual connection + Layer norm
-   for i := 0 to SeqLen - 1 do
-      for j := 0 to EmbeddingDim - 1 do
-         TempInput[i][j] := Block.AttentionOutput[i][j] + Block.FFN.Output[i][j];
-   
-   LayerNorm(Block.FFNOutput, TempInput, Block.LN2_Gamma, Block.LN2_Beta, SeqLen, EmbeddingDim);
-   
-   // Update input for next block
-   Input := Block.FFNOutput;
+   // Result[i * embed_dim + j] = token_emb + pos_emb
+   for I := 0 to SeqLen - 1 do
+   begin
+      Idx := TokenIDs[I];
+      if (Idx < 0) or (Idx >= FVocabSize) then
+      begin
+         WriteLn('WARNING: Token ID ', Idx, ' out of range');
+         Idx := 0;
+      end;
+      
+      for J := 0 to FEmbedDim - 1 do
+      begin
+         // Token embedding: [vocab_size, embed_dim] row-major
+         // Position embedding: [max_seq_len, embed_dim] row-major
+         Result[I * FEmbedDim + J] := 
+            TokenEmb[Idx * FEmbedDim + J] + PosEmb[I * FEmbedDim + J];
+      end;
+   end;
 end;
 
-function TTransformer.Predict(var Sequence: TSequenceData): Darray;
+function TTransformerModel.AttentionBlock(const Input: TDoubleArray; SeqLen, LayerIdx: Integer): TDoubleArray;
 var
-   i, j, k: Integer;
-   SeqLen: Integer;
-   Input: D2array;
-   PooledOutput: Darray;
+   LN1G, LN1B, QKVWeight, QKVBias, ProjWeight, ProjBias: TSingleArray;
+   NormInput: TDoubleArray;
+   Q, K, V, AttnOut: TDoubleArray;  // Flat arrays
+   I, J, K_idx, H, Pos, SrcPos: Integer;
+   Sum, Scale: Double;
+   Scores, AttnWeights: TDoubleArray;
+   HeadStart, QIdx, KIdx, VIdx: Integer;
+begin
+   SetLength(Result, SeqLen * FEmbedDim);
+   
+   // Load weights
+   LN1G := FLoader.GetTensor([Format('blk.%d.attn_norm.weight', [LayerIdx])]);
+   LN1B := FLoader.GetTensor([Format('blk.%d.attn_norm.bias', [LayerIdx])]);
+   QKVWeight := FLoader.GetTensor([Format('blk.%d.attn_qkv.weight', [LayerIdx])]);
+   QKVBias := FLoader.GetTensor([Format('blk.%d.attn_qkv.bias', [LayerIdx])]);
+   ProjWeight := FLoader.GetTensor([Format('blk.%d.attn_output.weight', [LayerIdx])]);
+   ProjBias := FLoader.GetTensor([Format('blk.%d.attn_output.bias', [LayerIdx])]);
+   
+   if (Length(QKVWeight) = 0) or (Length(ProjWeight) = 0) then
+   begin
+      WriteLn('ERROR: Missing attention weights for layer ', LayerIdx);
+      Move(Input[0], Result[0], SeqLen * FEmbedDim * SizeOf(Double));
+      Exit;
+   end;
+   
+   Scale := Sqrt(FHeadDim);
+   
+   // Allocate Q, K, V: [seq_len, embed_dim] flat
+   SetLength(Q, SeqLen * FEmbedDim);
+   SetLength(K, SeqLen * FEmbedDim);
+   SetLength(V, SeqLen * FEmbedDim);
+   SetLength(AttnOut, SeqLen * FEmbedDim);
+   SetLength(NormInput, FEmbedDim);
+   
+   // For each position: LayerNorm -> compute Q, K, V
+   for Pos := 0 to SeqLen - 1 do
+   begin
+      // Extract this position's input
+      for I := 0 to FEmbedDim - 1 do
+         NormInput[I] := Input[Pos * FEmbedDim + I];
+      
+      // Apply layer norm
+      if Length(LN1G) >= FEmbedDim then
+         NormInput := LayerNorm(NormInput, LN1G, LN1B, FEmbedDim);
+      
+      // Compute Q, K, V for this position
+      // GGUF stores QKV as [3*embed_dim, embed_dim] (output_dim, input_dim)
+      // Q = rows 0..embed_dim-1, K = rows embed_dim..2*embed_dim-1, V = rows 2*embed_dim..3*embed_dim-1
+      for I := 0 to FEmbedDim - 1 do
+      begin
+         // Q[pos, i] = sum_j(input[j] * W[i, j]) where W is [embed_dim, embed_dim]
+         if Length(QKVBias) > I then
+            Sum := QKVBias[I]
+         else
+            Sum := 0;
+         for J := 0 to FEmbedDim - 1 do
+            Sum := Sum + NormInput[J] * QKVWeight[I * FEmbedDim + J];
+         Q[Pos * FEmbedDim + I] := Sum;
+         
+         // K[pos, i]
+         if Length(QKVBias) > FEmbedDim + I then
+            Sum := QKVBias[FEmbedDim + I]
+         else
+            Sum := 0;
+         for J := 0 to FEmbedDim - 1 do
+            Sum := Sum + NormInput[J] * QKVWeight[(FEmbedDim + I) * FEmbedDim + J];
+         K[Pos * FEmbedDim + I] := Sum;
+         
+         // V[pos, i]
+         if Length(QKVBias) > 2 * FEmbedDim + I then
+            Sum := QKVBias[2 * FEmbedDim + I]
+         else
+            Sum := 0;
+         for J := 0 to FEmbedDim - 1 do
+            Sum := Sum + NormInput[J] * QKVWeight[(2 * FEmbedDim + I) * FEmbedDim + J];
+         V[Pos * FEmbedDim + I] := Sum;
+      end;
+   end;
+   
+   // Multi-head attention with causal mask
+   SetLength(Scores, SeqLen);
+   SetLength(AttnWeights, SeqLen);
+   
+   for H := 0 to FNumHeads - 1 do
+   begin
+      HeadStart := H * FHeadDim;
+      
+      for Pos := 0 to SeqLen - 1 do
+      begin
+         // Compute attention scores for this head at this position
+         for SrcPos := 0 to SeqLen - 1 do
+         begin
+            if SrcPos > Pos then
+               Scores[SrcPos] := -1e9  // Causal mask
+            else
+            begin
+               Sum := 0;
+               for I := 0 to FHeadDim - 1 do
+               begin
+                  QIdx := Pos * FEmbedDim + HeadStart + I;
+                  KIdx := SrcPos * FEmbedDim + HeadStart + I;
+                  Sum := Sum + Q[QIdx] * K[KIdx];
+               end;
+               Scores[SrcPos] := Sum / Scale;
+            end;
+         end;
+         
+         // Softmax
+         AttnWeights := Softmax(Scores);
+         
+         // Weighted sum of V
+         for I := 0 to FHeadDim - 1 do
+         begin
+            Sum := 0;
+            for SrcPos := 0 to SeqLen - 1 do
+            begin
+               VIdx := SrcPos * FEmbedDim + HeadStart + I;
+               Sum := Sum + AttnWeights[SrcPos] * V[VIdx];
+            end;
+            AttnOut[Pos * FEmbedDim + HeadStart + I] := Sum;
+         end;
+      end;
+   end;
+   
+   // Output projection and residual
+   // ProjWeight is [embed_dim, embed_dim] stored as [out, in]
+   for Pos := 0 to SeqLen - 1 do
+   begin
+      for I := 0 to FEmbedDim - 1 do
+      begin
+         if Length(ProjBias) > I then
+            Sum := ProjBias[I]
+         else
+            Sum := 0;
+         for J := 0 to FEmbedDim - 1 do
+            Sum := Sum + AttnOut[Pos * FEmbedDim + J] * ProjWeight[I * FEmbedDim + J];
+         
+         Result[Pos * FEmbedDim + I] := Input[Pos * FEmbedDim + I] + Sum;
+      end;
+   end;
+end;
+
+function TTransformerModel.FFNBlock(const Input: TDoubleArray; SeqLen, LayerIdx: Integer): TDoubleArray;
+var
+   LN2G, LN2B, UpWeight, UpBias, DownWeight, DownBias: TSingleArray;
+   NormInput, Hidden: TDoubleArray;
+   Pos, I, J: Integer;
    Sum: Double;
 begin
-   SeqLen := Length(Sequence.Tokens);
+   SetLength(Result, SeqLen * FEmbedDim);
    
-   // Add positional encoding to input
-   SetLength(Input, SeqLen, EmbeddingDim);
-   for i := 0 to SeqLen - 1 do
-      for j := 0 to EmbeddingDim - 1 do
-         Input[i][j] := Sequence.Tokens[i][j] + PositionalEncoding[i][j];
+   // Load weights
+   LN2G := FLoader.GetTensor([Format('blk.%d.ffn_norm.weight', [LayerIdx])]);
+   LN2B := FLoader.GetTensor([Format('blk.%d.ffn_norm.bias', [LayerIdx])]);
+   UpWeight := FLoader.GetTensor([Format('blk.%d.ffn_up.weight', [LayerIdx])]);
+   UpBias := FLoader.GetTensor([Format('blk.%d.ffn_up.bias', [LayerIdx])]);
+   DownWeight := FLoader.GetTensor([Format('blk.%d.ffn_down.weight', [LayerIdx])]);
+   DownBias := FLoader.GetTensor([Format('blk.%d.ffn_down.bias', [LayerIdx])]);
+   
+   if (Length(UpWeight) = 0) or (Length(DownWeight) = 0) then
+   begin
+      WriteLn('ERROR: Missing FFN weights for layer ', LayerIdx);
+      Move(Input[0], Result[0], SeqLen * FEmbedDim * SizeOf(Double));
+      Exit;
+   end;
+   
+   SetLength(NormInput, FEmbedDim);
+   SetLength(Hidden, FFFNDim);
+   
+   for Pos := 0 to SeqLen - 1 do
+   begin
+      // Extract and normalize
+      for I := 0 to FEmbedDim - 1 do
+         NormInput[I] := Input[Pos * FEmbedDim + I];
+      
+      if Length(LN2G) >= FEmbedDim then
+         NormInput := LayerNorm(NormInput, LN2G, LN2B, FEmbedDim);
+      
+      // Up projection with GELU
+      // UpWeight shape [768,3072] stored row-major: W[out_idx, in_idx] = W[out_idx * 768 + in_idx]
+      for I := 0 to FFFNDim - 1 do
+      begin
+         if Length(UpBias) > I then
+            Sum := UpBias[I]
+         else
+            Sum := 0;
+         for J := 0 to FEmbedDim - 1 do
+            Sum := Sum + NormInput[J] * UpWeight[I * FEmbedDim + J];
+         Hidden[I] := GELU(Sum);
+      end;
+      
+      // Down projection with residual
+      // DownWeight shape [3072,768] stored row-major: W[out_idx, in_idx] = W[out_idx * 3072 + in_idx]
+      for I := 0 to FEmbedDim - 1 do
+      begin
+         if Length(DownBias) > I then
+            Sum := DownBias[I]
+         else
+            Sum := 0;
+         for J := 0 to FFFNDim - 1 do
+            Sum := Sum + Hidden[J] * DownWeight[I * FFFNDim + J];
+         
+         Result[Pos * FEmbedDim + I] := Input[Pos * FEmbedDim + I] + Sum;
+      end;
+   end;
+end;
+
+function TTransformerModel.TransformerBlock(const Input: TDoubleArray; SeqLen, LayerIdx: Integer): TDoubleArray;
+var
+   AfterAttn: TDoubleArray;
+   I, NaNCount: Integer;
+begin
+   AfterAttn := AttentionBlock(Input, SeqLen, LayerIdx);
+   
+   NaNCount := 0;
+   for I := 0 to High(AfterAttn) do
+      if IsNan(AfterAttn[I]) or IsInfinite(AfterAttn[I]) then
+      begin
+         Inc(NaNCount);
+         AfterAttn[I] := 0;
+      end;
+   if NaNCount > 0 then
+      WriteLn('  Layer ', LayerIdx, ' attention: ', NaNCount, ' NaN/Inf fixed');
+   
+   Result := FFNBlock(AfterAttn, SeqLen, LayerIdx);
+   
+   NaNCount := 0;
+   for I := 0 to High(Result) do
+      if IsNan(Result[I]) or IsInfinite(Result[I]) then
+      begin
+         Inc(NaNCount);
+         Result[I] := 0;
+      end;
+   if NaNCount > 0 then
+      WriteLn('  Layer ', LayerIdx, ' FFN: ', NaNCount, ' NaN/Inf fixed');
+end;
+
+function TTransformerModel.ComputeLogits(const Input: TDoubleArray; SeqLen: Integer): TDoubleArray;
+var
+   FinalLNG, FinalLNB, TokenEmb: TSingleArray;
+   LastPos, NormedPos: TDoubleArray;
+   I, J, NaNCount: Integer;
+   Sum, Val: Double;
+begin
+   SetLength(Result, FVocabSize);
+   
+   FinalLNG := FLoader.GetTensor(['output_norm.weight', 'ln_f.weight']);
+   FinalLNB := FLoader.GetTensor(['output_norm.bias', 'ln_f.bias']);
+   
+   SetLength(LastPos, FEmbedDim);
+   NaNCount := 0;
+   for I := 0 to FEmbedDim - 1 do
+   begin
+      Val := Input[(SeqLen - 1) * FEmbedDim + I];
+      if IsNan(Val) or IsInfinite(Val) then
+      begin
+         Inc(NaNCount);
+         Val := 0;
+      end;
+      LastPos[I] := Val;
+   end;
+   if NaNCount > 0 then
+      WriteLn('WARNING: ', NaNCount, ' NaN/Inf values in final hidden state');
+   
+   if Length(FinalLNG) >= FEmbedDim then
+      NormedPos := LayerNorm(LastPos, FinalLNG, FinalLNB, FEmbedDim)
+   else
+      NormedPos := LastPos;
+   
+   TokenEmb := FLoader.GetTensor(['token_embd.weight', 'wte.weight']);
+   
+   if Length(TokenEmb) < FVocabSize * FEmbedDim then
+   begin
+      WriteLn('ERROR: Token embeddings too small for logits');
+      Exit;
+   end;
+   
+   for I := 0 to FVocabSize - 1 do
+   begin
+      Sum := 0;
+      for J := 0 to FEmbedDim - 1 do
+      begin
+         Val := NormedPos[J] * TokenEmb[I * FEmbedDim + J];
+         if not (IsNan(Val) or IsInfinite(Val)) then
+            Sum := Sum + Val;
+      end;
+      Result[I] := Sum;
+   end;
+end;
+
+function TTransformerModel.Forward(const TokenIDs: TIntArray): TDoubleArray;
+var
+   Hidden: TDoubleArray;
+   SeqLen, L: Integer;
+begin
+   SeqLen := Length(TokenIDs);
+   
+   // Embed tokens
+   Hidden := EmbedTokens(TokenIDs);
+   if Length(Hidden) <> SeqLen * FEmbedDim then
+   begin
+      WriteLn('ERROR: Embedding failed');
+      SetLength(Result, 0);
+      Exit;
+   end;
    
    // Forward through transformer blocks
-   for i := 0 to High(Blocks) do
-      TransformerBlockForward(Blocks[i], Input, SeqLen);
-   
-   // Global average pooling over sequence
-   SetLength(PooledOutput, EmbeddingDim);
-   for j := 0 to EmbeddingDim - 1 do
+   for L := 0 to FNumLayers - 1 do
    begin
-      Sum := 0.0;
-      for i := 0 to SeqLen - 1 do
-         Sum := Sum + Input[i][j];
-      PooledOutput[j] := Sum / SeqLen;
+      Write(#13, 'Layer ', L + 1, '/', FNumLayers, '...');
+      Hidden := TransformerBlock(Hidden, SeqLen, L);
    end;
+   WriteLn(' done');
    
-   // Output layer
-   SetLength(Result, Length(OutputLayer.Neurons));
-   for i := 0 to High(OutputLayer.Neurons) do
-   begin
-      Sum := OutputLayer.Neurons[i].Bias;
-      for j := 0 to EmbeddingDim - 1 do
-         Sum := Sum + PooledOutput[j] * OutputLayer.Neurons[i].Weights[j];
-      Result[i] := Sigmoid(Sum);
-      OutputLayer.Neurons[i].Output := Result[i];
-   end;
+   // Compute logits
+   Result := ComputeLogits(Hidden, SeqLen);
 end;
 
-procedure TTransformer.Train(var Sequence: TSequenceData; Target: Darray);
+function TTransformerModel.Generate(const Prompt: string; MaxTokens: Integer): string;
 var
-   Prediction: Darray;
-   i: Integer;
+   TokenIDs: TIntArray;
+   Logits: TDoubleArray;
+   I, J, BestID: Integer;
+   BestLogit: Double;
+   StartTime: TDateTime;
+   ElapsedSecs: Double;
 begin
-   Prediction := Predict(Sequence);
-   
-   // Simplified: Only update output layer (full backprop through attention would be complex)
-   for i := 0 to High(OutputLayer.Neurons) do
+   Result := '';
+
+   if not FLoader.Loaded then
    begin
-      OutputLayer.Neurons[i].Error := OutputLayer.Neurons[i].Output * 
-         (1 - OutputLayer.Neurons[i].Output) * (Target[i] - OutputLayer.Neurons[i].Output);
+      WriteLn('Error: Model not loaded');
+      Exit;
+   end;
+
+   if not FTokenizer.Loaded then
+   begin
+      WriteLn('Error: Tokenizer not loaded');
+      Exit;
+   end;
+
+   WriteLn('Encoding prompt...');
+   TokenIDs := FTokenizer.Encode(Prompt);
+   WriteLn('Input tokens: ', Length(TokenIDs));
+   
+   if Length(TokenIDs) = 0 then
+   begin
+      WriteLn('Error: Could not tokenize input');
+      Exit;
    end;
    
-   // Update output layer weights (simplified)
-   // Full implementation would backpropagate through all blocks
+   Write('Token IDs: ');
+   for I := 0 to Min(High(TokenIDs), 9) do
+      Write(TokenIDs[I], ' ');
+   if Length(TokenIDs) > 10 then Write('...');
+   WriteLn;
+
+   StartTime := Now;
+
+   for I := 0 to MaxTokens - 1 do
+   begin
+      WriteLn;
+      WriteLn('=== Generating token ', I + 1, '/', MaxTokens, ' ===');
+      
+      Logits := Forward(TokenIDs);
+      
+      if Length(Logits) = 0 then
+      begin
+         WriteLn('ERROR: Forward pass failed');
+         Break;
+      end;
+
+      // Greedy: argmax
+      BestID := 0;
+      BestLogit := Logits[0];
+      for J := 1 to High(Logits) do
+      begin
+         if Logits[J] > BestLogit then
+         begin
+            BestLogit := Logits[J];
+            BestID := J;
+         end;
+      end;
+
+      WriteLn('Generated token: ', BestID, ' = "', FTokenizer.IDToToken(BestID), '" (logit: ', BestLogit:0:4, ')');
+      
+      // Show top 5 logits
+      Write('Top logits: ');
+      for J := 0 to 4 do
+         Write(Logits[J]:0:2, ' ');
+      WriteLn('...');
+
+      // Append new token
+      SetLength(TokenIDs, Length(TokenIDs) + 1);
+      TokenIDs[High(TokenIDs)] := BestID;
+
+      // Check for EOS
+      if BestID = 50256 then
+      begin
+         WriteLn('[EOS token reached]');
+         Break;
+      end;
+   end;
+
+   ElapsedSecs := (Now - StartTime) * 86400;
+   WriteLn;
+   WriteLn(Format('Generation complete in %.1f seconds', [ElapsedSecs]));
+
+   Result := FTokenizer.Decode(TokenIDs);
 end;
 
-procedure TTransformer.SaveTransformerModel(const Filename: string);
-var
-   F: File;
-begin
-   AssignFile(F, Filename);
-   Rewrite(F, 1);
-   
-   BlockWrite(F, EmbeddingDim, SizeOf(Integer));
-   BlockWrite(F, NumHeads, SizeOf(Integer));
-   
-   CloseFile(F);
-   WriteLn('Transformer model saved to ', Filename);
-end;
+// ==================== Main Program ====================
 
-// Example usage
 var
-   Transformer: TTransformer;
-   Sequence: TSequenceData;
-   Prediction: Darray;
-   i, j: Integer;
+   Model: TTransformerModel;
+   GGUFPath, TokenizerPath, Prompt: string;
+   MaxTokens: Integer;
+   GeneratedText: string;
+   ShowTensors: Boolean;
+
 begin
+   WriteLn('========================================');
+   WriteLn('  GPT-2 CLI - Pascal Implementation');
+   WriteLn('========================================');
+   WriteLn;
+
+   if ParamCount < 2 then
+   begin
+      WriteLn('Usage: ', ParamStr(0), ' <model.gguf> <tokenizer.json> [prompt] [max_tokens] [--list-tensors]');
+      WriteLn;
+      WriteLn('Example:');
+      WriteLn('  ', ParamStr(0), ' gpt2-f32.gguf tokenizer.json "Hello world" 10');
+      WriteLn('  ', ParamStr(0), ' gpt2-f32.gguf tokenizer.json --list-tensors');
+      Halt(1);
+   end;
+
+   GGUFPath := ParamStr(1);
+   TokenizerPath := ParamStr(2);
+   ShowTensors := False;
+   
+   if ParamCount >= 3 then
+   begin
+      if ParamStr(3) = '--list-tensors' then
+         ShowTensors := True
+      else
+         Prompt := ParamStr(3);
+   end
+   else
+      Prompt := 'Hello';
+   
+   if ParamCount >= 4 then
+   begin
+      if ParamStr(4) = '--list-tensors' then
+         ShowTensors := True
+      else
+         MaxTokens := StrToIntDef(ParamStr(4), 5);
+   end
+   else
+      MaxTokens := 5;
+
    Randomize;
-   
-   // Create a sequence of 10 tokens, each with 64 dimensions
-   SetLength(Sequence.Tokens, 10);
-   for i := 0 to 9 do
-   begin
-      SetLength(Sequence.Tokens[i], 64);
-      for j := 0 to 63 do
-         Sequence.Tokens[i][j] := Random;
+   Model := TTransformerModel.Create;
+   try
+      WriteLn('Loading model...');
+      if not Model.LoadModel(GGUFPath) then
+      begin
+         WriteLn('Failed to load model');
+         Halt(1);
+      end;
+
+      if ShowTensors then
+      begin
+         Model.FLoader.PrintAllTensorNames;
+         Halt(0);
+      end;
+
+      WriteLn;
+      WriteLn('Loading tokenizer...');
+      if not Model.LoadTokenizer(TokenizerPath) then
+      begin
+         WriteLn('Failed to load tokenizer');
+         Halt(1);
+      end;
+
+      WriteLn;
+      WriteLn('========================================');
+      WriteLn('Prompt: "', Prompt, '"');
+      WriteLn('Max tokens: ', MaxTokens);
+      WriteLn('========================================');
+
+      GeneratedText := Model.Generate(Prompt, MaxTokens);
+
+      WriteLn;
+      WriteLn('========================================');
+      WriteLn('GENERATED TEXT:');
+      WriteLn('========================================');
+      WriteLn(GeneratedText);
+      WriteLn('========================================');
+
+   finally
+      Model.Free;
    end;
-   
-   // Create Transformer: 64-dim embeddings, 4 heads, 2 blocks, 256 FFN hidden, max 50 seq len, 3 classes
-   Transformer := TTransformer.Create(64, 4, 2, 256, 50, 3);
-   Transformer.MaxIterations := 10;
-   
-   WriteLn('Training Transformer on sample sequence...');
-   
-   // Train
-   for i := 0 to 9 do
-      Transformer.Train(Sequence, [1.0, 0.0, 0.0]);
-   
-   // Predict
-   Prediction := Transformer.Predict(Sequence);
-   Write('Prediction: [');
-   for i := 0 to High(Prediction) do
-   begin
-      Write(Prediction[i]:0:4);
-      if i < High(Prediction) then Write(', ');
-   end;
-   WriteLn(']');
-   
-   Transformer.SaveTransformerModel('TestTransformer.bin');
-   
-   WriteLn('Done!');
 end.
