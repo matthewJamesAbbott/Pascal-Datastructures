@@ -6,7 +6,7 @@
 {$mode objfpc}{$H+}
 {$modeswitch advancedrecords}
 
-program GNNProduction;
+program GNN;
 
 uses
    Classes, Math, SysUtils;
