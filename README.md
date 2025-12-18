@@ -1,69 +1,77 @@
-# Pascal Datastructures
+# Pascal Data Structures
 
-A collection of Pascal implementations of useful data structures and classical algorithms.
+A comprehensive repository of individual Pascal programs, each implementing a different classic data structure, algorithm, or problem-solving technique.  
+Ideal for students, educators, and anyone interested in understanding or teaching the foundations of data structures using Pascal.
 
 ---
 
-## Directory Summary
+## About
 
-### Transformer.pas
+This collection contains standalone Pascal programs, each one focused on a specific data structure or algorithm.  
+You will find clear, well-commented code covering the basics (arrays, stacks, queues, lists) as well as more advanced or less common structures, with illustrative main programs.
 
-- Pure Pascal implementation of a transformer (GPT-2 style) neural model.
-- Loads GGUF files for weights and a JSON/BPE tokenizer.
-- Works end-to-end for text generation on CPU.
-- Everything is handled with static types and flat arrays for transparency and reuse.
-- **Usage:**
-  1. Compile `Transformer.pas` with Free Pascal:
-     ```
-     fpc Transformer.pas
-     ```
-  2. Run with a model and tokenizer:
-     ```
-     ./transformer model.gguf tokenizer.json "your prompt here" max_tokens
-     ```
-     Example:
-     ```
-     ./transformer GPT-2-f32.gguf tokenizer.json "Once upon a time" 20
-     ```
-  3. Output is printed to the terminal after generation.
-- The code can be used as a library or a reference for understanding transformer inner workings.
+**Each file is independent and can be run or studied on its own for maximum clarity.**
 
-### arrays.pas, matrix.pas
+---
 
-- Basic dynamic arrays and matrix utilities (flat and nested representations).
+## Contents
 
-### hashtable.pas
+Below is a list of all included Pascal files/programs.  
+_(Section for individual write-ups of each program will go here as you supply details for each file.)_
 
-- Simple generic hash table/dictionary for key-value mapping.
+### Source Files
 
-### sorts.pas
+```text
+[List Here: For best results, paste either your file tree output or the complete file list from your repo!]
+example:
+- array_stack.pas
+- binary_tree.pas
+- circular_queue.pas
+- doubly_linked_list.pas
+- dynamic_array.pas
+- hash_table.pas
+- min_heap.pas
+- priority_queue.pas
+- radix_sort.pas
+- red_black_tree.pas
+- single_linked_list.pas
+- stack_using_queues.pas
+- ...
+```
 
-- Common sorting methods: quicksort, mergesort, bubblesort, etc.
+_Update this list as you add files to the repository!_
 
-### stack.pas, queue.pas
+---
 
-- Stack and queue (FIFO) implementations.
+## How to Use
 
-### redblacktree.pas
+1. **Browse the source files** above; pick a data structure or algorithm.
+2. **Open the `.pas` file** in your favourite text editor or Pascal IDE.
+3. **Compile and run** using any modern Pascal compiler (e.g., Free Pascal, Turbo Pascal).
+4. **Experiment, learn, and modify** the code as desired.
 
-- Red-black binary search tree for balanced map/set operations.
+Example (using Free Pascal):
+```bash
+fpc binary_tree.pas
+./binary_tree
+```
 
-### gnn.pas
+---
 
-- Graph neural network primitives and data handling routines.
+## Licensing & Authorship
 
-### mlp.pas
+>This code was created by **Matthew James Abbott**.  
+>It is published for educational and personal use only.  
+>**Redistribution or commercial use is not permitted without explicit permission.**
 
-- Simple multi-layer perceptron neural network with configurable layers.
+If you want to use any part in a textbook, course, or another project, please contact me.
 
-### rnn.pas
+---
 
-- Basic recurrent neural network implementation and testing routines.
+**Give this repository a ⭐ if you find it helpful for your Pascal journey!**
 
-### cnn.pas
+---
 
-- Basic convolutional neural network containers and procedures.
+### Individual File Writeups
 
-### heap.pas, priorityqueue.pas
-
-- Heap and priority queue implementations.
+_Coming soon: For deep dives and explanations, supply the name of a specific file, and I will generate a detailed description here!_
