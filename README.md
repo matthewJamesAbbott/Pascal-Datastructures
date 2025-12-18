@@ -17,6 +17,7 @@ Each entry links to an individual writeup and usage instructions.
 - [DatastructureTestResults.txt: Example Test Output](#datastructuretestresults-example-test-output)
 - [FacadeCNN.pas: CNN Facade Unit for Introspection & Manipulation](#facadecnn-cnn-facade-unit-for-introspection--manipulation)
 - [FacadeGNN.pas: Graph Neural Network Introspection & Utilities](#facadegnn-graph-neural-network-introspection--utilities)
+- [FacadeMLP.pas: MLP (MultiLayer Perceptron) Facade Unit](#facademlp-mlp-multilayer-perceptron-facade-unit)
 
 ---
 
@@ -274,6 +275,69 @@ All code is Object Pascal (`{$mode objfpc}`), and is compatible with modern Free
 - This unit is not a standalone executable, but a reusable module for advanced GNN engineering and exploration.
 - Consult the inline documentation and type declarations for extending to your own needs (e.g., new aggregation strategies, custom metrics).
 - For introductory usage, build a main program that includes this unit and demonstrates node classification or graph regression.
+
+---
+
+### FacadeMLP: MLP (MultiLayer Perceptron) Facade Unit
+
+**File:** `FacadeMLP.pas`  
+**Category:** Machine Learning Utilities / Feedforward Neural Nets
+
+#### Description
+
+A thoroughly-featured Object Pascal unit (`unit MLPFacade`) acting as a facade for multi-layer perceptrons.  
+This module is engineered to provide **detailed, externally accessible control and introspection** over the implementation of a classic feedforward neural network (MLP), especially designed for experimentation, research, and educational uses.
+
+**Core Functions Exposed:**
+- Full access to MLP architecture (input/hidden/output layers)
+- Neuron and layer-wise accessors: weights, biases, pre-activations, outputs, error gradients
+- Batch normalization, dropout settings, optimizer state (SGD, Adam, RMSProp)
+- L2-regularization and per-neuron attributes
+- Network topology modification (add/remove layers & neurons dynamically)
+- Batch/epoch training statistics, histogram features for diagnostics
+
+All types, records, and methods are presented in `{$mode objfpc}`/Free Pascal style for seamless advanced integration.
+
+This unit is ideal for:
+- Introspecting/tracing MLP activations and gradients at every stage
+- Modifying/training networks on the fly (e.g., for autoML or ablation studies)
+- Logging/visualizing inner state for teaching and debugging
+- Custom research where standard black-box neural nets aren’t enough
+
+#### How to Use
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later recommended
+- Designed for use together with an MLP definition/implementation compatible with this facade (such as `TMultiLayerPerceptron` shown in the source)
+
+**Integration Steps:**
+1. Place `FacadeMLP.pas` in your project directory.
+2. Add it to your `uses` clause in your main program or an analysis tool:
+    ```pascal
+    uses FacadeMLP;
+    ```
+3. Instantiate your core `TMultiLayerPerceptron` model, then wrap it with the `TMLPFacade`:
+    ```pascal
+    var
+      mlp: TMultiLayerPerceptron;
+      facade: TMLPFacade;
+    begin
+      mlp := TMultiLayerPerceptron.Create( ... );
+      facade := TMLPFacade.Create(mlp);
+      // Now inspect/set neurons, layers, weights, etc.
+    end;
+    ```
+4. Use the extensive API:
+    - Query any neuron's weights, error, dropout, batchnorm stats
+    - Adjust learning rates, regularization, optimizer state
+    - Add/remove neurons/layers dynamically for research
+    - Collect/bucketize outputs/histograms for diagnostics
+
+#### Usage Notes
+
+- This is not a standalone runnable file, but a powerful utility unit for hands-on control and analysis of MLPs in Pascal.
+- Designed for deep ML experimentation, explainability, and teaching.
+- For further details, see type declarations and implementation in the code; customize/extend as you wish for your own research!
 
 ---
 
