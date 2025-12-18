@@ -15,6 +15,7 @@ Each entry links to an individual writeup and usage instructions.
 - [CNN.pas: Convolutional Neural Network (Deep Learning)](#cnn-convolutional-neural-network)
 - [DatastructureTest.pas: Comprehensive Data Structure Tester](#datastructuretest-comprehensive-data-structure-tester)
 - [DatastructureTestResults.txt: Example Test Output](#datastructuretestresults-example-test-output)
+- [FacadeCNN.pas: CNN Facade Unit for Introspection & Manipulation](#facadecnn-cnn-facade-unit-for-introspection--manipulation)
 
 ---
 
@@ -160,6 +161,67 @@ You can use this file to:
 1. Compile and run `DatastructureTest.pas` as described above
 2. Compare your terminal output to this file to ensure correct operation
 3. Use differences to help debug or enhance your structures
+
+---
+
+### FacadeCNN: CNN Facade Unit for Introspection & Manipulation
+
+**File:** `FacadeCNN.pas`  
+**Category:** Machine Learning Utilities / Deep Learning Helper
+
+#### Description
+
+A comprehensive Pascal unit (`unit CNNFacade`) providing a **facade** (i.e., a simplified interface) for deep introspection, manipulation, and analysis of Convolutional Neural Networks (CNNs).  
+This unit is designed to enhance your ability to debug, analyze, and extend CNNs implemented by the author’s other Pascal modules (see [`CNN.pas`](#cnn-convolutional-neural-network)), by exposing detailed accessors and tools for reading and adjusting internal model state.
+
+**Key Capabilities:**
+- Detailed access to convolutional and fully connected layer parameters (weights, biases)
+- Structured types for feature maps, kernels, neuron parameters, batch norm, etc.
+- Utilities for extracting statistics (means, stdev, min/max) for any layer
+- Read/write access to layer configurations and attributes
+- Support for batch normalization parameters, filter attributes, and receptive field calculations
+- All code is pure Pascal (`{$mode objfpc}`), designed to be integrated alongside core CNN code
+
+This unit is particularly useful for:
+- Educational visualization of neural networks
+- Research into layer behavior and transformations
+- Custom training loops, fine-tuning, and explainable AI
+- Model inspection or serialization
+
+#### How to Use
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later recommended
+- Should be used in concert with a core CNN implementation (such as [`CNN.pas`](#cnn-convolutional-neural-network)), by adding `FacadeCNN` to your `uses` clause
+
+**To Integrate:**
+1. Place `FacadeCNN.pas` in your project directory
+2. In your main program or unit, add it to the `uses` clause:
+    ```pascal
+    uses FacadeCNN, CNN;
+    ```
+3. Instantiate and use the `TCNNFacade` class for advanced access, e.g.:
+    ```pascal
+    var
+      fcnn: TCNNFacade;
+    begin
+      fcnn := TCNNFacade.Create( ...layers/params... );
+      // ... CNN usage ...
+      // Example: read the feature map of Conv Layer 1, Filter 0
+      var fmap := fcnn.GetFeatureMap(1, 0);
+    end;
+    ```
+4. Use the provided accessor and mutator functions to:
+    - Retrieve or set kernel weights
+    - Access feature maps, preactivations, biases
+    - Gather per-layer statistics for analysis or visualization
+    - Modify filter attributes or apply batch normalization parameters
+
+#### Usage Notes
+
+- This facade is not a standalone program, but a utility class/unit to use with compatible neural network models.
+- Can be used for in-depth experiment logging, debugging, and research.
+- Extend or customize the unit for your own CNN architectures or for integrations with mathematical/statistical analysis tools.
 
 ---
 
