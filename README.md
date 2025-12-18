@@ -29,11 +29,14 @@ Each entry links to an individual writeup and usage instructions.
 - [MLP.pas: MultiLayer Perceptron (Feedforward Neural Network)](#mlp-multilayer-perceptron-feedforward-neural-network)
 - [RNN.pas: Advanced Recurrent Neural Network](#rnn-advanced-recurrent-neural-network)
 - [RedBlackTree.pas: Red-Black Self-Balancing Binary Search Tree](#redblacktree-red-black-self-balancing-binary-search-tree)
+- [SkipList.pas: Probabilistic Skip List Data Structure](#skiplist-probabilistic-skip-list-data-structure)
 - [Stack.pas: Classic Stack (Array-based) Implementation](#stack-classic-stack-array-based-implementation)
 - [StackBinaryTree.pas: Stack Implemented using a Binary Tree](#stackbinarytree-stack-implemented-using-a-binary-tree)
 - [StackDoubleLinkedList.pas: Stack Using a Doubly Linked List](#stackdoublelinkedlist-stack-using-a-doubly-linked-list)
 - [StackLinkedList.pas: Stack Using a Linked List](#stacklinkedlist-stack-using-a-linked-list)
 - [Transformer.pas: Minimal Pascal Transformer (Attention-based Model)](#transformer-minimal-pascal-transformer-attention-based-model)
+- [Trie.pas: Trie (Prefix Tree / Digital Tree)](#trie-trie-prefix-tree--digital-tree)
+- [UnionFind.pas: Disjoint Set / Union-Find Data Structure](#unionfind-disjoint-set--union-find-data-structure)
 
 ---
 
@@ -983,6 +986,62 @@ fpc RedBlackTree.pas
 
 ---
 
+### SkipList: Probabilistic Skip List Data Structure
+
+**File:** `SkipList.pas`  
+**Category:** Data Structures / Skip List / Probabilistic
+
+#### Description
+
+Implements a **Skip List**—a fast, probabilistic, multi-level linked list that achieves O(log n) average time for search, insertion, and deletion.  
+Skip lists are an alternative to balanced trees, storing sorted data through multiple levels of forward pointers with randomized height per node.
+
+**Features:**
+- Object Pascal, pointer-based implementation for learning and performance
+- Constants for max level and promotion probability (tunable)
+- Node insertion, search, and deletion all provided
+- Can print the skip list linearly (`printList`) or show each level (`printAllLevels`)
+- Each node contains data, its level, and an array of forward pointers
+- Keeps list balanced statistically—higher-level nodes are less frequent
+
+**How It Works:**
+- When inserting, a node may be promoted to higher levels (randomized coin-flip logic)
+- Most operations run in logarithmic time, making skip lists suitable for high-performance in-memory indexes
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or newer
+
+**Example Usage:**
+```pascal
+uses SkipList;
+var
+  sl: TSkipList;
+begin
+  sl.create;
+  sl.insert(10); sl.insert(20); sl.insert(15);
+  sl.printList;
+  sl.printAllLevels;
+  sl.delete(20);
+  sl.printList;
+end.
+```
+
+**To Compile:**
+```bash
+fpc SkipList.pas
+# ...plus your test or demonstration program
+```
+
+#### Usage Notes
+
+- Perfect for illustrating probabilistic data structures and alternative ordered lists.
+- The customizable level and probability allow experimentation with speed/space trade-offs.
+- Useful for database internals and concurrency-friendly in-memory structures.
+
+---
+
 ### Stack: Classic Stack (Array-based) Implementation
 
 **File:** `Stack.pas`  
@@ -1263,6 +1322,123 @@ fpc Transformer.pas
 - Not a full-featured LLM shell, but a robust Pascal starting point for experimenting with transformer networks, or for extending to educational or research use.
 - You may adapt this for BERT, GPT, or other attention-based models by adjusting the forward pass or loader logic.
 - Absolutely minimal external dependencies: only JSON/FPJSON components already in standard FPC.
+
+---
+
+### Trie: Trie (Prefix Tree / Digital Tree)
+
+**File:** `Trie.pas`  
+**Category:** Data Structures / Tries / String Algorithms
+
+#### Description
+
+Implements a **Trie** (prefix tree), a tree-based data structure well-suited for fast string storage, retrieval, and prefix-based search. Tries are used in autocomplete, spelling correction, dictionaries, IP routing, and countless fast search applications.  
+This Pascal implementation efficiently supports insertion, lookup, prefix checking, and deletion.
+
+**Features:**
+- Node structure: each node (record) holds a character, a parent pointer, end-of-word flag, and fixed alphabet-size array of children (default 26, 'a'-'z')
+- Operations include:
+  - `insert` for building the trie
+  - `search` for exact word existence
+  - `startsWith` for prefix queries
+  - `delete` with cleanup of unused nodes
+  - Printing all words (`printAllWords`) found in the tree
+- All pointer-based, classic Pascal style for easy learning and adaptation
+
+**Data Model:**
+- Only lower-case alphabetic words supported by default. Tune `ALPHABET_SIZE` and conversion logic for other alphabets.
+- All pointer management is explicit, and nodes are properly deallocated when unused.
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or newer
+
+**Example Usage:**
+```pascal
+uses Trie;
+var
+  trie: TTrie;
+  root: trieNode;
+begin
+  trie.create;
+  trie.insert(root, 'cat');
+  trie.insert(root, 'dog'); trie.insert(root, 'cart');
+  writeln('cat? ', trie.search(root, 'cat'));
+  writeln('ca*? ', trie.startsWith(root, 'ca'));
+  trie.delete(root, 'cat');
+  trie.printAllWords(root, '');
+end.
+```
+
+**To Compile:**
+```bash
+fpc Trie.pas
+# ...plus your main or demonstration program
+```
+
+#### Usage Notes
+
+- This implementation is best used for lower-case English strings by default.
+- You can adapt the alphabet size and char-index mapping for case-insensitive or unicode operations.
+- For pure educational value, follow the explicit pointer, node, and recursion logic step-by-step.
+
+---
+
+### UnionFind: Disjoint Set / Union-Find Data Structure
+
+**File:** `UnionFind.pas`  
+**Category:** Data Structures / Disjoint Sets / Union-Find
+
+#### Description
+
+Implements the classic **Union-Find (disjoint set forest)** data structure with path compression and union by rank—vital for efficient partitioning, connected components, and Kruskal’s/graph algorithms.  
+This lets you dynamically group and merge sets of elements, answering queries like: “Are elements A and B in the same set?” in nearly-constant amortized time.
+
+**Features:**
+- Fast find and union operations with path compression and union by rank
+- Each setNode points to its parent and records its rank; root nodes are set representatives
+- Simple API: add (“makeSet”), union, connected, and find-by-data
+- Maintains all elements in an internal array for quick node access and iteration
+- Prints set representatives, element membership, and total number of sets
+
+**Data Model:**
+- Supports up to 1000 elements by default (constant `MAX_ELEMENTS`)
+- Each item is a pointer, track of its value, rank, and parent
+- All pointer and array operations handled explicitly (classic Pascal style)
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later
+
+**Example Usage:**
+```pascal
+uses UnionFind;
+var
+  uf: TUnionFind;
+  nodeA, nodeB: setNode;
+begin
+  uf.create;
+  nodeA := uf.makeSet(1);
+  nodeB := uf.makeSet(2);
+  uf.union(nodeA, nodeB);
+  writeln('Are 1 and 2 connected? ', uf.connected(nodeA, nodeB));
+  uf.printSets;
+end.
+```
+
+**To Compile:**
+```bash
+fpc UnionFind.pas
+# ...plus your main or demonstration program
+```
+
+#### Usage Notes
+
+- For Kruskal’s and graph connected component problems; forms the backbone of many graph/cluster/puzzle algorithms.
+- Extend `MAX_ELEMENTS` as required for large tasks.
+- Follows classical pointer- and array-based style for educational and practical value.
 
 ---
 
