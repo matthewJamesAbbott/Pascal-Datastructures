@@ -16,6 +16,7 @@ Each entry links to an individual writeup and usage instructions.
 - [DatastructureTest.pas: Comprehensive Data Structure Tester](#datastructuretest-comprehensive-data-structure-tester)
 - [DatastructureTestResults.txt: Example Test Output](#datastructuretestresults-example-test-output)
 - [FacadeCNN.pas: CNN Facade Unit for Introspection & Manipulation](#facadecnn-cnn-facade-unit-for-introspection--manipulation)
+- [FacadeGNN.pas: Graph Neural Network Introspection & Utilities](#facadegnn-graph-neural-network-introspection--utilities)
 
 ---
 
@@ -222,6 +223,57 @@ This unit is particularly useful for:
 - This facade is not a standalone program, but a utility class/unit to use with compatible neural network models.
 - Can be used for in-depth experiment logging, debugging, and research.
 - Extend or customize the unit for your own CNN architectures or for integrations with mathematical/statistical analysis tools.
+
+---
+
+### FacadeGNN: Graph Neural Network Introspection & Utilities
+
+**File:** `FacadeGNN.pas`  
+**Category:** Machine Learning Utilities / Graph Learning
+
+#### Description
+
+A comprehensive Pascal unit (`unit GNNFacade`) that provides a facade (simplified interface) as well as extensive introspection, manipulation, and analysis utilities for Graph Neural Networks (GNNs).  
+This unit is intended to support advanced GNN architectures, training, and experimentation in Pascal, equipping researchers and students to:
+
+- Build, train, and inspect Graph Neural Networks for node, edge, or whole-graph learning tasks
+- Access and manipulate all aspects of network state: layers, embeddings, weights, activations, gradients, edge features, adjacency structures, etc.
+- Run and debug message passing, backpropagation, loss calculation, and architecture configuration
+- Support for various activation and loss types, batch embeddings, custom optimizers, and flexible graph configurations (undirected, self-loops, edge deduplication)
+
+**Core Features:**
+- Modular layer and neuron types for message, update, readout, and output computations
+- Deep access to node and edge features, graph topology, and learned representations
+- Built-in support for gradient clipping and diagnostic metric tracking
+- Numerous utility routines for copying, concatenating, and handling arrays/graphs
+- Can be extended for your own GNN flavors: GCN, GAT, MPNN, etc.
+
+All code is Object Pascal (`{$mode objfpc}`), and is compatible with modern Free Pascal.
+
+#### How to Use
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later recommended
+- Designed to import as a unit in your GNN projects
+
+**To Integrate:**
+1. Place `FacadeGNN.pas` in your project directory.
+2. Add the unit to the `uses` clause in your Pascal project:
+    ```pascal
+    uses FacadeGNN;
+    ```
+3. You can now define and create `TGraphNeuralNetwork` objects, configure layers, and operate on `TGraph` structures.
+4. Use the methods and properties to:
+    - Initialize architectures with standard or custom parameters
+    - Train/run GNNs stepwise or on batches
+    - Inspect internal states (embeddings, weights, activations, gradients)
+    - Export, analyze, or manipulate models in-depth for research or teaching
+
+#### Usage Notes
+
+- This unit is not a standalone executable, but a reusable module for advanced GNN engineering and exploration.
+- Consult the inline documentation and type declarations for extending to your own needs (e.g., new aggregation strategies, custom metrics).
+- For introductory usage, build a main program that includes this unit and demonstrates node classification or graph regression.
 
 ---
 
