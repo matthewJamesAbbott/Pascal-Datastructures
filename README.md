@@ -23,6 +23,7 @@ Each entry links to an individual writeup and usage instructions.
 - [HeapBinaryTreeNode.pas: Node Class for Binary Tree-based Heap](#heapbinarytreenode-node-class-for-binary-tree-based-heap)
 - [HeapDoubleLinkedList.pas: Heap Using a Doubly Linked List](#heapdoublelinkedlist-heap-using-a-doubly-linked-list)
 - [HeapNode.pas: Node Class for Heap Implemented via Linked List](#heapnode-node-class-for-heap-implemented-via-linked-list)
+- [MLP.pas: MultiLayer Perceptron (Feedforward Neural Network)](#mlp-multilayer-perceptron-feedforward-neural-network)
 
 ---
 
@@ -628,6 +629,58 @@ This is perfect for basic heap/stack/queue/list exercises requiring your own nod
 
 - In normal usage, higher-level data structure classes handle managing these nodes.
 - This low-dependency node design is very flexible for learning, modifying, or extending your own linked data structures.
+
+---
+
+### MLP: MultiLayer Perceptron (Feedforward Neural Network)
+
+**File:** `MLP.pas`  
+**Category:** Machine Learning / Neural Networks
+
+#### Description
+
+A modern, full-featured MultiLayer Perceptron (MLP) neural network implementation in Object Pascal (`{$mode objfpc}`).  
+This self-contained program demonstrates the creation, configuration, training, and prediction of classic feedforward neural networks—making it valuable for educational use, algorithm benchmarking, or direct integration in simple ML pipelines.
+
+**Features:**
+- Multiple hidden layers (`FHiddenLayers`), flexible layer sizes
+- Choice of activation functions: Sigmoid, Tanh, ReLU, Softmax
+- Choice of optimizers: SGD, Adam, RMSProp
+- Implements dropout, L2 regularization, Xavier/He initialization
+- Learning rate decay and early stopping
+- Batch and online training, data normalization for stability
+- Compact test harness: `program MLPtest`
+
+**Core types & objects:**
+- `TMultiLayerPerceptron` class with all major NN operations (forward, backward, optimizers, batch training)
+- `TNeuron`, `TLayer`, `TDataPoint` record types
+- Helper functions for transfer functions and data array management
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or above
+
+**Compile:**
+```bash
+fpc MLP.pas
+```
+
+**Run:**
+```bash
+./MLPtest
+```
+_Note: Program entry point is named `MLPtest`._
+
+**Editing and Experimentation:**
+- Adjust layer/activation/optimizer configs by editing the `TMultiLayerPerceptron.Create` and field assignments in code.
+- Train/test data can be embedded, generated, or supplied as needed by extending the `main` block.
+
+#### Usage Notes
+
+- Designed for students and researchers needing a readable, modifiable Pascal neural net.
+- Strong numerical stability and regularization included out of the box.
+- For research, couple this file with the `FacadeMLP.pas` for advanced introspection, training/weight logging, and architecture debugging.
 
 ---
 
