@@ -1,77 +1,101 @@
 # Pascal Data Structures
 
-A comprehensive repository of individual Pascal programs, each implementing a different classic data structure, algorithm, or problem-solving technique.  
-Ideal for students, educators, and anyone interested in understanding or teaching the foundations of data structures using Pascal.
-
----
-
-## About
-
-This collection contains standalone Pascal programs, each one focused on a specific data structure or algorithm.  
-You will find clear, well-commented code covering the basics (arrays, stacks, queues, lists) as well as more advanced or less common structures, with illustrative main programs.
-
-**Each file is independent and can be run or studied on its own for maximum clarity.**
+A comprehensive repository of individual Pascal programs, each implementing a different data structure or algorithmic approach – from fundamentals to advanced.  
+Ideal for students and enthusiasts interested in Pascal and classic CS topics.
 
 ---
 
 ## Contents
 
-Below is a list of all included Pascal files/programs.  
-_(Section for individual write-ups of each program will go here as you supply details for each file.)_
+Below is a list of all included Pascal programs.  
+Each entry links to an individual writeup and usage instructions.
 
 ### Source Files
 
-```text
-[List Here: For best results, paste either your file tree output or the complete file list from your repo!]
-example:
-- array_stack.pas
-- binary_tree.pas
-- circular_queue.pas
-- doubly_linked_list.pas
-- dynamic_array.pas
-- hash_table.pas
-- min_heap.pas
-- priority_queue.pas
-- radix_sort.pas
-- red_black_tree.pas
-- single_linked_list.pas
-- stack_using_queues.pas
-- ...
-```
+- [CNN.pas: Convolutional Neural Network (Deep Learning)](#cnn-convolutional-neural-network)
 
-_Update this list as you add files to the repository!_
+_(Add your other files alphabetically below as you go!)_
 
 ---
 
-## How to Use
+## Individual Program Writeups
 
-1. **Browse the source files** above; pick a data structure or algorithm.
-2. **Open the `.pas` file** in your favourite text editor or Pascal IDE.
-3. **Compile and run** using any modern Pascal compiler (e.g., Free Pascal, Turbo Pascal).
-4. **Experiment, learn, and modify** the code as desired.
+---
 
-Example (using Free Pascal):
+### CNN: Convolutional Neural Network
+
+**File:** `CNN.pas`  
+**Category:** Machine Learning / Deep Learning
+
+#### Description
+
+A fully self-contained Pascal implementation of a modern Convolutional Neural Network (CNN) from scratch.  
+Features include:
+- Multiple convolutional and pooling layers
+- Fully connected layers
+- ReLU activation, softmax + cross-entropy loss
+- Adam optimizer with bias correction
+- Dropout regularization
+- Numerically stable softmax, clipping, and error handling
+- Model save/load
+- Modular design using object-oriented free Pascal (`{$mode objfpc}`)
+
+This is a teaching/research-oriented example: no external libraries are required for the core functionality, and the code exposes internal states for hands-on learning.
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later recommended
+- 64-bit system recommended for large arrays (due to memory use)
+
+**Compile:**
 ```bash
-fpc binary_tree.pas
-./binary_tree
+fpc CNN.pas
 ```
 
+**Run:**
+```bash
+./CNNtest
+```
+_Note: The `program` block in this file is named `CNNtest`._
+
+**To Use as a Library:**  
+You can also `uses` the CNN class in other Pascal files or units for custom experiments or integration.
+
+#### Usage Notes
+
+- The program/demo provided in the main block of `CNN.pas` can be modified to load your own image data, set training targets, and configure network parameters.
+- Model hyperparameters (number of layers, filters, etc.) are set in the constructor of `TConvolutionalNeuralNetwork`.
+- For real datasets: you will need to implement (or adapt) input conversion from image files to the expected `TImageData` format.
+
+#### Example: Creating a Simple CNN in Your Pascal Code
+
+```pascal
+var
+  cnn: TConvolutionalNeuralNetwork;
+begin
+  cnn := TConvolutionalNeuralNetwork.Create(
+    28,    // input width
+    28,    // input height
+    1,     // channels (e.g. grayscale)
+    [8,16],// Conv filters per layer
+    [3,3], // Kernel sizes
+    [2,2], // Pool sizes
+    [64],  // FC layer sizes
+    10,    // output classes
+    0.001, // learning rate
+    0.25   // dropout rate
+  );
+  // Now use cnn.Predict(...) and cnn.TrainStep(...)
+end.
+```
+
+**Model Saving/Loading:**
+- Call `cnn.SaveCNNModel('my_model.bin')` and `cnn.LoadCNNModel('my_model.bin')` as needed.
+
+**Attribution:**  
+Created by Matthew James Abbott, 2025
+
 ---
 
-## Licensing & Authorship
-
->This code was created by **Matthew James Abbott**.  
->It is published for educational and personal use only.  
->**Redistribution or commercial use is not permitted without explicit permission.**
-
-If you want to use any part in a textbook, course, or another project, please contact me.
-
----
-
-**Give this repository a ⭐ if you find it helpful for your Pascal journey!**
-
----
-
-### Individual File Writeups
-
-_Coming soon: For deep dives and explanations, supply the name of a specific file, and I will generate a detailed description here!_
+_Add the next file alphabetically. To generate its dedicated section, just give me the filename!_
