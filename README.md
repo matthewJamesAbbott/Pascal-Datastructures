@@ -12,6 +12,8 @@ Each entry links to an individual writeup and usage instructions.
 
 ### Source Files
 
+- [AVLTree.pas: AVL (Height-Balanced Self-Balancing) Binary Search Tree](#avltree-avl-height-balanced-self-balancing-binary-search-tree)
+- [BTree.pas: B-Tree (Multiway, Balanced Search Tree)](#btree-b-tree-multiway-balanced-search-tree)
 - [CNN.pas: Convolutional Neural Network (Deep Learning)](#cnn-convolutional-neural-network)
 - [DatastructureTest.pas: Comprehensive Data Structure Tester](#datastructuretest-comprehensive-data-structure-tester)
 - [DatastructureTestResults.txt: Example Test Output](#datastructuretestresults-example-test-output)
@@ -19,6 +21,7 @@ Each entry links to an individual writeup and usage instructions.
 - [FacadeGNN.pas: GNN (Graph Neural Network) Facade](#facadegnn-graph-neural-network-introspection--utilities)
 - [FacadeMLP.pas: MLP (Multi Layer Perceptron) Facade](#facademlp-mlp-multilayer-perceptron-facade-unit)
 - [FacadeRNN.pas: RNN (Recurrent Neural Network) Facade](#facadernn-rnn-recurrent-neural-network-facade-unit)
+- [FacadeTransformer.pas: Transformer Model Introspection and Manipulation Facade](#facadetransformer-transformer-model-introspection-and-manipulation-facade)
 - [HeapBinaryTree.pas: Binary Tree-based Heap Data Structure](#heapbinarytree-binary-tree-based-heap-data-structure)
 - [HeapBinaryTreeNode.pas: Node Class for Binary Tree-based Heap](#heapbinarytreenode-node-class-for-binary-tree-based-heap)
 - [HeapDoubleLinkedList.pas: Heap Using a Doubly Linked List](#heapdoublelinkedlist-heap-using-a-doubly-linked-list)
@@ -26,10 +29,132 @@ Each entry links to an individual writeup and usage instructions.
 - [MLP.pas: MultiLayer Perceptron (Feedforward Neural Network)](#mlp-multilayer-perceptron-feedforward-neural-network)
 - [RNN.pas: Advanced Recurrent Neural Network](#rnn-advanced-recurrent-neural-network)
 - [RedBlackTree.pas: Red-Black Self-Balancing Binary Search Tree](#redblacktree-red-black-self-balancing-binary-search-tree)
+- [Stack.pas: Classic Stack (Array-based) Implementation](#stack-classic-stack-array-based-implementation)
+- [StackBinaryTree.pas: Stack Implemented using a Binary Tree](#stackbinarytree-stack-implemented-using-a-binary-tree)
+- [StackDoubleLinkedList.pas: Stack Using a Doubly Linked List](#stackdoublelinkedlist-stack-using-a-doubly-linked-list)
+- [StackLinkedList.pas: Stack Using a Linked List](#stacklinkedlist-stack-using-a-linked-list)
+- [Transformer.pas: Minimal Pascal Transformer (Attention-based Model)](#transformer-minimal-pascal-transformer-attention-based-model)
 
 ---
 
 ## Individual Program Writeups
+
+---
+
+### AVLTree: AVL (Height-Balanced Self-Balancing) Binary Search Tree
+
+**File:** `AVLTree.pas`  
+**Category:** Data Structures / Trees / Self-Balancing BST
+
+#### Description
+
+Implements an **AVL Tree**, a classic height-balanced self-balancing binary search tree, in Pascal.  
+AVL trees guarantee `O(log n)` insertion, deletion, and lookup by maintaining the height difference (balance factor) between every node’s left and right subtrees at most one, after every modification.
+
+**Features:**
+- Fully dynamic insertions with automatic balancing ("fixup")
+- Pointer-based node structure with explicit `data`, `height`, `parent`, `left`, and `right`
+- Efficient left and right rotations, single and double
+- Real-time balance and height calculation; maintains `height` property on all updates
+- `inorderTraversal` method prints each value, height, and balance factor for inspection
+
+**Data Model:**
+- Each node stores:
+  - `data`: the integer value in the node
+  - `height`: cached subtree height for O(1) balance checks
+  - `parent`, `left`, `right`: classic BST pointers
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later
+
+**Usage Example:**
+```pascal
+uses AVLTree;
+var
+  tree: TAVLTree;
+  root: treeNode;
+begin
+  tree.create;
+  tree.insert(root, 10);
+  tree.insert(root, 8);
+  tree.insert(root, 13);
+  tree.insert(root, 6);
+  tree.inorderTraversal(root);
+end.
+```
+
+**To Compile:**
+```bash
+fpc AVLTree.pas
+# ...plus your main or test driver
+```
+
+#### Usage Notes
+
+- All balancing and rotation logic is handled seamlessly in `insertFixup`, so insertion always produces a balanced BST.
+- Traversal prints each node along with its height and balance for confidence in structure.
+
+---
+
+### BTree: B-Tree (Multiway, Balanced Search Tree)
+
+**File:** `BTree.pas`  
+**Category:** Data Structures / Trees / Multiway / Balanced Search
+
+#### Description
+
+A full implementation of a **B-Tree**, the classic multiway, height-balanced search tree ideal for large datasets and external memory (disk) indexing.  
+B-trees maintain sorted data and allow efficient O(log n) search, insert, and sequential access, and are the backbone for databases, filesystems, and big indexes.
+
+**Features:**
+- All node and pointer management in explicit Pascal pointer/array logic
+- Configurable minimum degree (3 by default) for branching and storage
+- Node splitting during insert (handles overflow automatically)
+- Efficient binary search for inserts and retrievals
+- Keeps nodes "mostly full" for minimal tree height and efficient traversal
+- Printing in-order traversals at any time
+
+**Data Model:**
+- Each node comprises:
+  - `keys`: array of integer values
+  - `children`: array of child pointers
+  - `numKeys`: current key count (≤ max per node)
+  - `isLeaf`: boolean
+  - `parent`: for upward traversal/structural logic
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or newer
+
+**Usage Example:**
+```pascal
+uses BTree;
+var
+  tree: TBTree;
+  root: treeNode;
+begin
+  tree.create;
+  tree.insert(root, 10);
+  tree.insert(root, 15);
+  tree.insert(root, 25);
+  tree.inorderTraversal(root);
+end.
+```
+
+**To Compile:**
+```bash
+fpc BTree.pas
+# ...plus your main or demonstration program
+```
+
+#### Usage Notes
+
+- Designed for in-memory operation, but logic maps directly to disk/large datasets.
+- For best educational value, step through the split/insert semantics (see `splitChild`).
+- This classic implementation is the foundation for exploring filesystems and database internals.
 
 ---
 
@@ -398,6 +523,63 @@ All code is Free Pascal (`{$mode objfpc}`) with modern types/conventions.
 - This is a reusable unit for advanced RNN experimentation and explainability—**not a runnable standalone program**.
 - Designed for deep ML research, saliency inspection, and educational tracing of sequence architectures.
 - For direct code/API walkthrough, consult inline type and class definitions.
+
+---
+
+### FacadeTransformer: Transformer Model Introspection and Manipulation Facade
+
+**File:** `FacadeTransformer.pas`  
+**Category:** Machine Learning / Transformers / Introspection Utilities
+
+#### Description
+
+A powerful Pascal unit providing an advanced **facade for introspection, inspection, and manipulation of transformer models** loaded from [`Transformer.pas`](#transformer-minimal-pascal-transformer-attention-based-model).  
+This class is intended for research, educational, and debugging purposes—letting users deeply inspect attention, embeddings, parameters, internal network states, and even dynamically mutate the transformer architecture at runtime.
+
+**Features:**
+- Inspect internal model state:
+  - Per-layer and per-head hidden activations, Q/K/V vectors
+  - All attention logits and softmax weights for fine-grained attention analysis
+  - Access embeddings (token and positional) and model hyperparameters
+  - Dump weights, check structural layout, or mutate dimensions (add/remove layers/heads)
+- Manipulate weights, positions, or intermediate activations
+- Access/adjust key-value cache (for attention/memory states)
+- Retrieve residual, layer norm, and FFN outputs per token and layer
+- Run forward passes with full memory of activations for explainability
+- Generate text or run prompts with fully visible intermediate state
+
+**Intended Use Cases:**
+- Explainability, visualization, and attribution in transformer models
+- Fine-tuning, ablation studies, and architectural research
+- Debugging/diagnostics at any stage in the model
+
+#### How to Use
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or above
+- Load with a transformer model trained/exported to compatible GGUF format and paired tokenizer
+
+**Integration Example:**
+```pascal
+uses FacadeTransformer;
+var
+  facade: TTransformerFacade;
+begin
+  facade := TTransformerFacade.Create;
+  facade.LoadModel('model.gguf');
+  facade.LoadTokenizer('tokenizer.json');
+  // Forward a prompt, then inspect attention, QKV, activations, etc.
+end.
+```
+
+**Workflow:**
+- Run your prompt or batch, then retrieve desired state using accessors (e.g., `GetAttentionWeights`, `GetQKV`, `GetHiddenState`, `GetLogits`, etc).
+
+#### Usage Notes
+
+- Most useful as a "probe" or spike-in tool for model understanding and interpretability—pair it with visualizations or research loops.
+- For basic model use or inference, use only [`Transformer.pas`](#transformer-minimal-pascal-transformer-attention-based-model).
+- All major model architectural statistics and activations are accessible through the dedicated API.
 
 ---
 
@@ -798,6 +980,289 @@ fpc RedBlackTree.pas
 - All balancing, fixing, and coloring are handled automatically in `insert` and `insertFixup`.
 - For deletion, you'll need to extend the implementation (only insertion provided).
 - `inorderTraversal` prints each node in order and notes its color, offering an easy sanity check.
+
+---
+
+### Stack: Classic Stack (Array-based) Implementation
+
+**File:** `Stack.pas`  
+**Category:** Data Structures / Stack
+
+#### Description
+
+Implements a classic, fixed-size array-based stack in Object Pascal.  
+This example demonstrates all the conventional stack operations—push, pop, peek, and checks for full or empty results—using a dynamically allocated array and a `TStack` object wrapper.
+
+**Features:**
+- Array-based storage (`stackArray`) for integers
+- Dynamic max size set at creation (`TStack.create(maxSizeInput)`)
+- Standard stack operations:
+  - `push(inputNumber: integer)`
+  - `pop(): integer`
+  - `peek(): integer` (view top without popping)
+  - `isEmpty(): boolean`
+  - `isFull(): boolean`
+- Simple, readable implementation for both educational use and real-world stack needs
+
+**Data Model:**
+- Stack size and top index are managed globally within the unit for all `TStack` objects (typical in teaching examples)
+- The interface can easily be extended for generic type support or encapsulation
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later
+
+**Usage Examples:**
+
+1. Using as a unit in a program:
+    ```pascal
+    uses Stack;
+    var
+      stk: TStack;
+    begin
+      stk.create(10);
+      stk.push(5);
+      stk.push(9);
+      writeln('Top is: ', stk.peek);
+      stk.pop;
+    end.
+    ```
+
+2. Or, compile together with a test main program:
+    ```bash
+    fpc Stack.pas
+    # ...plus your main/test code
+    ```
+
+#### Usage Notes
+
+- Array bounds and top index initialization (`top := 0`) may differ from some conventions: adapt for 0- or 1-based stacks as desired.
+- For greater safety or flexibility in larger projects, wrap the stack state in records or use class-based design.
+- For linked-list based stacks, see associated or companion units in the repo.
+
+---
+
+### StackBinaryTree: Stack Implemented using a Binary Tree
+
+**File:** `StackBinaryTree.pas`  
+**Category:** Data Structures / Stack / Trees
+
+#### Description
+
+Implements a stack structure using a binary tree as its storage model in Pascal.  
+This approach demonstrates both binary search tree construction and how stack-like access may be mapped onto tree structures, making it useful both for illustrating traversal and for exploring hybrid data structures.
+
+**Features:**
+- Explicit pointer-based binary tree node definition (with `data`, `nodeNumber`, and left/right child pointers)
+- Stack operations provided through a custom tree-based logic
+- Core routines include:
+  - `insertData(inputData: integer)` – insert a node following BST rules
+  - `deleteNode(key: integer): boolean` – remove a node by its value
+  - `countNodes(): integer` – total nodes using pre-order scan
+  - `findNodeNumber(key: integer): integer` – returns the logical “stack position” of a value
+  - Print and traverse tree visually with `printTree`, plus support for in/pre/post-order traversals
+
+- Also includes an array-based object stack for trees (`TtreeStack`)
+  - Allows for mixed array/tree approaches in algorithms that require both
+
+**Data Model:**
+- Tree is managed by root/global pointers for simplicity (educational)
+- Nodes allocated/deallocated with `new` and direct pointer manipulation
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later
+
+**Example Usage:**
+```pascal
+uses StackBinaryTree;
+var
+  tree: TStackBinaryTree;
+begin
+  tree.create;
+  tree.insertData(7); tree.insertData(2); tree.insertData(9);
+  tree.printTree;
+end.
+```
+
+**Or compile with your own main/test code:**
+```bash
+fpc StackBinaryTree.pas
+# ...plus a test/demonstration program
+```
+
+#### Usage Notes
+
+- Standard traversal methods are provided as customizable stubs: fill with your own processing for in/pre/post-order walks.
+- Useful for teaching/research or for implementing exotic data structures that combine traversal and stack-like behavior.
+- For pure stacks, see [Stack.pas](#stack-classic-stack-array-based-implementation).
+
+---
+
+### StackDoubleLinkedList: Stack Using a Doubly Linked List
+
+**File:** `StackDoubleLinkedList.pas`  
+**Category:** Data Structures / Stack / Linked Lists
+
+#### Description
+
+Implements a stack using a **doubly linked list** as its underlying storage, in Object Pascal.  
+This file demonstrates all standard stack-like and list-like operations, with each node pointing both forwards and backwards, allowing flexible insertion and removal from either end.
+
+**Features:**
+- Explicit node structure (`doubleNode`) containing value, previous and next pointers
+- Provides core doubly-linked list methods:
+  - `insertFirst(inputData: integer)` – add value to the head
+  - `insertLast(inputData: integer)` – add value to the tail
+  - `deleteFirst()`/`deleteLast()` – remove item from front or end
+  - `deleteNodeForFirstInstanceOfData(key: integer)` – removes the first matching value
+  - `insertAfter(key, inputData: integer)` – insert after node with specific value
+  - `returnSpecificNodesData(nodeNumber: integer)`: get data at nth node/position
+  - `countNodes()`: total elements in the list
+
+**Data Model:**
+- Global `head` and `tail` pointers (classic Pascal teaching pattern)
+- All links managed via pointer assignment—demonstrates how stacks/lists work at a pointer level
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or above
+
+**Example Usage:**
+```pascal
+uses StackDoubleLinkedList;
+var
+  stack: TStackDoubleLinkedList;
+begin
+  stack.create;
+  stack.insertFirst(10);
+  stack.insertLast(20);
+  writeln('Count: ', stack.countNodes());
+  stack.deleteFirst;
+end.
+```
+
+**Or compile with a separate test/demo main program:**
+```bash
+fpc StackDoubleLinkedList.pas
+# ...plus main/test code
+```
+
+#### Usage Notes
+
+- This structure allows both stack (LIFO) and queue (FIFO) behaviors, plus flexible node operations.
+- For pure stack use, focus on `insertFirst`/`deleteFirst` for LIFO behavior.
+- For simple, array-based stacks, see [Stack.pas](#stack-classic-stack-array-based-implementation).
+
+---
+
+### StackLinkedList: Stack Using a Linked List
+
+**File:** `StackLinkedList.pas`  
+**Category:** Data Structures / Stack / Linked List
+
+#### Description
+
+Implements a simple stack using a classic singly linked list as the underlying structure, in Object Pascal (`{$mode objfpc}`).  
+Each node points to the next node, with the top of the stack corresponding to the head of the list—ideal for both stack and linear list teaching cases.
+
+**Features:**
+- Explicit pointer-based node structure (`data`, `next`)
+- Provides core stack/list methods:
+  - `addNode(inputData: integer)` – push value onto the end (tail) of the list
+  - `deleteFirstNode()`/`deleteLastNode()` – remove node from head/tail
+  - `deleteSpecificNode(nodeNumber: integer)` – remove nth node in list
+  - `countNodes()` – returns total nodes present
+  - `returnSpecificNodesData(nodeNumber: integer)` – retrieve the data at position n
+  - `returnHeadsData()`, `returnTailsData()` – convenience methods for head/tail data
+  - `returnNodeNumberOfFirstInstanceOfData(inputData: integer)` – find the index of first matching data
+
+**Data Model:**
+- Global `head` pointer; all node allocation/deallocation with explicit `new` and pointer assignment
+- All methods are implemented with direct pointer manipulation and looping, in pure Pascal
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or above
+
+**Example Usage:**
+```pascal
+uses StackLinkedList;
+var
+  stack: TStackLinkedList;
+begin
+  stack.create;
+  stack.addNode(1); stack.addNode(2); stack.addNode(3);
+  writeln('Count: ', stack.countNodes());
+  stack.deleteFirstNode;
+end.
+```
+
+**Or compile with a test main program:**
+```bash
+fpc StackLinkedList.pas
+# ...main/demo/test code
+```
+
+#### Usage Notes
+
+- Suits teaching nodes, pointers, singly linked lists, and basic stack (LIFO) logic.
+- For a doubly linked list or array stack, see other relevant units ([StackDoubleLinkedList.pas](#stackdoublelinkedlist-stack-using-a-doubly-linked-list), [Stack.pas](#stack-classic-stack-array-based-implementation)).
+
+---
+
+### Transformer: Minimal Pascal Transformer (Attention-based Model)
+
+**File:** `Transformer.pas`  
+**Category:** Machine Learning / Deep Learning / Transformers
+
+#### Description
+
+A compact and modern Pascal implementation of a **Transformer-based neural network model**, including self-attention and GGUF (GPT-style) model file loading/parsing.  
+Designed as both a reference implementation and a working CLI demo for anyone seeking to understand or work with transformer networks in Pascal.
+
+**Features:**
+- Loads GGUF-format model weights for GPT and similar transformer architectures
+- Implements fast, efficient tokenization with JSON support
+- Full forward propagation for multi-layer transformers :  
+  - Token embedding, multi-head self-attention, feed-forward, layer norm, GELU, and softmax
+- End-to-end text generation ("prompting") via attention and autoregressive decoding
+- Custom `TTokenizer`, `TGGUFLoader`, and `TTransformerModel` classes for clear separation of parsing, weights, and computation
+- All code written in idiomatic object-oriented Pascal (`{$mode objfpc}` with advanced records)
+
+**How to Run**
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or newer
+- GGUF model and compatible tokenizer JSON
+
+**Compile:**
+```bash
+fpc Transformer.pas
+```
+
+**Run:**
+```bash
+./Transformer
+```
+
+**Usage:**
+- To prompt/generate text, load a GGUF model and compatible tokenizer file, then call `Generate(prompt, maxTokens)` from your Pascal code or from the command line (if adequately wired up).
+
+**Package Structure:**
+- `TTokenizer`: Loads and encodes/decodes text using JSON vocabulary file
+- `TGGUFLoader`: Loads transformer layers, weights, and embeds from GGUF format
+- `TTransformerModel`: Runs inference, generation, and handles all forward propagation
+
+#### Usage Notes
+
+- Not a full-featured LLM shell, but a robust Pascal starting point for experimenting with transformer networks, or for extending to educational or research use.
+- You may adapt this for BERT, GPT, or other attention-based models by adjusting the forward pass or loader logic.
+- Absolutely minimal external dependencies: only JSON/FPJSON components already in standard FPC.
 
 ---
 
