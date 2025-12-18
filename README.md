@@ -22,6 +22,7 @@ Each entry links to an individual writeup and usage instructions.
 - [HeapBinaryTree.pas: Binary Tree-based Heap Data Structure](#heapbinarytree-binary-tree-based-heap-data-structure)
 - [HeapBinaryTreeNode.pas: Node Class for Binary Tree-based Heap](#heapbinarytreenode-node-class-for-binary-tree-based-heap)
 - [HeapDoubleLinkedList.pas: Heap Using a Doubly Linked List](#heapdoublelinkedlist-heap-using-a-doubly-linked-list)
+- [HeapNode.pas: Node Class for Heap Implemented via Linked List](#heapnode-node-class-for-heap-implemented-via-linked-list)
 
 ---
 
@@ -574,6 +575,59 @@ fpc HeapDoubleLinkedList.pas
 
 - All node linkage is via the `HeapDoubleNode` class—never manage pointers directly at the application level.
 - Suits problems needing both ordered data and efficient insert/delete from both ends.
+
+---
+
+### HeapNode: Node Class for Heap Implemented via Linked List
+
+**File:** `HeapNode.pas`  
+**Category:** Data Structures / Heap / Linked Lists (Internal Node)
+
+#### Description
+
+This unit provides the single-node implementation for a heap (or any singly linked list-style structure).  
+It is commonly used as the underlying node in linked-list based heaps (and similar structures), and is kept very simple for maximum clarity and extensibility.
+
+**Class Features:**
+- Fields:
+  - `data`: integer value stored in this heap node
+  - `next`: pointer to the next `THeapNode` in the list/heap structure
+- Methods:
+  - `setData(inputData: integer)` and `getData: integer` for value assignment and retrieval
+  - `setNext(inputNode: THeapNode)` and `getNext: THeapNode` for pointer manipulation
+- Constructor starts nodes with `next := nil`
+
+This is perfect for basic heap/stack/queue/list exercises requiring your own node definitions.
+
+#### How to Use
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later
+- Used by heaps and lists which rely on their own node class
+
+**General Steps:**
+1. Place `HeapNode.pas` in your working directory.
+2. Reference it in a unit or program:
+    ```pascal
+    uses HeapNode;
+    ```
+3. Create and connect nodes:
+    ```pascal
+    var
+      node1, node2: THeapNode;
+    begin
+      node1 := THeapNode.create;
+      node1.setData(5);
+      node2 := THeapNode.create;
+      node1.setNext(node2);
+      // ... build up chain ...
+    end.
+    ```
+
+#### Usage Notes
+
+- In normal usage, higher-level data structure classes handle managing these nodes.
+- This low-dependency node design is very flexible for learning, modifying, or extending your own linked data structures.
 
 ---
 
