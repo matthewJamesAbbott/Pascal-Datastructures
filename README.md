@@ -19,6 +19,7 @@ Each entry links to an individual writeup and usage instructions.
 - [FacadeGNN.pas: GNN (Graph Neural Network) Facade](#facadegnn-graph-neural-network-introspection--utilities)
 - [FacadeMLP.pas: MLP (Multi Layer Perceptron) Facade](#facademlp-mlp-multilayer-perceptron-facade-unit)
 - [FacadeRNN.pas: RNN (Recurrent Neural Network) Facade](#facadernn-rnn-recurrent-neural-network-facade-unit)
+- [HeapBinaryTree.pas: Binary Tree-based Heap Data Structure](#heapbinarytree-binary-tree-based-heap-data-structure)
 
 ---
 
@@ -393,9 +394,70 @@ All code is Free Pascal (`{$mode objfpc}`) with modern types/conventions.
 - For direct code/API walkthrough, consult inline type and class definitions.
 
 ---
-**Attribution:**  
-Created by Matthew James Abbott, 2025
+
+### HeapBinaryTree: Binary Tree-based Heap Data Structure
+
+**File:** `HeapBinaryTree.pas`  
+**Category:** Data Structures / Heaps / Trees
+
+#### Description
+
+Implements a classic **binary tree-based heap** in Pascal, including all fundamental operations: insertion, deletion, pre-order/in-order/post-order traversal, and node search.  
+Used as an educational/reference example for building a heap structure using explicit node pointers (`THeapBinaryTreeNode`) and emphasizing binary search tree-style data relationships.
+
+**Key Features:**
+- Pure Object Pascal implementation (`{$mode objfpc}`)
+- Provides:
+  - `insertData(inputData: integer)` – insert a new value into the heap/tree
+  - `deleteNode(key: integer): boolean` – remove a node by its value
+  - `countNodes()`: integer – total nodes via pre-order traversal
+  - `printTree()` – prints the tree with indented, pre-order formatting
+  - `findNodeNumber(key: integer): integer` – lookup node position for a value
+- Modular, with all logic separated from the interactive or application-level I/O
+
+Underlying nodes are managed with the companion `HeapBinaryTreeNode.pas` unit.
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later
+- `HeapBinaryTreeNode.pas` must be in the same directory for compilation
+
+**Compile (as part of a program or unit):**
+
+1. To use as a component of a main program:
+    ```pascal
+    uses HeapBinaryTree;
+    ```
+    Compile/link with all required files.
+
+2. To interactively test, add method calls to a program using this class:
+    ```pascal
+    var
+      tree: THeapBinaryTree;
+    begin
+      tree := THeapBinaryTree.create;
+      tree.insertData(5);
+      tree.insertData(3);
+      tree.insertData(8);
+      tree.printTree;
+    end.
+    ```
+
+**Or, compile with a provided test harness if present:**
+```bash
+fpc HeapBinaryTree.pas
+# ...plus a test main program
+```
+
+#### Usage Notes
+
+- Traversal methods (pre/in/post-order) can be extended or called directly for custom processing.
+- `printTree` uses indentation to show tree structure—helpful for diagnostics or demos.
+- Error/debug comments reflect development timeline and humor.
+- All node management follows classic binary search tree rules.
 
 ---
 
-_Add the next file alphabetically. To generate its dedicated section, just give me the filename!_
+**Attribution:**  
+Created by Matthew James Abbott, 2025
