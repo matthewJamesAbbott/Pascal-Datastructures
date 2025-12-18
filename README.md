@@ -13,8 +13,8 @@ Each entry links to an individual writeup and usage instructions.
 ### Source Files
 
 - [CNN.pas: Convolutional Neural Network (Deep Learning)](#cnn-convolutional-neural-network)
-
-_(Add your other files alphabetically below as you go!)_
+- [DatastructureTest.pas: Comprehensive Data Structure Tester](#datastructuretest-comprehensive-data-structure-tester)
+- [DatastructureTestResults.txt: Example Test Output](#datastructuretestresults-example-test-output)
 
 ---
 
@@ -92,6 +92,76 @@ end.
 
 **Model Saving/Loading:**
 - Call `cnn.SaveCNNModel('my_model.bin')` and `cnn.LoadCNNModel('my_model.bin')` as needed.
+
+---
+
+### DatastructureTest: Comprehensive Data Structure Tester
+
+**File:** `DatastructureTest.pas`  
+**Category:** Data Structure Testing / Demonstration
+
+#### Description
+
+A Pascal program that serves as a unified tester for several classic data structure implementations, such as linked lists, double-linked lists, binary-tree-based stacks, and heaps.  
+It is designed to automatically create each structure, add elements, perform standard operations (insert, delete, retrieve), and print the process/results step-by-step.  
+The code provides a hands-on, procedural demonstration of each supported module, driven by verbose output via `writeln`.
+
+**Included Modules:**
+- `StackLinkedList.pas`
+- `StackDoubleLinkedList.pas`
+- `StackBinaryTree.pas`
+- `HeapLinkedList.pas`
+- `HeapDoubleLinkedList.pas`
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later recommended
+
+**Compile:**
+```bash
+fpc DatastructureTest.pas
+```
+
+**Run:**
+```bash
+./DataStructureTest
+```
+
+**What it does:**
+- Sequentially instantiates each data structure (e.g., linked list, double-linked, heap)
+- Demonstrates: node insertion, deletion (first, last, by index), data extraction, and search
+- Prints each action with a descriptive output for simple tracking and validation
+
+#### Usage Notes
+
+- This program is primarily for learning and testing the functionality of the included data structure units.
+- To add your own tests, append more operations in the `begin ... end.` block after the existing demonstrations.
+- The program output is intended to match the sample found in `DatastructureTestResults.txt`.
+
+---
+
+### DatastructureTestResults.txt: Example Test Output
+
+**File:** `DatastructureTestResults.txt`  
+**Category:** Output Sample / Reference
+
+#### Description
+
+A plain-text file capturing a real output log from running `DatastructureTest.pas`.  
+It documents every step, action, and change of state performed on the data structures during the test run.  
+You can use this file to:
+- Verify expected output for successful test runs
+- Compare changes when you modify the test program
+- Understand the normal "flow" of each data structure’s use and manipulation
+
+#### How to Use
+
+1. Compile and run `DatastructureTest.pas` as described above
+2. Compare your terminal output to this file to ensure correct operation
+3. Use differences to help debug or enhance your structures
+
+---
 
 **Attribution:**  
 Created by Matthew James Abbott, 2025
