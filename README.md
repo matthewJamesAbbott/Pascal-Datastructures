@@ -18,6 +18,7 @@ Each entry links to an individual writeup and usage instructions.
 - [FacadeCNN.pas: CNN Facade Unit for Introspection & Manipulation](#facadecnn-cnn-facade-unit-for-introspection--manipulation)
 - [FacadeGNN.pas: Graph Neural Network Introspection & Utilities](#facadegnn-graph-neural-network-introspection--utilities)
 - [FacadeMLP.pas: MLP (MultiLayer Perceptron) Facade Unit](#facademlp-mlp-multilayer-perceptron-facade-unit)
+- [FacadeRNN.pas: RNN (Recurrent Neural Network) Facade Unit](#facadernn-rnn-recurrent-neural-network-facade-unit)
 
 ---
 
@@ -341,6 +342,57 @@ This unit is ideal for:
 
 ---
 
+### FacadeRNN: RNN (Recurrent Neural Network) Facade Unit
+
+**File:** `FacadeRNN.pas`  
+**Category:** Machine Learning Utilities / Recurrent Neural Networks
+
+#### Description
+
+A powerful Object Pascal unit (`unit RNNFacade`) providing a unified facade (API/class) for deep **introspection, manipulation, and research on Recurrent Neural Networks (RNNs)** of various kinds—including vanilla/SimpleRNN, LSTM, and GRU architectures.
+
+This module is suitable for:
+- Inspecting, extracting, or modifying all weights, gates, gradients, optimizer states, activations, and dropout at every layer and timestep
+- Supporting multiple RNN cell types, loss/activation functions, and output layers
+- Collecting histograms and diagnostic statistics (gate saturation, gradient scales) for debugging/visualization
+- Accessing time-step caches, running states, and normalization/regularization properties
+- Facilitating advanced research into sequence modeling, ablation studies, and explainability in deep learning
+
+All code is Free Pascal (`{$mode objfpc}`) with modern types/conventions.
+
+#### How to Use
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or above recommended
+- Designed for use inside a program that instantiates/interacts with RNNs, LSTMs, or GRUs compatible with this facade API
+
+**Integration Steps:**
+1. Place `FacadeRNN.pas` in your project directory.
+2. Include it in your `uses` clause in your main program or research tool:
+    ```pascal
+    uses FacadeRNN;
+    ```
+3. Depending on your architecture, create the relevant cell wrappers or the `TRNNFacade` object. Example:
+    ```pascal
+    var
+      rnn: TRNNFacade;
+    begin
+      rnn := TRNNFacade.Create(...);
+      // Now use RNN API to read/write activations, gates, optimizer states, etc.
+    end.
+    ```
+4. Use the extensive API to:
+    - Inspect any gate (LSTM/GRU/Simple), activation, or error variable for any cell and timestep
+    - Access/modify weights, gradients, dropout masks, normalization statistics
+    - Run chained training/forward/backward passes and gather in-depth logs, stats, or visualize diagnostics
+
+#### Usage Notes
+
+- This is a reusable unit for advanced RNN experimentation and explainability—**not a runnable standalone program**.
+- Designed for deep ML research, saliency inspection, and educational tracing of sequence architectures.
+- For direct code/API walkthrough, consult inline type and class definitions.
+
+---
 **Attribution:**  
 Created by Matthew James Abbott, 2025
 
