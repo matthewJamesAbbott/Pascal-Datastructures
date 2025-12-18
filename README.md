@@ -24,6 +24,7 @@ Each entry links to an individual writeup and usage instructions.
 - [HeapDoubleLinkedList.pas: Heap Using a Doubly Linked List](#heapdoublelinkedlist-heap-using-a-doubly-linked-list)
 - [HeapNode.pas: Node Class for Heap Implemented via Linked List](#heapnode-node-class-for-heap-implemented-via-linked-list)
 - [MLP.pas: MultiLayer Perceptron (Feedforward Neural Network)](#mlp-multilayer-perceptron-feedforward-neural-network)
+- [RNN.pas: Advanced Recurrent Neural Network](#rnn-advanced-recurrent-neural-network)
 
 ---
 
@@ -681,6 +682,57 @@ _Note: Program entry point is named `MLPtest`._
 - Designed for students and researchers needing a readable, modifiable Pascal neural net.
 - Strong numerical stability and regularization included out of the box.
 - For research, couple this file with the `FacadeMLP.pas` for advanced introspection, training/weight logging, and architecture debugging.
+
+---
+
+### RNN: Advanced Recurrent Neural Network
+
+**File:** `RNN.pas`  
+**Category:** Machine Learning / Recurrent Neural Networks
+
+#### Description
+
+A comprehensive, advanced implementation of modern Recurrent Neural Networks (RNNs) in Object Pascal, including full support for classic SimpleRNN, LSTM, and GRU cell types.  
+The code is structured for both research and education, featuring:
+
+- Complete **forward and backward pass logic** for sequence learning (BPTT)
+- Support for multiple cell types:  
+  - Simple Vanila RNN  
+  - Long Short-Term Memory (LSTM)  
+  - Gated Recurrent Units (GRU)
+- Customizable activation and loss function types
+- Batch sequence and mini-batch training
+- **Gradient clipping** for stabilizing deep training
+- Modular, extensible classes for neuron cells, layers, and utility routines
+- Includes layer and cell wrappers for easier experimentation and extension
+- In-built random initialization, Xavier/He support, and utility normalization methods
+
+The provided main program (`program AdvancedRNN;`) features demonstration of forward/backward/training logic and utility routines for initializing/testing the architecture.
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or newer
+
+**Compile:**
+```bash
+fpc RNN.pas
+```
+
+**Run:**
+```bash
+./AdvancedRNN
+```
+_Note: The program’s entry point is named `AdvancedRNN`._
+
+**Customization:**
+- All cell, layer, and training settings can be configured at construction time with the constructors for each class (`TAdvancedRNN`, etc.).
+- Extend or change the main block to load/generate different sequence data.
+
+#### Usage Notes
+
+- Perfect for education, prototyping, or algorithmic benchmarking of classic RNNs, LSTM, and GRU.
+- To perform advanced introspection on RNN activations/gradients/gates, combine with [`FacadeRNN.pas`](#facadernn-rnn-recurrent-neural-network-facade-unit).
 
 ---
 
