@@ -21,6 +21,7 @@ Each entry links to an individual writeup and usage instructions.
 - [FacadeRNN.pas: RNN (Recurrent Neural Network) Facade](#facadernn-rnn-recurrent-neural-network-facade-unit)
 - [HeapBinaryTree.pas: Binary Tree-based Heap Data Structure](#heapbinarytree-binary-tree-based-heap-data-structure)
 - [HeapBinaryTreeNode.pas: Node Class for Binary Tree-based Heap](#heapbinarytreenode-node-class-for-binary-tree-based-heap)
+- [HeapDoubleLinkedList.pas: Heap Using a Doubly Linked List](#heapdoublelinkedlist-heap-using-a-doubly-linked-list)
 
 ---
 
@@ -513,6 +514,66 @@ end.
 
 - You generally do not need to interact with nodes directly—work at the heap/tree level unless implementing or extending the structure.
 - This design promotes reusability and clarity in larger object-oriented Pascal projects.
+
+---
+
+### HeapDoubleLinkedList: Heap Using a Doubly Linked List
+
+**File:** `HeapDoubleLinkedList.pas`  
+**Category:** Data Structures / Heaps / Linked Lists
+
+#### Description
+
+Implements a **heap-like data structure using a doubly linked list** in Pascal for educational demonstration and practical applications that require ordering and bidirectional traversal.
+
+**Key Features:**
+- Object Pascal (`{$mode objfpc}`) using the companion `HeapDoubleNode.pas`
+- Supports:
+  - Insertion at the head (`insertFirst`) and tail (`insertLast`)
+  - Deletion from the head (`deleteFirst`) and tail (`deleteLast`)
+  - Deletion of the first node containing a specific value
+  - Insertion after a node with a specific value (`insertAfter`)
+  - Node data lookup by position (`returnSpecificNodesData`)
+  - Counting total nodes (`countNodes`)
+  - Cleanup helper (`destroyNodes`)
+
+- All logic is encapsulated in the class and separated from program I/O
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later
+- `HeapDoubleNode.pas` placed in the same directory
+
+**Usage in a Program:**
+
+1. Reference the unit and use the heap list as follows:
+    ```pascal
+    uses HeapDoubleLinkedList;
+    var
+      heap: THeapDoubleLinkedList;
+    begin
+      heap := THeapDoubleLinkedList.create;
+      heap.insertFirst(10);
+      heap.insertLast(20);
+      heap.deleteFirst;
+      heap.deleteLast;
+      // Add further list operations as desired
+    end.
+    ```
+
+2. Or, compile as part of a testing suite or with a main program.
+
+**To Compile:**
+```bash
+fpc HeapDoubleLinkedList.pas
+# ...plus a test or demo main program
+```
+
+#### Usage Notes
+
+- All node linkage is via the `HeapDoubleNode` class—never manage pointers directly at the application level.
+- Suits problems needing both ordered data and efficient insert/delete from both ends.
 
 ---
 
