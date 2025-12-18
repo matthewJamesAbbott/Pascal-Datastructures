@@ -25,6 +25,7 @@ Each entry links to an individual writeup and usage instructions.
 - [HeapNode.pas: Node Class for Heap Implemented via Linked List](#heapnode-node-class-for-heap-implemented-via-linked-list)
 - [MLP.pas: MultiLayer Perceptron (Feedforward Neural Network)](#mlp-multilayer-perceptron-feedforward-neural-network)
 - [RNN.pas: Advanced Recurrent Neural Network](#rnn-advanced-recurrent-neural-network)
+- [RedBlackTree.pas: Red-Black Self-Balancing Binary Search Tree](#redblacktree-red-black-self-balancing-binary-search-tree)
 
 ---
 
@@ -733,6 +734,70 @@ _Note: The program’s entry point is named `AdvancedRNN`._
 
 - Perfect for education, prototyping, or algorithmic benchmarking of classic RNNs, LSTM, and GRU.
 - To perform advanced introspection on RNN activations/gradients/gates, combine with [`FacadeRNN.pas`](#facadernn-rnn-recurrent-neural-network-facade-unit).
+
+---
+
+### RedBlackTree: Red-Black Self-Balancing Binary Search Tree
+
+**File:** `RedBlackTree.pas`  
+**Category:** Data Structures / Trees / Self-Balancing BST
+
+#### Description
+
+Implements a **Red-Black Tree**, a classic self-balancing binary search tree (BST) variant, in Pascal.  
+Red-black trees guarantee logarithmic time for insertion, deletion, and lookup by enforcing strict color and rotation rules after every modification.
+
+**Features:**
+- Fully dynamic insertions with automatic rebalancing ("fixup")
+- Node and tree balancing through color assignments and tree rotations (left/right)
+- Object Pascal (`{$mode objfpc}`) style with in-memory pointer operations
+- Traversal routine (`inorderTraversal`) demonstrates the result and coloring of nodes
+- Construction is straightforward—suitable for both learning and practical use
+- Simple and extendable, making it a strong starting point for exploring other BST variants
+
+**Data Model:**
+- Each node stores:
+  - `data`: integer value in the node
+  - `color`: either red or black
+  - `left`, `right`, `parent`: pointers allowing bi-directional traversal and ancestry checks
+
+- Helper functions:
+  - `grandparent`, `uncle`, `sibling`: classic BST family accessors
+
+#### How to Run
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or newer
+
+**Integration / Usage Example:**
+1. Place `RedBlackTree.pas` in your working directory.
+2. Reference in your main program:
+    ```pascal
+    uses RedBlackTree;
+    var
+      tree: TRedBlackTree;
+      root: treeNode;
+    begin
+      tree.create;
+      tree.insert(root, 10);
+      tree.insert(root, 20);
+      tree.insert(root, 15);
+      tree.inorderTraversal(root);
+    end.
+    ```
+
+**To Compile:**
+```bash
+fpc RedBlackTree.pas
+# ...plus a main/test program
+```
+
+#### Usage Notes
+
+- The supplied object makes the main tree manipulation interface very clean and Pascal-esque.
+- All balancing, fixing, and coloring are handled automatically in `insert` and `insertFixup`.
+- For deletion, you'll need to extend the implementation (only insertion provided).
+- `inorderTraversal` prints each node in order and notes its color, offering an easy sanity check.
 
 ---
 
