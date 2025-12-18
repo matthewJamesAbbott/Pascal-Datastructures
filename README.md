@@ -20,6 +20,7 @@ Each entry links to an individual writeup and usage instructions.
 - [FacadeMLP.pas: MLP (Multi Layer Perceptron) Facade](#facademlp-mlp-multilayer-perceptron-facade-unit)
 - [FacadeRNN.pas: RNN (Recurrent Neural Network) Facade](#facadernn-rnn-recurrent-neural-network-facade-unit)
 - [HeapBinaryTree.pas: Binary Tree-based Heap Data Structure](#heapbinarytree-binary-tree-based-heap-data-structure)
+- [HeapBinaryTreeNode.pas: Node Class for Binary Tree-based Heap](#heapbinarytreenode-node-class-for-binary-tree-based-heap)
 
 ---
 
@@ -456,6 +457,62 @@ fpc HeapBinaryTree.pas
 - `printTree` uses indentation to show tree structure—helpful for diagnostics or demos.
 - Error/debug comments reflect development timeline and humor.
 - All node management follows classic binary search tree rules.
+
+---
+
+### HeapBinaryTreeNode: Node Class for Binary Tree-based Heap
+
+**File:** `HeapBinaryTreeNode.pas`  
+**Category:** Data Structures / Heaps / Trees (Internal Node)
+
+#### Description
+
+This unit defines the `THeapBinaryTreeNode` class, the node data structure used internally by [`HeapBinaryTree.pas`](#heapbinarytree-binary-tree-based-heap-data-structure) for representing a binary tree-based heap.  
+It encapsulates basic node fields and getter/setter methods for use in binary tree and heap algorithms, keeping node logic clearly separated from the main heap operations.  
+
+**Class Features:**
+- Fields for:
+  - `data`: integer value contained in the node
+  - `nodeNumber`: supporting sequential or logical enumeration of nodes
+  - `leftChild`, `rightChild`: pointers to left and right children
+- Methods for:
+  - Setting/getting data, node number
+  - Assigning/returning left and right children
+- Constructor initializes all pointers to `nil` (empty node)
+
+This tight encapsulation makes it easy to modify or extend the underlying data model (e.g., for balancing or additional attributes).
+
+#### How to Use
+
+**Requirements:**
+- Free Pascal Compiler (FPC), version 3.x or later
+- Used automatically by `HeapBinaryTree.pas`, not commonly run or compiled directly
+
+**Integration Steps:**
+1. Place `HeapBinaryTreeNode.pas` in your project directory.
+2. Reference it in your heap or tree unit:
+    ```pascal
+    uses HeapBinaryTreeNode;
+    ```
+3. Use `THeapBinaryTreeNode.create` to spawn new nodes as needed in your own structures.
+4. Access and modify node properties with the provided getters and setters.
+
+**Typical Usage Example (with HeapBinaryTree):**
+```pascal
+var
+  node: THeapBinaryTreeNode;
+begin
+  node := THeapBinaryTreeNode.create;
+  node.setData(10);
+  node.setNodeNumber(1);
+  // Link into tree, as managed by HeapBinaryTree
+end.
+```
+
+#### Usage Notes
+
+- You generally do not need to interact with nodes directly—work at the heap/tree level unless implementing or extending the structure.
+- This design promotes reusability and clarity in larger object-oriented Pascal projects.
 
 ---
 
