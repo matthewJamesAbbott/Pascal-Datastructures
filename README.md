@@ -15,10 +15,10 @@ Each entry links to an individual writeup and usage instructions.
 - [CNN.pas: Convolutional Neural Network (Deep Learning)](#cnn-convolutional-neural-network)
 - [DatastructureTest.pas: Comprehensive Data Structure Tester](#datastructuretest-comprehensive-data-structure-tester)
 - [DatastructureTestResults.txt: Example Test Output](#datastructuretestresults-example-test-output)
-- [FacadeCNN.pas: CNN Facade Unit for Introspection & Manipulation](#facadecnn-cnn-facade-unit-for-introspection--manipulation)
-- [FacadeGNN.pas: Graph Neural Network Introspection & Utilities](#facadegnn-graph-neural-network-introspection--utilities)
-- [FacadeMLP.pas: MLP (MultiLayer Perceptron) Facade Unit](#facademlp-mlp-multilayer-perceptron-facade-unit)
-- [FacadeRNN.pas: RNN (Recurrent Neural Network) Facade Unit](#facadernn-rnn-recurrent-neural-network-facade-unit)
+- [FacadeCNN.pas: CNN (Convolutional Neural Network) Facade](#facadecnn-cnn-facade-unit-for-introspection--manipulation)
+- [FacadeGNN.pas: GNN (Graph Neural Network) Facade](#facadegnn-graph-neural-network-introspection--utilities)
+- [FacadeMLP.pas: MLP (Multi Layer Perceptron) Facade](#facademlp-mlp-multilayer-perceptron-facade-unit)
+- [FacadeRNN.pas: RNN (Recurrent Neural Network) Facade](#facadernn-rnn-recurrent-neural-network-facade-unit)
 
 ---
 
