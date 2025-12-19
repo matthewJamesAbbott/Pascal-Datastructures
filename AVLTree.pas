@@ -2,10 +2,10 @@
 // Matthew Abbott 2025
 //
 
-program AVLTreeTest;
-
 {$mode objfpc}
 {$M+}
+
+program AVLTreeTest;
 
 //
 // What is an AVL-Tree?
