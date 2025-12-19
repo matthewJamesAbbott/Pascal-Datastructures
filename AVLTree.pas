@@ -7,11 +7,16 @@ program AVLTreeTest;
 {$mode objfpc}
 {$M+}
 
-{
-  Simple, highly commented AVL tree implementation in Pascal,
-  with a test driver as the main program.
-  Every step is explained so that a complete beginner can follow!
-}
+//
+// What is an AVL-Tree?
+// ---------------------
+// An AVL-Tree is a type of self-balancing Binary Search Tree (BST). Named after inventors Adelson-Velsky and Landis, 
+// it ensures that the height difference (balance factor) between left and right subtrees of any node is at most one. 
+// Whenever nodes are inserted or deleted, the tree automatically performs "rotations" to restore its balanced shape.
+//
+// This balancing guarantees that operations such as insert, search, and delete always remain efficient (in O(log n) time).
+// AVL-Trees are useful in applications requiring always-fast lookups and dynamic sorted datasets.
+//
 
 type
   // Define a type alias `treeNode` that is a pointer to a `TreeNodeRec` record.
