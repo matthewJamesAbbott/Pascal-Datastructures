@@ -23,7 +23,7 @@
   HOW TO USE:
   -----------
   - Make sure this program is included in your project.
-  - You will need Free Pascal Compiler (`{$mode objfpc}{$H+}`), preferably v3+.
+  - You will need Free Pascal Compiler preferably v3+.
 - To create a CNN: Declare a `TCNNFacade` and call .Create(...)
 - See methods for how to train, predict, or manipulate internal state.
 - Each public method is documented with parameter and output details.
