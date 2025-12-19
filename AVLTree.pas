@@ -1,5 +1,5 @@
 //
-// Matthew Abbott, 2025
+// Matthew Abbott 2025
 //
 
 program AVLTreeTest;
