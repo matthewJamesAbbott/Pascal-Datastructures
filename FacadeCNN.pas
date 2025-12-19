@@ -1,32 +1,66 @@
-{
-  CNNFacade - Comprehensive facade for CNN introspection and manipulation
-  Matthew Abbott 2025
-}
+{------------------------------------------------------------------------------
+  CNNFacade.pas - Comprehensive Facade for CNN Introspection and Manipulation
+  Matthew Abbott, 2025
+
+  ABOUT THIS FILE:
+  -----------------
+  This unit implements a full Pascal object (TCNNFacade) for deep learning,
+  specifically a Convolutional Neural Network (CNN). Think of it as both
+  an implementation of a neural network and a toolbox for “seeing inside” the
+  model for debugging, research, and experimentation.
+
+  WHAT IS IN HERE?
+  -----------------
+  - You can introspect (look at) or modify nearly any value in the network.
+  - The class will run forward and backward passes, do training,
+    and update weights.
+  - It is designed for extreme transparency, so every major step has
+    getter/setter methods to get at hidden values, gradients, even optimizer states!
+  - It is structured so even a total beginner in Pascal or deep learning
+    can work out what is going on, with extensive, practical comments.
+  - This implementation expects you to supply images as 3D arrays of doubles.
+
+  HOW TO USE:
+  -----------
+  - Make sure this program is included in your project.
+  - You will need Free Pascal Compiler (`{$mode objfpc}{$H+}`), preferably v3+.
+- To create a CNN: Declare a `TCNNFacade` and call .Create(...)
+- See methods for how to train, predict, or manipulate internal state.
+- Each public method is documented with parameter and output details.
+
+NOTATION:
+---------
+- Arrays in Pascal: Array indices start at 0 unless otherwise specified.
+- Darray = 1D: [0..N]
+- D2array = 2D: [0..Rows-1][0..Cols-1]
+- D3array = 3D: [0..Channels-1][0..Height-1][0..Width-1]
+------------------------------------------------------------------------------}
+
+program CNNProgram;
 
 {$mode objfpc}{$H+}
-
-unit CNNFacade;
-
-interface
 
 uses Classes, Math, SysUtils;
 
 const
-   EPSILON = 1e-8;
-   GRAD_CLIP = 1.0;
+   EPSILON = 1e-8; // Small number for numerical stability (avoid /0)
+   GRAD_CLIP = 1.0; // Clip gradients at this value to avoid exploding gradients
 
 type
+   // Common array types for storing weights, activations, filters, etc.
    Darray = array of Double;
    D2array = array of array of Double;
    D3array = array of array of array of Double;
    D4array = array of array of array of array of Double;
    IntArray = array of Integer;
 
+   // Index used for pooling -- points to (X,Y) max in a pooling window
    TPoolIndex = record
       X, Y: Integer;
    end;
    TPoolIndexArray = array of array of array of TPoolIndex;
 
+   // Useful for summarizing statistics about a layer’s activations/weights
    TLayerStats = record
       Mean: Double;
       StdDev: Double;
@@ -35,83 +69,92 @@ type
       Count: Integer;
    end;
 
+   // Configuration for a given network layer (introspection/debug)
    TLayerConfig = record
-      LayerType: string;
-      FilterCount: Integer;
+      LayerType: string;           // “conv”, “pool”, or “fc”
+      FilterCount: Integer;        // For conv: how many filters
       KernelSize: Integer;
       Stride: Integer;
       Padding: Integer;
       InputChannels: Integer;
       OutputWidth: Integer;
       OutputHeight: Integer;
-      PoolSize: Integer;
-      NeuronCount: Integer;
-      InputSize: Integer;
+      PoolSize: Integer;           // For pool layers
+      NeuronCount: Integer;        // For fully connected
+      InputSize: Integer;          // For fully connected: neurons’ input size
    end;
 
+   // For computing receptive fields (advanced visualization)
    TReceptiveField = record
       StartX, EndX: Integer;
       StartY, EndY: Integer;
-      Channels: IntArray;
+      Channels: IntArray;          // Which input channels are connected
    end;
 
+   // For arbitrary string tags/metadata on net filters/layers
    TAttributeEntry = record
       Key: string;
       Value: string;
    end;
    TAttributeArray = array of TAttributeEntry;
 
+   // A single image (input), as 3D array [channels][height][width]
    TImageData = record
       Width: Integer;
       Height: Integer;
       Channels: Integer;
-      Data: D3array;
+      Data: D3array;               // Data[channel][row][col]
    end;
 
+   // A single convolution filter (including gradient and optimizer state)
    TConvFilter = record
-      Weights: D3array;
+      Weights: D3array;            // Main weights [Channel][H][W]
       Bias: Double;
-      WeightsM: D3array;
-      WeightsV: D3array;
-      WeightGrads: D3array;
+      WeightsM: D3array;           // Adam optimizer moment-1
+      WeightsV: D3array;           // Adam optimizer moment-2
+      WeightGrads: D3array;        // Gradients dL/dW
       BiasGrad: Double;
-      BiasM: Double;
+      BiasM: Double;               // For bias Adam optimizer
       BiasV: Double;
    end;
 
+   // A convolution layer holds several filters & their output/activations
    TConvLayer = record
-      Filters: array of TConvFilter;
-      OutputMaps: D3array;
-      PreActivation: D3array;
-      InputCache: D3array;
-      PaddedInput: D3array;
+      Filters: array of TConvFilter;     // List of filters in this layer
+      OutputMaps: D3array;               // Activations [Filter][H][W]
+      PreActivation: D3array;            // Z maps before ReLU [Filter][H][W]
+      InputCache: D3array;               // Cached input for backwards
+      PaddedInput: D3array;              // Input w/padding (for backprop)
       Stride: Integer;
       Padding: Integer;
       KernelSize: Integer;
       InputChannels: Integer;
    end;
 
+   // A pooling layer records window size and related caches
    TPoolingLayer = record
       PoolSize: Integer;
       Stride: Integer;
-      OutputMaps: D3array;
-      InputCache: D3array;
-      MaxIndices: TPoolIndexArray;
+      OutputMaps: D3array;               // Output after pooling
+      InputCache: D3array;               // What was pooled over
+      MaxIndices: TPoolIndexArray;       // Where was the max for each win
    end;
 
+   // A neuron in a fully connected (dense) layer
    TNeuron = record
       Weights: Darray;
       Bias: Double;
-      Output: Double;
-      PreActivation: Double;
-      Error: Double;
-      DropoutMask: Double;
-      WeightsM: Darray;
-      WeightsV: Darray;
+      Output: Double;                    // Activation value
+      PreActivation: Double;             // Z before activation
+      Error: Double;                     // Gradient w.r.t activation for backprop
+      DropoutMask: Double;               // 0 or scaled 1 (for dropout regularization)
+      WeightsM: Darray;                  // Adam moment-1
+      WeightsV: Darray;                  // Adam moment-2
       BiasM: Double;
       BiasV: Double;
    end;
 
+   // Fully connected layer: array of neurons, stores input for backprop
    TFullyConnectedLayer = record
       Neurons: array of TNeuron;
       InputCache: Darray;
@@ -258,8 +301,6 @@ type
       procedure SetTrainingMode(Training: Boolean);
       function GetTrainingMode: Boolean;
    end;
-
-implementation
 
 { Helper functions }
 
@@ -1649,4 +1690,54 @@ begin IsTraining := Training; end;
 function TCNNFacade.GetTrainingMode: Boolean;
 begin Result := IsTraining; end;
 
+var
+   CNN: TCNNFacade;
+   Image: TImageData;
+   Target, Output: Darray;
+   i, c, h, w: Integer;
+   Loss: Double;
+begin
+   Randomize;
+   
+   WriteLn('CNN Demo - Creating network...');
+   CNN := TCNNFacade.Create(28, 28, 1, [8, 16], [3, 3], [2, 2], [64], 10, 0.001, 0.25);
+   
+   Image.Width := 28;
+   Image.Height := 28;
+   Image.Channels := 1;
+   SetLength(Image.Data, 1, 28, 28);
+   for c := 0 to 0 do
+      for h := 0 to 27 do
+         for w := 0 to 27 do
+            Image.Data[c][h][w] := Random;
+   
+   SetLength(Target, 10);
+   for i := 0 to 9 do Target[i] := 0;
+   Target[3] := 1.0;
+   
+   WriteLn('Running prediction...');
+   Output := CNN.Predict(Image);
+   Write('Output: ');
+   for i := 0 to High(Output) do
+      Write(Output[i]:0:4, ' ');
+   WriteLn;
+   
+   WriteLn('Training for 10 steps...');
+   for i := 1 to 10 do
+   begin
+      Loss := CNN.TrainStep(Image, Target);
+      WriteLn('Step ', i, ' Loss: ', Loss:0:6);
+   end;
+   
+   WriteLn('Final prediction...');
+   Output := CNN.Predict(Image);
+   Write('Output: ');
+   for i := 0 to High(Output) do
+      Write(Output[i]:0:4, ' ');
+   WriteLn;
+   
+   WriteLn('Layers: ', CNN.GetNumLayers, ' Conv: ', CNN.GetNumConvLayers, ' FC: ', CNN.GetNumFCLayers);
+   
+   CNN.Free;
+   WriteLn('Done.');
 end.
