@@ -23,7 +23,7 @@
   HOW TO USE:
   -----------
   - Make sure this program is included in your project.
-  - You will need Free Pascal Compiler preferably v3+.
+  - You will need Free Pascal Compiler (`{$mode objfpc}{$H+}`), preferably v3+.
 - To create a CNN: Declare a `TCNNFacade` and call .Create(...)
 - See methods for how to train, predict, or manipulate internal state.
 - Each public method is documented with parameter and output details.
@@ -160,6 +160,7 @@ type
       InputCache: Darray;
    end;
 
+   // Batch normalization parameters and state (for advanced usage)
    TBatchNormParams = record
       Gamma: Darray;
       Beta: Darray;
@@ -168,27 +169,36 @@ type
       Enabled: Boolean;
    end;
 
+   {--------------------------------------------------------------------------
+    MAIN CLASS: TCNNFacade
+    All properties and methods attached to this object.
+    -------------------------------------------------------------------------}
    TCNNFacade = class
    private
+      // Hyperparameters, optimizer and state
       LearningRate: Double;
       DropoutRate: Double;
       Beta1, Beta2: Double;
       AdamT: Integer;
       IsTraining: Boolean;
 
+      // Layers of the network, in order of computation
       ConvLayers: array of TConvLayer;
       PoolLayers: array of TPoolingLayer;
       FullyConnectedLayers: array of TFullyConnectedLayer;
       OutputLayer: TFullyConnectedLayer;
 
+      // Sizes for internal bookkeeping
       FlattenedSize: Integer;
       FFlattenedFeatures: Darray;
       LastConvHeight, LastConvWidth, LastConvChannels: Integer;
 
+      // Stubs for batch (mini-batch) functionality, not complete in base version
       FBatchActivations: array of D4array;
       FBatchNormParams: array of TBatchNormParams;
       FFilterAttributes: array of array of TAttributeArray;
 
+      {--------------------- INTERNAL UTILITY METHODS ----------------------}
       function ReLU(x: Double): Double;
       function ReLUDerivative(x: Double): Double;
       function Softmax(const Logits: Darray): Darray;
@@ -199,10 +209,12 @@ type
       function Pad3D(const Input: D3array; Padding: Integer): D3array;
       function ValidateInput(const Image: TImageData): Boolean;
 
+      // Layer/parameter initializers
       procedure InitializeConvLayer(var Layer: TConvLayer; NumFilters, InputChannels, KernelSize, Stride, Padding: Integer);
       procedure InitializePoolLayer(var Layer: TPoolingLayer; PoolSize, Stride: Integer);
       procedure InitializeFCLayer(var Layer: TFullyConnectedLayer; NumNeurons, NumInputs: Integer);
 
+       // Forward/Backward steps for each layer type
       procedure ConvForward(var Layer: TConvLayer; const Input: D3array; InputWidth, InputHeight: Integer);
       procedure PoolForward(var Layer: TPoolingLayer; const Input: D3array; InputWidth, InputHeight: Integer);
       procedure FlattenFeatures(const Input: D3array; InputWidth, InputHeight, InputChannels: Integer);
@@ -217,13 +229,15 @@ type
       procedure ApplyDropout(var Layer: TFullyConnectedLayer);
 
    public
+      {================= CONSTRUCTION / TEARDOWN =================}
       constructor Create(InputWidth, InputHeight, InputChannels: Integer;
                         ConvFilters, KernelSizes, PoolSizes, FCLayerSizes: array of Integer;
                         OutputSize: Integer; ALearningRate: Double = 0.001; ADropoutRate: Double = 0.25);
       destructor Destroy; override;
 
-      function Predict(var Image: TImageData): Darray;
-      function TrainStep(var Image: TImageData; const Target: Darray): Double;
+      {================== MAIN FUNCTIONALITY =====================}
+      function Predict(var Image: TImageData): Darray;                      // Run the model on an image
+      function TrainStep(var Image: TImageData; const Target: Darray): Double;   // Train on a batch, return loss
       procedure SaveModel(const Filename: string);
       procedure LoadModel(const Filename: string);
 
