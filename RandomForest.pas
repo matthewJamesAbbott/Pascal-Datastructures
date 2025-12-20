@@ -5,9 +5,10 @@
 {$mode objfpc}
 {$M+}
 
-unit RandomForest;
+program RandomForest;
 
-interface
+uses
+   Math;
 
 const
    MAX_FEATURES = 100;
@@ -166,7 +167,7 @@ type
       function getTarget(sampleIdx: integer): double;
       function getTaskType(): TaskType;
       function getCriterion(): SplitCriterion;
-      
+
       { Tree Management for Facade }
       procedure addNewTree();
       procedure removeTreeAt(treeId: integer);
@@ -174,10 +175,6 @@ type
 
    end;
 
-implementation
-
-uses
-   Math;
 
 { ============================================================================ }
 { Constructor }
@@ -1269,7 +1266,7 @@ begin
       writeln('Maximum number of trees reached');
       exit;
    end;
-   
+
    fitTree(numTrees);
    inc(numTrees);
 end;
@@ -1283,12 +1280,12 @@ begin
       writeln('Invalid tree ID: ', treeId);
       exit;
    end;
-   
+
    freeTree(trees[treeId]);
-   
+
    for i := treeId to numTrees - 2 do
       trees[i] := trees[i + 1];
-   
+
    trees[numTrees - 1] := nil;
    dec(numTrees);
 end;
@@ -1300,10 +1297,71 @@ begin
       writeln('Invalid tree ID: ', treeId);
       exit;
    end;
-   
+
    freeTree(trees[treeId]);
    trees[treeId] := nil;
    fitTree(treeId);
 end;
+
+{ ============================================================================ }
+{ Main Program }
+{ ============================================================================ }
+
+var
+   rf: TRandomForest;
+   testData: TDataMatrix;
+   testTargets: TTargetArray;
+   predictions: TTargetArray;
+   sample: TDataRow;
+   i, j: integer;
+   acc: double;
+   trainIdx, testIdx: TIndexArray;
+   numTrain, numTest: integer;
+
+begin
+   writeln('Random Forest Demo');
+   writeln('==================');
+   writeln;
+
+   rf.create();
+
+   rf.setNumTrees(10);
+   rf.setMaxDepth(5);
+   rf.setTaskType(Classification);
+
+   for i := 0 to 99 do
+   begin
+      for j := 0 to 3 do
+         testData[i][j] := random * 10;
+      if testData[i][0] + testData[i][1] > 10 then
+         testTargets[i] := 1
+      else
+         testTargets[i] := 0;
+   end;
+
+   rf.loadData(testData, testTargets, 100, 4);
+
+   rf.printForestInfo();
+   writeln;
+
+   writeln('Training forest...');
+   rf.fit();
+   writeln('Training complete.');
+   writeln;
+
+   rf.predictBatch(testData, 100, predictions);
+   acc := rf.accuracy(predictions, testTargets, 100);
+   writeln('Training accuracy: ', acc:0:4);
+
+   writeln;
+   writeln('OOB Error: ', rf.calculateOOBError():0:4);
+
+   writeln;
+   rf.printFeatureImportances();
+
+   rf.freeForest();
+
+   writeln;
+   writeln('Done.');
 
 end.
