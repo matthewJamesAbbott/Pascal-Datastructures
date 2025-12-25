@@ -1468,117 +1468,184 @@ begin
 end;
 
 
-// ========== Main Demo ==========
-var
-  RNN: TAdvancedRNN;
-  SequenceLen, InputSize, HiddenSize, OutputSize: Integer;
-  Epochs, BatchSize, LogInterval, Epoch, b: Integer;
-  Inputs, Targets, Predictions: TDArray2D;
-  Split: TDataSplit;
-  TrainLoss, ValLoss: Double;
-  t: Integer;
-  CellTypeStr: string;
-
+procedure ParseArgs;
+var i: Integer;
+    arg: string;
 begin
+  // Set full defaults
+  InputFile := ''; TargetFile := ''; OutputFile := ''; ModelFile := '';
+  CellTypeStr := 'lstm'; LossTypeStr := 'mse'; ActivationTypeStr := 'tanh'; OutputActivationStr := 'linear';
+  HiddenSize := 16; Layers := 1; SequenceLen := 10;
+  InputSize := 2; OutputSize := 2; Epochs := 200; BatchSize := 1; LogInterval := 20; BPTTSteps := 0;
+  ValSplit := 0.2; LR := 0.01; ClipVal := 5.0; Seed := 0;
+  Quiet := False; PredictMode := False;
+
+  i := 1;
+  while i <= ParamCount do begin
+    arg := LowerCase(ParamStr(i));
+    if (arg='-h') or (arg='--help') then begin ShowHelp; Halt(0); end
+    else if (arg='--quiet') then Quiet:=True
+    else if (arg='--predict') then PredictMode:=True
+    else if (arg='-i') or (arg='--input') then begin Inc(i); if i<=ParamCount then InputFile:=ParamStr(i); end
+    else if (arg='-t') or (arg='--target') then begin Inc(i); if i<=ParamCount then TargetFile:=ParamStr(i); end
+    else if (arg='-o') or (arg='--output') then begin Inc(i); if i<=ParamCount then OutputFile:=ParamStr(i); end
+    else if (arg='-m') or (arg='--model') then begin Inc(i); if i<=ParamCount then ModelFile:=ParamStr(i); end
+    else if (arg='--cell') then begin Inc(i); if i<=ParamCount then CellTypeStr:=LowerCase(ParamStr(i)); end
+    else if (arg='--hidden') then begin Inc(i); if i<=ParamCount then HiddenSize:=StrToIntDef(ParamStr(i), HiddenSize); end
+    else if (arg='--layers') then begin Inc(i); if i<=ParamCount then Layers:=StrToIntDef(ParamStr(i), Layers); end
+    else if (arg='--epochs') then begin Inc(i); if i<=ParamCount then Epochs:=StrToIntDef(ParamStr(i), Epochs); end
+    else if (arg='--batch-size') then begin Inc(i); if i<=ParamCount then BatchSize:=StrToIntDef(ParamStr(i), BatchSize); end
+    else if (arg='--lr') then begin Inc(i); if i<=ParamCount then LR:=StrToFloatDef(ParamStr(i), LR); end
+    else if (arg='--clip') then begin Inc(i); if i<=ParamCount then ClipVal:=StrToFloatDef(ParamStr(i), ClipVal); end
+    else if (arg='--val-split') then begin Inc(i); if i<=ParamCount then ValSplit:=StrToFloatDef(ParamStr(i), ValSplit); end
+    else if (arg='--log-interval') then begin Inc(i); if i<=ParamCount then LogInterval:=StrToIntDef(ParamStr(i), LogInterval); end
+    else if (arg='--activation') then begin Inc(i); if i<=ParamCount then ActivationTypeStr:=LowerCase(ParamStr(i)); end
+    else if (arg='--out-activation') then begin Inc(i); if i<=ParamCount then OutputActivationStr:=LowerCase(ParamStr(i)); end
+    else if (arg='--loss') then begin Inc(i); if i<=ParamCount then LossTypeStr:=LowerCase(ParamStr(i)); end
+    else if (arg='--seed') then begin Inc(i); if i<=ParamCount then Seed:=StrToIntDef(ParamStr(i), Seed); end
+    else if (arg='--bptt-steps') then begin Inc(i); if i<=ParamCount then BPTTSteps:=StrToIntDef(ParamStr(i), BPTTSteps); end;
+    Inc(i);
+  end;
+end;
+
+procedure StringToEnums;
+begin
+  { Map the string options to enum types }
+  if CellTypeStr='rnn' then CellType:=ctSimpleRNN
+  else if CellTypeStr='gru' then CellType:=ctGRU
+  else CellType:=ctLSTM;
+  if ActivationTypeStr='relu' then ActivationType:=atReLU
+  else if ActivationTypeStr='sigmoid' then ActivationType:=atSigmoid
+  else ActivationType:=atTanh;
+  if OutputActivationStr='sigmoid' then OutputActivation:=atSigmoid
+  else if OutputActivationStr='tanh' then OutputActivation:=atTanh
+  else if OutputActivationStr='relu' then OutputActivation:=atReLU
+  else OutputActivation:=atLinear;
+  if LossTypeStr='crossentropy' then LossType:=ltCrossEntropy
+  else LossType:=ltMSE;
+end;
+
+// ========== Main ==========
+begin
+  ParseArgs;
+  StringToEnums;
+
   Randomize;
+  if (Seed <> 0) then Randomize; // Set your random seed if desirable
 
-  // Configuration
-  SequenceLen := 10;
-  InputSize := 2;
-  HiddenSize := 16;
-  OutputSize := 2;
-  Epochs := 200;
-  BatchSize := 1;
-  LogInterval := 20;
-
-  // Create dummy sequence data (identity task)
-  SetLength(Inputs, SequenceLen);
-  SetLength(Targets, SequenceLen);
-  for t := 0 to SequenceLen - 1 do
+  // Data loading/synthetic
+  if InputFile <> '' then
   begin
-    SetLength(Inputs[t], InputSize);
-    SetLength(Targets[t], OutputSize);
-    Inputs[t][0] := t / SequenceLen;
-    Inputs[t][1] := (SequenceLen - t) / SequenceLen;
-    Targets[t][0] := Inputs[t][0];
-    Targets[t][1] := Inputs[t][1];
+    // Implement your CSV/loader here, set InputSize, OutputSize dynamically if needed
+    // For demonstration, fall back to dummy data if missing loader
+    // !!! Place your file loading procedure here !!!
+    // Inputs := ...
+    // Targets := ...
+    // InputSize := ... ; OutputSize := ... ; SequenceLen := ...
+  end
+  else
+  begin
+    SequenceLen := 10;
+    InputSize := 2;
+    OutputSize := 2;
+    SetLength(Inputs, SequenceLen);
+    SetLength(Targets, SequenceLen);
+    for t := 0 to SequenceLen - 1 do
+    begin
+      SetLength(Inputs[t], InputSize);
+      SetLength(Targets[t], OutputSize);
+      Inputs[t][0] := t / SequenceLen;
+      Inputs[t][1] := (SequenceLen - t) / SequenceLen;
+      Targets[t][0] := Inputs[t][0];
+      Targets[t][1] := Inputs[t][1];
+    end;
   end;
 
-  // Split data (20% validation)
-  SplitData(Inputs, Targets, 0.2, Split);
+  // Split data
+  SplitData(Inputs, Targets, ValSplit, Split);
 
-  // Create LSTM RNN with gradient clipping
+  // Build and configure RNN
   RNN := TAdvancedRNN.Create(
     InputSize,
-    [HiddenSize],
+    [HiddenSize], // Use array of ints for multi-layer, if needed
     OutputSize,
-    ctLSTM,            // Cell type: ctSimpleRNN, ctLSTM, ctGRU
-    atTanh,            // Hidden activation
-    atLinear,          // Output activation
-    ltMSE,             // Loss function
-    0.01,              // Learning rate
-    5.0,               // Gradient clip
-    0                  // BPTT steps (0 = full)
+    CellType,
+    ActivationType,
+    OutputActivation,
+    LossType,
+    LR,
+    ClipVal,
+    BPTTSteps
   );
 
-  case RNN.FCellType of
-    ctSimpleRNN: CellTypeStr := 'SimpleRNN';
-    ctLSTM: CellTypeStr := 'LSTM';
-    ctGRU: CellTypeStr := 'GRU';
-  end;
-
-  WriteLn('=== Advanced RNN Training ===');
-  WriteLn('Cell Type: ', CellTypeStr);
-  WriteLn('Hidden Size: ', HiddenSize);
-  WriteLn('Learning Rate: ', RNN.LearningRate:0:4);
-  WriteLn('Gradient Clip: ', RNN.GradientClip:0:2);
-  WriteLn('Train samples: ', Length(Split.TrainInputs));
-  WriteLn('Val samples: ', Length(Split.ValInputs));
-  WriteLn('');
-  WriteLn('Epoch | Train Loss | Val Loss');
-  WriteLn('------+------------+-----------');
-
-  // Training loop
-  for Epoch := 1 to Epochs do
+  // ============= CLI MODE LOGIC =============
+  if PredictMode then
   begin
-    TrainLoss := 0;
-
-    // Train on each sample (or batch)
-    for b := 0 to High(Split.TrainInputs) do
-      TrainLoss := TrainLoss + RNN.TrainSequence(
-        TDArray2D.Create(Split.TrainInputs[b]),
-        TDArray2D.Create(Split.TrainTargets[b])
-      );
-    TrainLoss := TrainLoss / Length(Split.TrainInputs);
-
-    // Compute validation loss
-    ValLoss := 0;
-    if Length(Split.ValInputs) > 0 then
+    if ModelFile = '' then begin writeln('Error: --model FILE required.'); Halt(1); end;
+    // TODO: LoadModel(ModelFile, RNN); Loads RNN params from ModelFile
+    // TODO: Load inference data from Inputs (or InputFile), run prediction
+    Predictions := RNN.Predict(Inputs); // Placeholders
+    if OutputFile <> '' then
+      SaveCSV(OutputFile, Predictions)
+    else
     begin
+      writeln('t | ', 'Inputs... | Preds...');
+      // Print as in your original
+      for t := 0 to High(Inputs) do
+        writeln(t:2, ' | ', Inputs[t][0]:7:4, ' ', Inputs[t][1]:7:4, ' | ',
+                        Predictions[t][0]:7:4, ' ', Predictions[t][1]:7:4);
+    end;
+  end
+  else begin
+    // === TRAIN MODE ===
+    WriteLn('=== Advanced RNN Training ===');
+    WriteLn('Cell Type: ', CellTypeStr);
+    WriteLn('Hidden Size: ', HiddenSize);
+    WriteLn('Learning Rate: ', LR:0:4);
+    WriteLn('Gradient Clip: ', ClipVal:0:2);
+    WriteLn('Train samples: ', Length(Split.TrainInputs));
+    WriteLn('Val samples: ', Length(Split.ValInputs));
+    WriteLn('');
+    WriteLn('Epoch | Train Loss | Val Loss');
+    WriteLn('------+------------+-----------');
+
+    for epoch := 1 to Epochs do
+    begin
+      TrainLoss := 0;
+      for b := 0 to High(Split.TrainInputs) do
+        TrainLoss := TrainLoss + RNN.TrainSequence(
+          TDArray2D.Create(Split.TrainInputs[b]),
+          TDArray2D.Create(Split.TrainTargets[b])
+        );
+      TrainLoss := TrainLoss / Length(Split.TrainInputs);
+      ValLoss := 0;
+      if Length(Split.ValInputs) > 0 then
       for b := 0 to High(Split.ValInputs) do
         ValLoss := ValLoss + RNN.ComputeLoss(
           TDArray2D.Create(Split.ValInputs[b]),
           TDArray2D.Create(Split.ValTargets[b])
         );
-      ValLoss := ValLoss / Length(Split.ValInputs);
+      if Length(Split.ValInputs) > 0 then
+        ValLoss := ValLoss / Length(Split.ValInputs);
+      if (epoch mod LogInterval = 0) or (epoch = Epochs) then
+        WriteLn(epoch:5, ' | ', TrainLoss:10:6, ' | ', ValLoss:10:6);
     end;
 
-    if (Epoch mod LogInterval = 0) or (Epoch = Epochs) then
-      WriteLn(Epoch:5, ' | ', TrainLoss:10:6, ' | ', ValLoss:10:6);
+    WriteLn('');
+    WriteLn('=== Final Predictions ===');
+    Predictions := RNN.Predict(Inputs);
+    WriteLn('t | Input0   Input1   | Pred0    Pred1    | Target0  Target1');
+    WriteLn('--+------------------+------------------+------------------');
+    for t := 0 to SequenceLen - 1 do
+      WriteLn(
+        t:2, ' | ',
+        Inputs[t][0]:7:4, ' ', Inputs[t][1]:7:4, ' | ',
+        Predictions[t][0]:7:4, ' ', Predictions[t][1]:7:4, ' | ',
+        Targets[t][0]:7:4, ' ', Targets[t][1]:7:4
+      );
+    // Optionally save model
+    if ModelFile <> '' then
+      SaveModel(ModelFile, RNN);
   end;
-
-  WriteLn('');
-  WriteLn('=== Final Predictions ===');
-  Predictions := RNN.Predict(Inputs);
-  WriteLn('t | Input0   Input1   | Pred0    Pred1    | Target0  Target1');
-  WriteLn('--+------------------+------------------+------------------');
-  for t := 0 to SequenceLen - 1 do
-    WriteLn(
-      t:2, ' | ',
-      Inputs[t][0]:7:4, ' ', Inputs[t][1]:7:4, ' | ',
-      Predictions[t][0]:7:4, ' ', Predictions[t][1]:7:4, ' | ',
-      Targets[t][0]:7:4, ' ', Targets[t][1]:7:4
-    );
-
   RNN.Free;
 end.
