@@ -1224,6 +1224,250 @@ begin
   end;
 end;
 
+procedure SaveModelToFile(const Filename: string; RNN: TAdvancedRNN);
+var
+  F: TextFile;
+  i, j, k: Integer;
+  function ArrToLine(const A: array of Double): string;
+  var idx: Integer;
+  begin
+    Result := '';
+    for idx := 0 to High(A) do
+      Result := Result + FloatToStr(A[idx]) + ' ';
+    Result := Trim(Result);
+  end;
+  procedure WriteMatrix(const M: TDArray2D);
+  var r,c: Integer;
+  begin
+    WriteLn(F, Length(M), ' ', Length(M[0]));
+    for r := 0 to High(M) do
+      WriteLn(F, ArrToLine(M[r]));
+  end;
+begin
+  AssignFile(F, Filename);
+  Rewrite(F);
+
+  // Write architecture info
+  WriteLn(F, 'input_size ', RNN.FInputSize);
+  WriteLn(F, 'output_size ', RNN.FOutputSize);
+
+  WriteLn(F, 'hidden_layers ', Length(RNN.FHiddenSizes));
+  WriteLn(F, ArrToLine(RNN.FHiddenSizes));
+
+  WriteLn(F, 'cell_type ', Ord(RNN.FCellType)); // 0=rnn, 1=lstm, 2=gru
+  WriteLn(F, 'activation ', Ord(RNN.FActivation));
+  WriteLn(F, 'output_activation ', Ord(RNN.FOutputActivation));
+  WriteLn(F, 'loss_type ', Ord(RNN.FLossType));
+  WriteLn(F, 'learning_rate ', RNN.FLearningRate);
+  WriteLn(F, 'gradient_clip ', RNN.FGradientClip);
+  WriteLn(F, 'bptt_steps ', RNN.FBPTTSteps);
+
+  // Cells
+  case RNN.FCellType of
+    ctSimpleRNN:
+      for i := 0 to High(RNN.FSimpleCells) do
+      begin
+        WriteLn(F, 'SimpleRNNCell');
+        WriteMatrix(RNN.FSimpleCells[i].Wih);
+        WriteMatrix(RNN.FSimpleCells[i].Whh);
+        WriteLn(F, ArrToLine(RNN.FSimpleCells[i].Bh));
+      end;
+    ctLSTM:
+      for i := 0 to High(RNN.FLSTMCells) do
+      begin
+        WriteLn(F, 'LSTMCell');
+        WriteMatrix(RNN.FLSTMCells[i].Wf);
+        WriteMatrix(RNN.FLSTMCells[i].Wi);
+        WriteMatrix(RNN.FLSTMCells[i].Wc);
+        WriteMatrix(RNN.FLSTMCells[i].Wo);
+        WriteLn(F, ArrToLine(RNN.FLSTMCells[i].Bf));
+        WriteLn(F, ArrToLine(RNN.FLSTMCells[i].Bi));
+        WriteLn(F, ArrToLine(RNN.FLSTMCells[i].Bc));
+        WriteLn(F, ArrToLine(RNN.FLSTMCells[i].Bo));
+      end;
+    ctGRU:
+      for i := 0 to High(RNN.FGRUCells) do
+      begin
+        WriteLn(F, 'GRUCell');
+        WriteMatrix(RNN.FGRUCells[i].Wz);
+        WriteMatrix(RNN.FGRUCells[i].Wr);
+        WriteMatrix(RNN.FGRUCells[i].Wh);
+        WriteLn(F, ArrToLine(RNN.FGRUCells[i].Bz));
+        WriteLn(F, ArrToLine(RNN.FGRUCells[i].Br));
+        WriteLn(F, ArrToLine(RNN.FGRUCells[i].Bh));
+      end;
+  end;
+
+  // Output Layer
+  WriteLn(F, 'OutputLayer');
+  WriteMatrix(RNN.FOutputLayer.W);
+  WriteLn(F, ArrToLine(RNN.FOutputLayer.B));
+
+  CloseFile(F);
+end;
+
+procedure LoadModelFromFile(const Filename: string; var RNN: TAdvancedRNN);
+var
+  F: TextFile;
+  line, cellTypeStr: string;
+  i, j, k, nLayers, nRows, nCols: Integer;
+  procedure ReadMatrix(var M: TDArray2D);
+  var r,c: Integer;
+    s: string;
+    parts: TStringArray;
+  begin
+    ReadLn(F, s);
+    parts := s.Split([' ']);
+    nRows := StrToInt(parts[0]);
+    nCols := StrToInt(parts[1]);
+    SetLength(M, nRows);
+    for r := 0 to nRows-1 do
+    begin
+      ReadLn(F, s);
+      parts := s.Split([' ']);
+      SetLength(M[r], nCols);
+      for c := 0 to nCols-1 do
+        M[r][c] := StrToFloat(parts[c]);
+    end;
+  end;
+  procedure ReadArray(var A: DArray; n: Integer);
+  var s: string; parts: TStringArray; idx: Integer;
+  begin
+    ReadLn(F, s);
+    parts := s.Split([' ']);
+    SetLength(A, n);
+    for idx := 0 to n-1 do
+      A[idx] := StrToFloat(parts[idx]);
+  end;
+  function ReadIntLine: Integer;
+  var s, n: string;
+  begin
+    ReadLn(F, s);
+    n := Trim(Copy(s, Pos(' ',s)+1, MaxInt));
+    Result := StrToInt(n);
+  end;
+  function ReadDoubleLine: Double;
+  var s, n: string;
+  begin
+    ReadLn(F, s);
+    n := Trim(Copy(s, Pos(' ',s)+1, MaxInt));
+    Result := StrToFloat(n);
+  end;
+begin
+  AssignFile(F, Filename);
+  Reset(F);
+
+  // Architecture info
+  RNN.FInputSize := ReadIntLine; // "input_size"
+  RNN.FOutputSize := ReadIntLine; // "output_size"
+  nLayers := ReadIntLine; // "hidden_layers"
+  SetLength(RNN.FHiddenSizes, nLayers);
+  ReadLn(F, line);        // sizes
+  var sizes := line.Split([' ']);
+  for i := 0 to nLayers-1 do RNN.FHiddenSizes[i] := StrToInt(sizes[i]);
+
+  RNN.FCellType := TCellType(ReadIntLine); // "cell_type"
+  RNN.FActivation := TActivationType(ReadIntLine);
+  RNN.FOutputActivation := TActivationType(ReadIntLine);
+  RNN.FLossType := TLossType(ReadIntLine);
+  RNN.FLearningRate := ReadDoubleLine;
+  RNN.FGradientClip := ReadDoubleLine;
+  RNN.FBPTTSteps := ReadIntLine;
+
+  // Build cell objects
+  var prevSize := RNN.FInputSize;
+  case RNN.FCellType of
+    ctSimpleRNN:
+      begin
+        SetLength(RNN.FSimpleCells, nLayers);
+        for i := 0 to nLayers-1 do
+        begin
+          ReadLn(F, cellTypeStr); // "SimpleRNNCell"
+          RNN.FSimpleCells[i] := TSimpleRNNCell.Create(prevSize, RNN.FHiddenSizes[i], RNN.FActivation);
+          ReadMatrix(RNN.FSimpleCells[i].Wih);
+          ReadMatrix(RNN.FSimpleCells[i].Whh);
+          ReadArray(RNN.FSimpleCells[i].Bh, RNN.FHiddenSizes[i]);
+          prevSize := RNN.FHiddenSizes[i];
+        end;
+      end;
+    ctLSTM:
+      begin
+        SetLength(RNN.FLSTMCells, nLayers);
+        for i := 0 to nLayers-1 do
+        begin
+          ReadLn(F, cellTypeStr); // "LSTMCell"
+          RNN.FLSTMCells[i] := TLSTMCell.Create(prevSize, RNN.FHiddenSizes[i], RNN.FActivation);
+          ReadMatrix(RNN.FLSTMCells[i].Wf);
+          ReadMatrix(RNN.FLSTMCells[i].Wi);
+          ReadMatrix(RNN.FLSTMCells[i].Wc);
+          ReadMatrix(RNN.FLSTMCells[i].Wo);
+          ReadArray(RNN.FLSTMCells[i].Bf, RNN.FHiddenSizes[i]);
+          ReadArray(RNN.FLSTMCells[i].Bi, RNN.FHiddenSizes[i]);
+          ReadArray(RNN.FLSTMCells[i].Bc, RNN.FHiddenSizes[i]);
+          ReadArray(RNN.FLSTMCells[i].Bo, RNN.FHiddenSizes[i]);
+          prevSize := RNN.FHiddenSizes[i];
+        end;
+      end;
+    ctGRU:
+      begin
+        SetLength(RNN.FGRUCells, nLayers);
+        for i := 0 to nLayers-1 do
+        begin
+          ReadLn(F, cellTypeStr); // "GRUCell"
+          RNN.FGRUCells[i] := TGRUCell.Create(prevSize, RNN.FHiddenSizes[i], RNN.FActivation);
+          ReadMatrix(RNN.FGRUCells[i].Wz);
+          ReadMatrix(RNN.FGRUCells[i].Wr);
+          ReadMatrix(RNN.FGRUCells[i].Wh);
+          ReadArray(RNN.FGRUCells[i].Bz, RNN.FHiddenSizes[i]);
+          ReadArray(RNN.FGRUCells[i].Br, RNN.FHiddenSizes[i]);
+          ReadArray(RNN.FGRUCells[i].Bh, RNN.FHiddenSizes[i]);
+          prevSize := RNN.FHiddenSizes[i];
+        end;
+      end;
+  end;
+
+  // Output Layer
+  ReadLn(F, cellTypeStr); // "OutputLayer"
+  ReadMatrix(RNN.FOutputLayer.W);
+  ReadArray(RNN.FOutputLayer.B, RNN.FOutputSize);
+
+  CloseFile(F);
+end;
+
+procedure ShowHelp;
+begin
+  writeln('Usage: advanced_rnn [OPTIONS]');
+  writeln;
+  writeln('Train an RNN on sequence data from CSV files.');
+  writeln;
+  writeln('Options:');
+  writeln('  -h, --help              Show this help message and exit');
+  writeln('  -i, --input FILE        Input CSV file (required for train/predict)');
+  writeln('  -t, --target FILE       Target CSV file (required for train)');
+  writeln('  -o, --output FILE       Output predictions to FILE');
+  writeln('  -m, --model FILE        Model file to save/load');
+  writeln('  --cell TYPE             Cell type: rnn, lstm, gru (default: lstm)');
+  writeln('  --hidden SIZE           Hidden layer size (default: 32)');
+  writeln('  --layers N              Number of hidden layers (default: 1)');
+  writeln('  --epochs N              Number of training epochs (default: 100)');
+  writeln('  --lr RATE               Learning rate (default: 0.01)');
+  writeln('  --clip VALUE            Gradient clipping value (default: 5.0)');
+  writeln('  --val-split RATIO       Validation split ratio (default: 0.2)');
+  writeln('  --log-interval N        Log every N epochs (default: 10)');
+  writeln('  --activation TYPE       Hidden activation: sigmoid, tanh, relu (default: tanh)');
+  writeln('  --out-activation TYPE   Output activation: sigmoid, tanh, relu, linear (default: linear)');
+  writeln('  --loss TYPE             Loss function: mse, crossentropy (default: mse)');
+  writeln('  --seed N                Random seed (default: random)');
+  writeln('  --predict               Predict mode (requires --input and --model)');
+  writeln('  --quiet                 Suppress progress output');
+  writeln;
+  writeln('Examples:');
+  writeln('  advanced_rnn --input data.csv --target labels.csv --epochs 200');
+  writeln('  advanced_rnn --predict --input test.csv --model model.bin --output predictions.csv');
+  writeln;
+end;
+
+
 // ========== Main Demo ==========
 var
   RNN: TAdvancedRNN;
