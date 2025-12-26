@@ -1564,6 +1564,69 @@ begin
     if LossTypeStr='crossentropy' then LossType:=ltCrossEntropy
     else LossType:=ltMSE;
 end;
+
+procedure SaveCSV(const Filename: string; const Data: TDArray2D);
+var
+  F: TextFile;
+  i, j: Integer;
+begin
+  AssignFile(F, Filename);
+  Rewrite(F);
+  try
+    for i := 0 to High(Data) do
+    begin
+      for j := 0 to High(Data[i]) do
+      begin
+        Write(F, Data[i][j]:0:8); // 8 decimal places; adjust as needed
+        if j < High(Data[i]) then
+          Write(F, ',');
+      end;
+      Writeln(F);
+    end;
+  finally
+    CloseFile(F);
+  end;
+end;
+
+procedure LoadCSV(const Filename: string; out Data: TDArray2D);
+var
+  F: TextFile;
+  Line, Cell: string;
+  Row: Integer;
+  Cells: TStringList;
+  i: Integer;
+begin
+  AssignFile(F, Filename);
+  Reset(F);
+  Cells := TStringList.Create;
+  try
+    SetLength(Data, 0);
+    Row := 0;
+    while not Eof(F) do
+    begin
+      ReadLn(F, Line);
+      if Trim(Line) = '' then Continue; // skip empty lines
+      Cells.Delimiter := ',';
+      Cells.DelimitedText := Line;
+      SetLength(Data, Row + 1);
+      SetLength(Data[Row], Cells.Count);
+      for i := 0 to Cells.Count - 1 do
+      begin
+        Cell := Trim(Cells[i]);
+        if Cell <> '' then
+          Data[Row][i] := StrToFloat(Cell)
+        else
+          Data[Row][i] := 0.0;
+      end;
+      Inc(Row);
+    end;
+  finally
+    Cells.Free;
+    CloseFile(F);
+  end;
+end;
+
+// ========== Main Program ==========
 var
     // Configurable parameters
     InputFile, TargetFile, OutputFile, ModelFile: string;
