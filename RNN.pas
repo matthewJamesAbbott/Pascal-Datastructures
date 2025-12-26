@@ -4,7 +4,7 @@
 //
 
 {$mode objfpc}{$H+}
-{$M+}
+{$M+}{$R+}{$Q+}{$I+}
 
 program AdvancedRNN;
 
@@ -780,7 +780,10 @@ begin
   FInputSize := InputSize;
   FOutputSize := OutputSize;
   FActivation := Activation;
-  Scale := Sqrt(2.0 / InputSize);
+  if InputSize <= 0 then
+     raise Exception.Create('InputSize must be > 0 in weight initialization')
+  else
+     Scale := Sqrt(2.0 / InputSize);
   InitMatrix(W, OutputSize, InputSize, Scale);
   ZeroArray(B, OutputSize);
   ZeroMatrix(dW, OutputSize, InputSize);
