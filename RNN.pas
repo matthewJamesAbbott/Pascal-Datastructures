@@ -4,7 +4,7 @@
 //
 
 {$mode objfpc}{$H+}
-{$M+}{$R+}{$Q+}{$I+}
+{$M+}
 
 program AdvancedRNN;
 
@@ -14,7 +14,6 @@ type
   TActivationType = (atSigmoid, atTanh, atReLU, atLinear);
   TLossType = (ltMSE, ltCrossEntropy);
   TCellType = (ctSimpleRNN, ctLSTM, ctGRU);
-  TIntArray = array of Integer;
 
   DArray = array of Double;
   TDArray2D = array of DArray;
@@ -106,7 +105,7 @@ type
     dB: DArray;
     constructor Create(InputSize, OutputSize: Integer; Activation: TActivationType);
     procedure Forward(const Input: DArray; var Output, Pre: DArray);
-    procedure Backward(const ddOut, Output, Pre, Input: DArray; ClipVal: Double; var dInput: DArray);
+    procedure Backward(const d0ut, Output, Pre, Input: DArray; ClipVal: Double; var dInput: DArray);
     procedure ApplyGradients(LR, ClipVal: Double);
     procedure ResetGradients;
   end;
@@ -488,12 +487,12 @@ procedure TLSTMCell.Backward(const dH, dC, H, C, F, I, CTilde, O, TanhC, PrevH, 
 var
   k, j: Integer;
   Concat: DArray;
-  ddO, dCTotal, dF, dI, dCTilde: DArray;
+  d0, dCTotal, dF, dI, dCTilde: DArray;
   ConcatSize: Integer;
 begin
   Concat := ConcatArrays(Input, PrevH);
   ConcatSize := Length(Concat);
-  SetLength(ddO, FHiddenSize);
+  SetLength(d0, FHiddenSize);
   SetLength(dCTotal, FHiddenSize);
   SetLength(dF, FHiddenSize);
   SetLength(dI, FHiddenSize);
@@ -511,7 +510,7 @@ begin
 
   for k := 0 to FHiddenSize - 1 do
   begin
-    ddO[k] := ClipValue(dH[k] * TanhC[k] * TActivation.Derivative(O[k], atSigmoid), ClipVal);
+    d0[k] := ClipValue(dH[k] * TanhC[k] * TActivation.Derivative(O[k], atSigmoid), ClipVal);
     dCTotal[k] := ClipValue(dH[k] * O[k] * (1 - TanhC[k] * TanhC[k]) + dC[k], ClipVal);
     dF[k] := ClipValue(dCTotal[k] * PrevC[k] * TActivation.Derivative(F[k], atSigmoid), ClipVal);
     dI[k] := ClipValue(dCTotal[k] * CTilde[k] * TActivation.Derivative(I[k], atSigmoid), ClipVal);
@@ -526,20 +525,20 @@ begin
       dWf[k][j] := dWf[k][j] + dF[k] * Concat[j];
       dWi[k][j] := dWi[k][j] + dI[k] * Concat[j];
       dWc[k][j] := dWc[k][j] + dCTilde[k] * Concat[j];
-      dWo[k][j] := dWo[k][j] + ddO[k] * Concat[j];
+      dWo[k][j] := dWo[k][j] + d0[k] * Concat[j];
 
       if j < FInputSize then
         dInput[j] := dInput[j] + Wf[k][j] * dF[k] + Wi[k][j] * dI[k] +
-                     Wc[k][j] * dCTilde[k] + Wo[k][j] * ddO[k]
+                     Wc[k][j] * dCTilde[k] + Wo[k][j] * d0[k]
       else
         dPrevH[j - FInputSize] := dPrevH[j - FInputSize] +
                                    Wf[k][j] * dF[k] + Wi[k][j] * dI[k] +
-                                   Wc[k][j] * dCTilde[k] + Wo[k][j] * ddO[k];
+                                   Wc[k][j] * dCTilde[k] + Wo[k][j] * d0[k];
     end;
     dBf[k] := dBf[k] + dF[k];
     dBi[k] := dBi[k] + dI[k];
     dBc[k] := dBc[k] + dCTilde[k];
-    dBo[k] := dBo[k] + ddO[k];
+    dBo[k] := dBo[k] + d0[k];
   end;
 end;
 
@@ -780,10 +779,7 @@ begin
   FInputSize := InputSize;
   FOutputSize := OutputSize;
   FActivation := Activation;
-  if InputSize <= 0 then
-     raise Exception.Create('InputSize must be > 0 in weight initialization')
-  else
-     Scale := Sqrt(2.0 / InputSize);
+  Scale := Sqrt(2.0 / InputSize);
   InitMatrix(W, OutputSize, InputSize, Scale);
   ZeroArray(B, OutputSize);
   ZeroMatrix(dW, OutputSize, InputSize);
@@ -817,7 +813,7 @@ begin
   end;
 end;
 
-procedure TOutputLayer.Backward(const ddOut, Output, Pre, Input: DArray; ClipVal: Double; var dInput: DArray);
+procedure TOutputLayer.Backward(const d0ut, Output, Pre, Input: DArray; ClipVal: Double; var dInput: DArray);
 var
   i, j: Integer;
   dPre: DArray;
@@ -827,7 +823,7 @@ begin
   for j := 0 to FInputSize - 1 do dInput[j] := 0;
 
   for i := 0 to FOutputSize - 1 do
-    dPre[i] := ClipValue(ddOut[i] * TActivation.Derivative(Output[i], FActivation), ClipVal);
+    dPre[i] := ClipValue(d0ut[i] * TActivation.Derivative(Output[i], FActivation), ClipVal);
 
   for i := 0 to FOutputSize - 1 do
   begin
@@ -1019,7 +1015,7 @@ function TAdvancedRNN.BackwardSequence(const Targets: TDArray2D; const Caches: a
 var
   t, layer, k: Integer;
   T_len, BPTTLimit: Integer;
-  ddOut, dH, dC, dInput, dPrevH, dPrevC: DArray;
+  d0ut, dH, dC, dInput, dPrevH, dPrevC: DArray;
   Grad: DArray;
   dStatesH, dStatesC: TDArray2D;
   TotalLoss: Double;
@@ -1050,9 +1046,9 @@ begin
 
     for layer := High(FHiddenSizes) downto 0 do
     begin
-      SetLength(ddOut, FHiddenSizes[layer]);
+      SetLength(d0ut, FHiddenSizes[layer]);
       for k := 0 to FHiddenSizes[layer] - 1 do
-        ddOut[k] := dH[k] + dStatesH[layer][k];
+        d0ut[k] := dH[k] + dStatesH[layer][k];
 
       if t > 0 then
         PrevH := Caches[t-1].H
@@ -1062,7 +1058,7 @@ begin
       case FCellType of
         ctSimpleRNN:
         begin
-          FSimpleCells[layer].Backward(ddOut, Caches[t].H, Caches[t].PreH, PrevH,
+          FSimpleCells[layer].Backward(d0ut, Caches[t].H, Caches[t].PreH, PrevH,
                                         Caches[t].Input, FGradientClip, dInput, dPrevH);
           dStatesH[layer] := Copy(dPrevH);
         end;
@@ -1077,7 +1073,7 @@ begin
           for k := 0 to FHiddenSizes[layer] - 1 do
             dC[k] := dStatesC[layer][k];
 
-          FLSTMCells[layer].Backward(ddOut, dC, Caches[t].H, Caches[t].C,
+          FLSTMCells[layer].Backward(d0ut, dC, Caches[t].H, Caches[t].C,
                                       Caches[t].F, Caches[t].I, Caches[t].CTilde,
                                       Caches[t].O, Caches[t].TanhC,
                                       PrevH, PrevC, Caches[t].Input,
@@ -1087,7 +1083,7 @@ begin
         end;
         ctGRU:
         begin
-          FGRUCells[layer].Backward(ddOut, Caches[t].H, Caches[t].Z, Caches[t].R,
+          FGRUCells[layer].Backward(d0ut, Caches[t].H, Caches[t].Z, Caches[t].R,
                                      Caches[t].HTilde, PrevH, Caches[t].Input,
                                      FGradientClip, dInput, dPrevH);
           dStatesH[layer] := Copy(dPrevH);
@@ -1228,554 +1224,117 @@ begin
   end;
 end;
 
-function SplitLineToIntArray(const line: string): TIntArray;
+// ========== Main Demo ==========
 var
-    sl: TStringList;
-    i: Integer;
-begin
-    sl := TStringList.Create;
-    try
-    sl.Delimiter := ' ';
-    sl.StrictDelimiter := True;
-    sl.DelimitedText := line;
-    SetLength(Result, sl.Count);
-    for i := 0 to sl.Count - 1 do
-        Result[i] := StrToInt(sl[i]);
-    finally
-    sl.Free;
-end;
-end;
-
-procedure SaveModelToFile(const Filename: string; RNN: TAdvancedRNN);
-var
-  F: TextFile;
-  i, j, k: Integer;
-  function ArrToLine(const A: array of Double): string;
-  var idx: Integer;
-  begin
-    Result := '';
-    for idx := 0 to High(A) do
-      Result := Result + FloatToStr(A[idx]) + ' ';
-    Result := Trim(Result);
-  end;
-  procedure WriteMatrix(const M: TDArray2D);
-  var r,c: Integer;
-  begin
-    WriteLn(F, Length(M), ' ', Length(M[0]));
-    for r := 0 to High(M) do
-      WriteLn(F, ArrToLine(M[r]));
-  end;
-begin
-  AssignFile(F, Filename);
-  Rewrite(F);
-
-  // Write architecture info
-  WriteLn(F, 'input_size ', RNN.FInputSize);
-  WriteLn(F, 'output_size ', RNN.FOutputSize);
-
-  WriteLn(F, 'hidden_layers ', Length(RNN.FHiddenSizes));
-  for i := 0 to High(RNN.FHiddenSizes) do
-  begin
-      Write(F, RNN.FHiddenSizes[i]);
-      if i < High(RNN.FHiddenSizes) then
-          Write(F, ' ');
-  end;
-  WriteLn(F);
-  WriteLn(F, 'cell_type ', Ord(RNN.FCellType)); // 0=rnn, 1=lstm, 2=gru
-  WriteLn(F, 'activation ', Ord(RNN.FActivation));
-  WriteLn(F, 'output_activation ', Ord(RNN.FOutputActivation));
-  WriteLn(F, 'loss_type ', Ord(RNN.FLossType));
-  WriteLn(F, 'learning_rate ', RNN.FLearningRate);
-  WriteLn(F, 'gradient_clip ', RNN.FGradientClip);
-  WriteLn(F, 'bptt_steps ', RNN.FBPTTSteps);
-
-  // Cells
-  case RNN.FCellType of
-    ctSimpleRNN:
-      for i := 0 to High(RNN.FSimpleCells) do
-      begin
-        WriteLn(F, 'SimpleRNNCell');
-        WriteMatrix(RNN.FSimpleCells[i].Wih);
-        WriteMatrix(RNN.FSimpleCells[i].Whh);
-        WriteLn(F, ArrToLine(RNN.FSimpleCells[i].Bh));
-      end;
-    ctLSTM:
-      for i := 0 to High(RNN.FLSTMCells) do
-      begin
-        WriteLn(F, 'LSTMCell');
-        WriteMatrix(RNN.FLSTMCells[i].Wf);
-        WriteMatrix(RNN.FLSTMCells[i].Wi);
-        WriteMatrix(RNN.FLSTMCells[i].Wc);
-        WriteMatrix(RNN.FLSTMCells[i].Wo);
-        WriteLn(F, ArrToLine(RNN.FLSTMCells[i].Bf));
-        WriteLn(F, ArrToLine(RNN.FLSTMCells[i].Bi));
-        WriteLn(F, ArrToLine(RNN.FLSTMCells[i].Bc));
-        WriteLn(F, ArrToLine(RNN.FLSTMCells[i].Bo));
-      end;
-    ctGRU:
-      for i := 0 to High(RNN.FGRUCells) do
-      begin
-        WriteLn(F, 'GRUCell');
-        WriteMatrix(RNN.FGRUCells[i].Wz);
-        WriteMatrix(RNN.FGRUCells[i].Wr);
-        WriteMatrix(RNN.FGRUCells[i].Wh);
-        WriteLn(F, ArrToLine(RNN.FGRUCells[i].Bz));
-        WriteLn(F, ArrToLine(RNN.FGRUCells[i].Br));
-        WriteLn(F, ArrToLine(RNN.FGRUCells[i].Bh));
-      end;
-  end;
-
-  // Output Layer
-  WriteLn(F, 'OutputLayer');
-  WriteMatrix(RNN.FOutputLayer.W);
-  WriteLn(F, ArrToLine(RNN.FOutputLayer.B));
-
-  CloseFile(F);
-end;
-
-procedure LoadModelFromFile(const Filename: string; var RNN: TAdvancedRNN);
-var
-  F: TextFile;
-  line, cellTypeStr: string;
-  i, j, k, nLayers, nRows, nCols: Integer;
-  procedure ReadMatrix(var M: TDArray2D);
-  var r,c: Integer;
-    s: string;
-    parts: TStringArray;
-  begin
-    ReadLn(F, s);
-    parts := s.Split([' ']);
-    nRows := StrToInt(parts[0]);
-    nCols := StrToInt(parts[1]);
-    SetLength(M, nRows);
-    for r := 0 to nRows-1 do
-    begin
-      ReadLn(F, s);
-      parts := s.Split([' ']);
-      SetLength(M[r], nCols);
-      for c := 0 to nCols-1 do
-        M[r][c] := StrToFloat(parts[c]);
-    end;
-  end;
-  procedure ReadArray(var A: DArray; n: Integer);
-  var s: string; parts: TStringArray; idx: Integer;
-  begin
-    ReadLn(F, s);
-    parts := s.Split([' ']);
-    SetLength(A, n);
-    for idx := 0 to n-1 do
-      A[idx] := StrToFloat(parts[idx]);
-  end;
-  function ReadIntLine: Integer;
-  var s, n: string;
-  begin
-    ReadLn(F, s);
-    n := Trim(Copy(s, Pos(' ',s)+1, MaxInt));
-    Result := StrToInt(n);
-  end;
-  function ReadDoubleLine: Double;
-var s, n: string;
-
-  begin
-    ReadLn(F, s);
-    n := Trim(Copy(s, Pos(' ',s)+1, MaxInt));
-    Result := StrToFloat(n);
-  end;
-
-var     sizes: TIntArray;
-    prevSize: Integer;
+  RNN: TAdvancedRNN;
+  SequenceLen, InputSize, HiddenSize, OutputSize: Integer;
+  Epochs, BatchSize, LogInterval, Epoch, b: Integer;
+  Inputs, Targets, Predictions: TDArray2D;
+  Split: TDataSplit;
+  TrainLoss, ValLoss: Double;
+  t: Integer;
+  CellTypeStr: string;
 
 begin
-  AssignFile(F, Filename);
-  Reset(F);
-
-  // Architecture info
-  RNN.FInputSize := ReadIntLine; // "input_size"
-  RNN.FOutputSize := ReadIntLine; // "output_size"
-  nLayers := ReadIntLine; // "hidden_layers"
-  SetLength(RNN.FHiddenSizes, nLayers);
-  ReadLn(F, line);        // sizes
-  sizes := SplitLineToIntArray(line);
-  for i := 0 to nLayers-1 do RNN.FHiddenSizes[i] := sizes[i];
-
-  RNN.FCellType := TCellType(ReadIntLine); // "cell_type"
-  RNN.FActivation := TActivationType(ReadIntLine);
-  RNN.FOutputActivation := TActivationType(ReadIntLine);
-  RNN.FLossType := TLossType(ReadIntLine);
-  RNN.FLearningRate := ReadDoubleLine;
-  RNN.FGradientClip := ReadDoubleLine;
-  RNN.FBPTTSteps := ReadIntLine;
-
-  // Build cell objects
-  prevSize := RNN.FInputSize;
-  case RNN.FCellType of
-    ctSimpleRNN:
-      begin
-        SetLength(RNN.FSimpleCells, nLayers);
-        for i := 0 to nLayers-1 do
-        begin
-          ReadLn(F, cellTypeStr); // "SimpleRNNCell"
-          RNN.FSimpleCells[i] := TSimpleRNNCell.Create(prevSize, RNN.FHiddenSizes[i], RNN.FActivation);
-          ReadMatrix(RNN.FSimpleCells[i].Wih);
-          ReadMatrix(RNN.FSimpleCells[i].Whh);
-          ReadArray(RNN.FSimpleCells[i].Bh, RNN.FHiddenSizes[i]);
-          prevSize := RNN.FHiddenSizes[i];
-        end;
-      end;
-    ctLSTM:
-      begin
-        SetLength(RNN.FLSTMCells, nLayers);
-        for i := 0 to nLayers-1 do
-        begin
-          ReadLn(F, cellTypeStr); // "LSTMCell"
-          RNN.FLSTMCells[i] := TLSTMCell.Create(prevSize, RNN.FHiddenSizes[i], RNN.FActivation);
-          ReadMatrix(RNN.FLSTMCells[i].Wf);
-          ReadMatrix(RNN.FLSTMCells[i].Wi);
-          ReadMatrix(RNN.FLSTMCells[i].Wc);
-          ReadMatrix(RNN.FLSTMCells[i].Wo);
-          ReadArray(RNN.FLSTMCells[i].Bf, RNN.FHiddenSizes[i]);
-          ReadArray(RNN.FLSTMCells[i].Bi, RNN.FHiddenSizes[i]);
-          ReadArray(RNN.FLSTMCells[i].Bc, RNN.FHiddenSizes[i]);
-          ReadArray(RNN.FLSTMCells[i].Bo, RNN.FHiddenSizes[i]);
-          prevSize := RNN.FHiddenSizes[i];
-        end;
-      end;
-    ctGRU:
-      begin
-        SetLength(RNN.FGRUCells, nLayers);
-        for i := 0 to nLayers-1 do
-        begin
-          ReadLn(F, cellTypeStr); // "GRUCell"
-          RNN.FGRUCells[i] := TGRUCell.Create(prevSize, RNN.FHiddenSizes[i], RNN.FActivation);
-          ReadMatrix(RNN.FGRUCells[i].Wz);
-          ReadMatrix(RNN.FGRUCells[i].Wr);
-          ReadMatrix(RNN.FGRUCells[i].Wh);
-          ReadArray(RNN.FGRUCells[i].Bz, RNN.FHiddenSizes[i]);
-          ReadArray(RNN.FGRUCells[i].Br, RNN.FHiddenSizes[i]);
-          ReadArray(RNN.FGRUCells[i].Bh, RNN.FHiddenSizes[i]);
-          prevSize := RNN.FHiddenSizes[i];
-        end;
-      end;
-  end;
-
-  // Output Layer
-  ReadLn(F, cellTypeStr); // "OutputLayer"
-  ReadMatrix(RNN.FOutputLayer.W);
-  ReadArray(RNN.FOutputLayer.B, RNN.FOutputSize);
-
-  CloseFile(F);
-end;
-
-procedure ShowHelp;
-begin
-  writeln('Usage: advanced_rnn [OPTIONS]');
-  writeln;
-  writeln('Train an RNN on sequence data from CSV files.');
-  writeln;
-  writeln('Options:');
-  writeln('  -h, --help              Show this help message and exit');
-  writeln('  -i, --input FILE        Input CSV file (required for train/predict)');
-  writeln('  -t, --target FILE       Target CSV file (required for train)');
-  writeln('  -o, --output FILE       Output predictions to FILE');
-  writeln('  -m, --model FILE        Model file to save/load');
-  writeln('  --cell TYPE             Cell type: rnn, lstm, gru (default: lstm)');
-  writeln('  --hidden SIZE           Hidden layer size (default: 32)');
-  writeln('  --layers N              Number of hidden layers (default: 1)');
-  writeln('  --epochs N              Number of training epochs (default: 100)');
-  writeln('  --lr RATE               Learning rate (default: 0.01)');
-  writeln('  --clip VALUE            Gradient clipping value (default: 5.0)');
-  writeln('  --val-split RATIO       Validation split ratio (default: 0.2)');
-  writeln('  --log-interval N        Log every N epochs (default: 10)');
-  writeln('  --activation TYPE       Hidden activation: sigmoid, tanh, relu (default: tanh)');
-  writeln('  --out-activation TYPE   Output activation: sigmoid, tanh, relu, linear (default: linear)');
-  writeln('  --loss TYPE             Loss function: mse, crossentropy (default: mse)');
-  writeln('  --seed N                Random seed (default: random)');
-  writeln('  --predict               Predict mode (requires --input and --model)');
-  writeln('  --quiet                 Suppress progress output');
-  writeln;
-  writeln('Examples:');
-  writeln('  advanced_rnn --input data.csv --target labels.csv --epochs 200');
-  writeln('  advanced_rnn --predict --input test.csv --model model.bin --output predictions.csv');
-  writeln;
-end;
-
-
-
-procedure ParseArgs;
-var i: Integer;
-    arg: string;
-    InputFile, TargetFile, OutputFile, ModelFile: string;
-    CellTypeStr, LossTypeStr, ActivationTypeStr, OutputActivationStr: string;
-    HiddenSize, Layers, SequenceLen, InputSize, OutputSize, Epochs, BatchSize, LogInterval, BPTTSteps, Seed: Integer;
-    ValSplit, LR, ClipVal: Double;
-    Quiet, PredictMode: Boolean;
-begin
-  // Set full defaults
-    InputFile := ''; TargetFile := ''; OutputFile := ''; ModelFile := '';
-    CellTypeStr := 'lstm'; LossTypeStr := 'mse'; ActivationTypeStr := 'tanh'; OutputActivationStr := 'linear';
-    HiddenSize := 16; Layers := 1; SequenceLen := 10;
-    InputSize := 2; OutputSize := 2; Epochs := 200; BatchSize := 1; LogInterval := 20; BPTTSteps := 0;
-    ValSplit := 0.2; LR := 0.01; ClipVal := 5.0; Seed := 0;
-    Quiet := False; PredictMode := False;
-
-    i := 1;
-    while i <= ParamCount do begin
-        arg := LowerCase(ParamStr(i));
-        if (arg='-h') or (arg='--help') then begin ShowHelp; Halt(0); end
-        else if (arg='--quiet') then Quiet:=True
-        else if (arg='--predict') then PredictMode:=True
-        else if (arg='-i') or (arg='--input') then begin Inc(i); if i<=ParamCount then InputFile:=ParamStr(i); end
-        else if (arg='-t') or (arg='--target') then begin Inc(i); if i<=ParamCount then TargetFile:=ParamStr(i); end
-        else if (arg='-o') or (arg='--output') then begin Inc(i); if i<=ParamCount then OutputFile:=ParamStr(i); end
-        else if (arg='-m') or (arg='--model') then begin Inc(i); if i<=ParamCount then ModelFile:=ParamStr(i); end
-        else if (arg='--cell') then begin Inc(i); if i<=ParamCount then CellTypeStr:=LowerCase(ParamStr(i)); end
-        else if (arg='--hidden') then begin Inc(i); if i<=ParamCount then HiddenSize:=StrToIntDef(ParamStr(i), HiddenSize); end
-        else if (arg='--layers') then begin Inc(i); if i<=ParamCount then Layers:=StrToIntDef(ParamStr(i), Layers); end
-        else if (arg='--epochs') then begin Inc(i); if i<=ParamCount then Epochs:=StrToIntDef(ParamStr(i), Epochs); end
-        else if (arg='--batch-size') then begin Inc(i); if i<=ParamCount then BatchSize:=StrToIntDef(ParamStr(i), BatchSize); end
-        else if (arg='--lr') then begin Inc(i); if i<=ParamCount then LR:=StrToFloatDef(ParamStr(i), LR); end
-        else if (arg='--clip') then begin Inc(i); if i<=ParamCount then ClipVal:=StrToFloatDef(ParamStr(i), ClipVal); end
-        else if (arg='--val-split') then begin Inc(i); if i<=ParamCount then ValSplit:=StrToFloatDef(ParamStr(i), ValSplit); end
-        else if (arg='--log-interval') then begin Inc(i); if i<=ParamCount then LogInterval:=StrToIntDef(ParamStr(i), LogInterval); end
-        else if (arg='--activation') then begin Inc(i); if i<=ParamCount then ActivationTypeStr:=LowerCase(ParamStr(i)); end
-        else if (arg='--out-activation') then begin Inc(i); if i<=ParamCount then OutputActivationStr:=LowerCase(ParamStr(i)); end
-        else if (arg='--loss') then begin Inc(i); if i<=ParamCount then LossTypeStr:=LowerCase(ParamStr(i)); end
-        else if (arg='--seed') then begin Inc(i); if i<=ParamCount then Seed:=StrToIntDef(ParamStr(i), Seed); end
-        else if (arg='--bptt-steps') then begin Inc(i); if i<=ParamCount then BPTTSteps:=StrToIntDef(ParamStr(i), BPTTSteps); end;
-        Inc(i);
-    end;
-end;
-
-procedure StringToEnums;
-var
-    CellTypeStr, ActivationTypeStr, OutputActivationStr, LossTypeStr: string;
-    CellType: TCellType;
-    ActivationType, OutputActivation: TActivationType;
-    LossType: TLossType;
-begin
-  { Map the string options to enum types }
-    if CellTypeStr='rnn' then CellType:=ctSimpleRNN
-    else if CellTypeStr='gru' then CellType:=ctGRU
-    else CellType:=ctLSTM;
-    if ActivationTypeStr='relu' then ActivationType:=atReLU
-    else if ActivationTypeStr='sigmoid' then ActivationType:=atSigmoid
-    else ActivationType:=atTanh;
-    if OutputActivationStr='sigmoid' then OutputActivation:=atSigmoid
-    else if OutputActivationStr='tanh' then OutputActivation:=atTanh
-    else if OutputActivationStr='relu' then OutputActivation:=atReLU
-    else OutputActivation:=atLinear;
-    if LossTypeStr='crossentropy' then LossType:=ltCrossEntropy
-    else LossType:=ltMSE;
-end;
-
-procedure SaveCSV(const Filename: string; const Data: TDArray2D);
-var
-  F: TextFile;
-  i, j: Integer;
-begin
-  AssignFile(F, Filename);
-  Rewrite(F);
-  try
-    for i := 0 to High(Data) do
-    begin
-      for j := 0 to High(Data[i]) do
-      begin
-        Write(F, Data[i][j]:0:8); // 8 decimal places; adjust as needed
-        if j < High(Data[i]) then
-          Write(F, ',');
-      end;
-      Writeln(F);
-    end;
-  finally
-    CloseFile(F);
-  end;
-end;
-
-procedure LoadCSV(const Filename: string; out Data: TDArray2D);
-var
-  F: TextFile;
-  Line, Cell: string;
-  Row: Integer;
-  Cells: TStringList;
-  i: Integer;
-begin
-  AssignFile(F, Filename);
-  Reset(F);
-  Cells := TStringList.Create;
-  try
-    SetLength(Data, 0);
-    Row := 0;
-    while not Eof(F) do
-    begin
-      ReadLn(F, Line);
-      if Trim(Line) = '' then Continue; // skip empty lines
-      Cells.Delimiter := ',';
-      Cells.DelimitedText := Line;
-      SetLength(Data, Row + 1);
-      SetLength(Data[Row], Cells.Count);
-      for i := 0 to Cells.Count - 1 do
-      begin
-        Cell := Trim(Cells[i]);
-        if Cell <> '' then
-          Data[Row][i] := StrToFloat(Cell)
-        else
-          Data[Row][i] := 0.0;
-      end;
-      Inc(Row);
-    end;
-  finally
-    Cells.Free;
-    CloseFile(F);
-  end;
-end;
-
-// ========== Main Program ==========
-var
-    // Configurable parameters
-    InputFile, TargetFile, OutputFile, ModelFile: string;
-    CellTypeStr, ActivationTypeStr, OutputActivationStr, LossTypeStr: string;
-    HiddenSize, Layers, SequenceLen, InputSize, OutputSize, Epochs, BatchSize, LogInterval, BPTTSteps, Seed, t: Integer;
-    ValSplit: Double;
-    LR, ClipVal: Double;
-    Quiet, PredictMode: Boolean;
-    CellType: TCellType; 
-    ActivationType, OutputActivation: TActivationType;
-    LossType: TLossType;
-
-    // Data
-    Inputs, Targets: TDArray2D;
-    Split: TDataSplit;
-    
-    // RNN
-    RNN: TAdvancedRNN;
-    
-    // Training
-    epoch, b: Integer;
-    TrainLoss, ValLoss: Double;
-    
-    // Predictions
-    Predictions: TDArray2D;
-// ========== Main ==========
-begin
-  ParseArgs;
-  StringToEnums;
-
   Randomize;
-  if (Seed <> 0) then Randomize; // Set your random seed if desirable
 
-  // Data loading/synthetic
-  if InputFile <> '' then
+  // Configuration
+  SequenceLen := 10;
+  InputSize := 2;
+  HiddenSize := 16;
+  OutputSize := 2;
+  Epochs := 200;
+  BatchSize := 1;
+  LogInterval := 20;
+
+  // Create dummy sequence data (identity task)
+  SetLength(Inputs, SequenceLen);
+  SetLength(Targets, SequenceLen);
+  for t := 0 to SequenceLen - 1 do
   begin
-    // Implement your CSV/loader here, set InputSize, OutputSize dynamically if needed
-    // For demonstration, fall back to dummy data if missing loader
-    // !!! Place your file loading procedure here !!!
-    // Inputs := ...
-    // Targets := ...
-    // InputSize := ... ; OutputSize := ... ; SequenceLen := ...
-  end
-  else
-  begin
-    SequenceLen := 10;
-    InputSize := 2;
-    OutputSize := 2;
-    SetLength(Inputs, SequenceLen);
-    SetLength(Targets, SequenceLen);
-    for t := 0 to SequenceLen - 1 do
-    begin
-      SetLength(Inputs[t], InputSize);
-      SetLength(Targets[t], OutputSize);
-      Inputs[t][0] := t / SequenceLen;
-      Inputs[t][1] := (SequenceLen - t) / SequenceLen;
-      Targets[t][0] := Inputs[t][0];
-      Targets[t][1] := Inputs[t][1];
-    end;
+    SetLength(Inputs[t], InputSize);
+    SetLength(Targets[t], OutputSize);
+    Inputs[t][0] := t / SequenceLen;
+    Inputs[t][1] := (SequenceLen - t) / SequenceLen;
+    Targets[t][0] := Inputs[t][0];
+    Targets[t][1] := Inputs[t][1];
   end;
 
-  // Split data
-  SplitData(Inputs, Targets, ValSplit, Split);
+  // Split data (20% validation)
+  SplitData(Inputs, Targets, 0.2, Split);
 
-  // Build and configure RNN
+  // Create LSTM RNN with gradient clipping
   RNN := TAdvancedRNN.Create(
     InputSize,
-    [HiddenSize], // Use array of ints for multi-layer, if needed
+    [HiddenSize],
     OutputSize,
-    CellType,
-    ActivationType,
-    OutputActivation,
-    LossType,
-    LR,
-    ClipVal,
-    BPTTSteps
+    ctLSTM,            // Cell type: ctSimpleRNN, ctLSTM, ctGRU
+    atTanh,            // Hidden activation
+    atLinear,          // Output activation
+    ltMSE,             // Loss function
+    0.01,              // Learning rate
+    5.0,               // Gradient clip
+    0                  // BPTT steps (0 = full)
   );
 
-  // ============= CLI MODE LOGIC =============
-  if PredictMode then
-  begin
-    if ModelFile = '' then begin writeln('Error: --model FILE required.'); Halt(1); end;
-    // TODO: LoadModel(ModelFile, RNN); Loads RNN params from ModelFile
-    // TODO: Load inference data from Inputs (or InputFile), run prediction
-    Predictions := RNN.Predict(Inputs); // Placeholders
-    if OutputFile <> '' then
-      SaveCSV(OutputFile, Predictions)
-    else
-    begin
-      writeln('t | ', 'Inputs... | Preds...');
-      // Print as in your original
-      for t := 0 to High(Inputs) do
-        writeln(t:2, ' | ', Inputs[t][0]:7:4, ' ', Inputs[t][1]:7:4, ' | ',
-                        Predictions[t][0]:7:4, ' ', Predictions[t][1]:7:4);
-    end;
-  end
-  else begin
-    // === TRAIN MODE ===
-    WriteLn('=== Advanced RNN Training ===');
-    WriteLn('Cell Type: ', CellTypeStr);
-    WriteLn('Hidden Size: ', HiddenSize);
-    WriteLn('Learning Rate: ', LR:0:4);
-    WriteLn('Gradient Clip: ', ClipVal:0:2);
-    WriteLn('Train samples: ', Length(Split.TrainInputs));
-    WriteLn('Val samples: ', Length(Split.ValInputs));
-    WriteLn('');
-    WriteLn('Epoch | Train Loss | Val Loss');
-    WriteLn('------+------------+-----------');
+  case RNN.FCellType of
+    ctSimpleRNN: CellTypeStr := 'SimpleRNN';
+    ctLSTM: CellTypeStr := 'LSTM';
+    ctGRU: CellTypeStr := 'GRU';
+  end;
 
-    for epoch := 1 to Epochs do
+  WriteLn('=== Advanced RNN Training ===');
+  WriteLn('Cell Type: ', CellTypeStr);
+  WriteLn('Hidden Size: ', HiddenSize);
+  WriteLn('Learning Rate: ', RNN.LearningRate:0:4);
+  WriteLn('Gradient Clip: ', RNN.GradientClip:0:2);
+  WriteLn('Train samples: ', Length(Split.TrainInputs));
+  WriteLn('Val samples: ', Length(Split.ValInputs));
+  WriteLn('');
+  WriteLn('Epoch | Train Loss | Val Loss');
+  WriteLn('------+------------+-----------');
+
+  // Training loop
+  for Epoch := 1 to Epochs do
+  begin
+    TrainLoss := 0;
+
+    // Train on each sample (or batch)
+    for b := 0 to High(Split.TrainInputs) do
+      TrainLoss := TrainLoss + RNN.TrainSequence(
+        TDArray2D.Create(Split.TrainInputs[b]),
+        TDArray2D.Create(Split.TrainTargets[b])
+      );
+    TrainLoss := TrainLoss / Length(Split.TrainInputs);
+
+    // Compute validation loss
+    ValLoss := 0;
+    if Length(Split.ValInputs) > 0 then
     begin
-      TrainLoss := 0;
-      for b := 0 to High(Split.TrainInputs) do
-        TrainLoss := TrainLoss + RNN.TrainSequence(
-          TDArray2D.Create(Split.TrainInputs[b]),
-          TDArray2D.Create(Split.TrainTargets[b])
-        );
-      TrainLoss := TrainLoss / Length(Split.TrainInputs);
-      ValLoss := 0;
-      if Length(Split.ValInputs) > 0 then
       for b := 0 to High(Split.ValInputs) do
         ValLoss := ValLoss + RNN.ComputeLoss(
           TDArray2D.Create(Split.ValInputs[b]),
           TDArray2D.Create(Split.ValTargets[b])
         );
-      if Length(Split.ValInputs) > 0 then
-        ValLoss := ValLoss / Length(Split.ValInputs);
-      if (epoch mod LogInterval = 0) or (epoch = Epochs) then
-        WriteLn(epoch:5, ' | ', TrainLoss:10:6, ' | ', ValLoss:10:6);
+      ValLoss := ValLoss / Length(Split.ValInputs);
     end;
 
-    WriteLn('');
-    WriteLn('=== Final Predictions ===');
-    Predictions := RNN.Predict(Inputs);
-    WriteLn('t | Input0   Input1   | Pred0    Pred1    | Target0  Target1');
-    WriteLn('--+------------------+------------------+------------------');
-    for t := 0 to SequenceLen - 1 do
-      WriteLn(
-        t:2, ' | ',
-        Inputs[t][0]:7:4, ' ', Inputs[t][1]:7:4, ' | ',
-        Predictions[t][0]:7:4, ' ', Predictions[t][1]:7:4, ' | ',
-        Targets[t][0]:7:4, ' ', Targets[t][1]:7:4
-      );
-    // Optionally save model
-    if ModelFile <> '' then
-      SaveModelToFile(ModelFile, RNN);
+    if (Epoch mod LogInterval = 0) or (Epoch = Epochs) then
+      WriteLn(Epoch:5, ' | ', TrainLoss:10:6, ' | ', ValLoss:10:6);
   end;
+
+  WriteLn('');
+  WriteLn('=== Final Predictions ===');
+  Predictions := RNN.Predict(Inputs);
+  WriteLn('t | Input0   Input1   | Pred0    Pred1    | Target0  Target1');
+  WriteLn('--+------------------+------------------+------------------');
+  for t := 0 to SequenceLen - 1 do
+    WriteLn(
+      t:2, ' | ',
+      Inputs[t][0]:7:4, ' ', Inputs[t][1]:7:4, ' | ',
+      Predictions[t][0]:7:4, ' ', Predictions[t][1]:7:4, ' | ',
+      Targets[t][0]:7:4, ' ', Targets[t][1]:7:4
+    );
+
   RNN.Free;
 end.
