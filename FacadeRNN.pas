@@ -198,6 +198,7 @@ type
 
     function ClipGradient(G, MaxVal: Double): Double;
   public
+
     constructor Create(InputSize: Integer; const HiddenSizes: array of Integer;
                        OutputSize: Integer; CellType: TCellType;
                        Activation, OutputActivation: TActivationType;
@@ -205,6 +206,8 @@ type
                        BPTTSteps: Integer);
     destructor Destroy; override;
 
+    procedure SaveModel(const Filename: string);
+    procedure LoadModel(const Filename: string);
     { Core training/inference }
     function ForwardSequence(const Inputs: TDArray2D): TDArray2D;
     function BackwardSequence(const Targets: TDArray2D): Double;
@@ -276,6 +279,9 @@ type
     property GradientClip: Double read FGradientClip write FGradientClip;
     property DropoutRate: Double read FDropoutRate write FDropoutRate;
   end;
+
+  function ComputeLoss(const Pred, Target: DArray; LossType: TLossType): Double;
+  procedure ComputeLossGradient(const Pred, Target: DArray; LossType: TLossType; var Grad: DArray);
 
 implementation
 
@@ -1611,6 +1617,34 @@ end;
 function TRNNFacade.GetSequenceLength: Integer;
 begin
   Result := FSequenceLen;
+end;
+
+procedure TRNNFacade.SaveModel(const Filename: string);
+var
+  F: File;
+begin
+  AssignFile(F, Filename);
+  Rewrite(F, 1);
+  // Example: Save main configuration and layer weights.
+  BlockWrite(F, FInputSize, SizeOf(Integer));
+  BlockWrite(F, FOutputSize, SizeOf(Integer));
+  // Save weights and biases for each layer (see your own internal structure)
+  // ...
+  CloseFile(F);
+end;
+
+procedure TRNNFacade.LoadModel(const Filename: string);
+var
+  F: File;
+begin
+  AssignFile(F, Filename);
+  Reset(F, 1);
+  // Example: Load main configuration and layer weights.
+  BlockRead(F, FInputSize, SizeOf(Integer));
+  BlockRead(F, FOutputSize, SizeOf(Integer));
+  // Load weights and biases for each layer
+  // ...
+  CloseFile(F);
 end;
 
 end.
