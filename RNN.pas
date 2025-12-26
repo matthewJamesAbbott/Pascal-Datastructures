@@ -14,6 +14,7 @@ type
   TActivationType = (atSigmoid, atTanh, atReLU, atLinear);
   TLossType = (ltMSE, ltCrossEntropy);
   TCellType = (ctSimpleRNN, ctLSTM, ctGRU);
+  TIntArray = array of Integer;
 
   DArray = array of Double;
   TDArray2D = array of DArray;
@@ -105,7 +106,7 @@ type
     dB: DArray;
     constructor Create(InputSize, OutputSize: Integer; Activation: TActivationType);
     procedure Forward(const Input: DArray; var Output, Pre: DArray);
-    procedure Backward(const dOut, Output, Pre, Input: DArray; ClipVal: Double; var dInput: DArray);
+    procedure Backward(const ddOut, Output, Pre, Input: DArray; ClipVal: Double; var dInput: DArray);
     procedure ApplyGradients(LR, ClipVal: Double);
     procedure ResetGradients;
   end;
@@ -487,12 +488,12 @@ procedure TLSTMCell.Backward(const dH, dC, H, C, F, I, CTilde, O, TanhC, PrevH, 
 var
   k, j: Integer;
   Concat: DArray;
-  dO, dCTotal, dF, dI, dCTilde: DArray;
+  ddO, dCTotal, dF, dI, dCTilde: DArray;
   ConcatSize: Integer;
 begin
   Concat := ConcatArrays(Input, PrevH);
   ConcatSize := Length(Concat);
-  SetLength(dO, FHiddenSize);
+  SetLength(ddO, FHiddenSize);
   SetLength(dCTotal, FHiddenSize);
   SetLength(dF, FHiddenSize);
   SetLength(dI, FHiddenSize);
@@ -510,7 +511,7 @@ begin
 
   for k := 0 to FHiddenSize - 1 do
   begin
-    dO[k] := ClipValue(dH[k] * TanhC[k] * TActivation.Derivative(O[k], atSigmoid), ClipVal);
+    ddO[k] := ClipValue(dH[k] * TanhC[k] * TActivation.Derivative(O[k], atSigmoid), ClipVal);
     dCTotal[k] := ClipValue(dH[k] * O[k] * (1 - TanhC[k] * TanhC[k]) + dC[k], ClipVal);
     dF[k] := ClipValue(dCTotal[k] * PrevC[k] * TActivation.Derivative(F[k], atSigmoid), ClipVal);
     dI[k] := ClipValue(dCTotal[k] * CTilde[k] * TActivation.Derivative(I[k], atSigmoid), ClipVal);
@@ -525,20 +526,20 @@ begin
       dWf[k][j] := dWf[k][j] + dF[k] * Concat[j];
       dWi[k][j] := dWi[k][j] + dI[k] * Concat[j];
       dWc[k][j] := dWc[k][j] + dCTilde[k] * Concat[j];
-      dWo[k][j] := dWo[k][j] + dO[k] * Concat[j];
+      dWo[k][j] := dWo[k][j] + ddO[k] * Concat[j];
 
       if j < FInputSize then
         dInput[j] := dInput[j] + Wf[k][j] * dF[k] + Wi[k][j] * dI[k] +
-                     Wc[k][j] * dCTilde[k] + Wo[k][j] * dO[k]
+                     Wc[k][j] * dCTilde[k] + Wo[k][j] * ddO[k]
       else
         dPrevH[j - FInputSize] := dPrevH[j - FInputSize] +
                                    Wf[k][j] * dF[k] + Wi[k][j] * dI[k] +
-                                   Wc[k][j] * dCTilde[k] + Wo[k][j] * dO[k];
+                                   Wc[k][j] * dCTilde[k] + Wo[k][j] * ddO[k];
     end;
     dBf[k] := dBf[k] + dF[k];
     dBi[k] := dBi[k] + dI[k];
     dBc[k] := dBc[k] + dCTilde[k];
-    dBo[k] := dBo[k] + dO[k];
+    dBo[k] := dBo[k] + ddO[k];
   end;
 end;
 
@@ -813,7 +814,7 @@ begin
   end;
 end;
 
-procedure TOutputLayer.Backward(const dOut, Output, Pre, Input: DArray; ClipVal: Double; var dInput: DArray);
+procedure TOutputLayer.Backward(const ddOut, Output, Pre, Input: DArray; ClipVal: Double; var dInput: DArray);
 var
   i, j: Integer;
   dPre: DArray;
@@ -823,7 +824,7 @@ begin
   for j := 0 to FInputSize - 1 do dInput[j] := 0;
 
   for i := 0 to FOutputSize - 1 do
-    dPre[i] := ClipValue(dOut[i] * TActivation.Derivative(Output[i], FActivation), ClipVal);
+    dPre[i] := ClipValue(ddOut[i] * TActivation.Derivative(Output[i], FActivation), ClipVal);
 
   for i := 0 to FOutputSize - 1 do
   begin
@@ -1015,7 +1016,7 @@ function TAdvancedRNN.BackwardSequence(const Targets: TDArray2D; const Caches: a
 var
   t, layer, k: Integer;
   T_len, BPTTLimit: Integer;
-  dOut, dH, dC, dInput, dPrevH, dPrevC: DArray;
+  ddOut, dH, dC, dInput, dPrevH, dPrevC: DArray;
   Grad: DArray;
   dStatesH, dStatesC: TDArray2D;
   TotalLoss: Double;
@@ -1046,9 +1047,9 @@ begin
 
     for layer := High(FHiddenSizes) downto 0 do
     begin
-      SetLength(dOut, FHiddenSizes[layer]);
+      SetLength(ddOut, FHiddenSizes[layer]);
       for k := 0 to FHiddenSizes[layer] - 1 do
-        dOut[k] := dH[k] + dStatesH[layer][k];
+        ddOut[k] := dH[k] + dStatesH[layer][k];
 
       if t > 0 then
         PrevH := Caches[t-1].H
@@ -1058,7 +1059,7 @@ begin
       case FCellType of
         ctSimpleRNN:
         begin
-          FSimpleCells[layer].Backward(dOut, Caches[t].H, Caches[t].PreH, PrevH,
+          FSimpleCells[layer].Backward(ddOut, Caches[t].H, Caches[t].PreH, PrevH,
                                         Caches[t].Input, FGradientClip, dInput, dPrevH);
           dStatesH[layer] := Copy(dPrevH);
         end;
@@ -1073,7 +1074,7 @@ begin
           for k := 0 to FHiddenSizes[layer] - 1 do
             dC[k] := dStatesC[layer][k];
 
-          FLSTMCells[layer].Backward(dOut, dC, Caches[t].H, Caches[t].C,
+          FLSTMCells[layer].Backward(ddOut, dC, Caches[t].H, Caches[t].C,
                                       Caches[t].F, Caches[t].I, Caches[t].CTilde,
                                       Caches[t].O, Caches[t].TanhC,
                                       PrevH, PrevC, Caches[t].Input,
@@ -1083,7 +1084,7 @@ begin
         end;
         ctGRU:
         begin
-          FGRUCells[layer].Backward(dOut, Caches[t].H, Caches[t].Z, Caches[t].R,
+          FGRUCells[layer].Backward(ddOut, Caches[t].H, Caches[t].Z, Caches[t].R,
                                      Caches[t].HTilde, PrevH, Caches[t].Input,
                                      FGradientClip, dInput, dPrevH);
           dStatesH[layer] := Copy(dPrevH);
@@ -1224,6 +1225,24 @@ begin
   end;
 end;
 
+function SplitLineToIntArray(const line: string): TIntArray;
+var
+    sl: TStringList;
+    i: Integer;
+begin
+    sl := TStringList.Create;
+    try
+    sl.Delimiter := ' ';
+    sl.StrictDelimiter := True;
+    sl.DelimitedText := line;
+    SetLength(Result, sl.Count);
+    for i := 0 to sl.Count - 1 do
+        Result[i] := StrToInt(sl[i]);
+    finally
+    sl.Free;
+end;
+end;
+
 procedure SaveModelToFile(const Filename: string; RNN: TAdvancedRNN);
 var
   F: TextFile;
@@ -1252,8 +1271,13 @@ begin
   WriteLn(F, 'output_size ', RNN.FOutputSize);
 
   WriteLn(F, 'hidden_layers ', Length(RNN.FHiddenSizes));
-  WriteLn(F, ArrToLine(RNN.FHiddenSizes));
-
+  for i := 0 to High(RNN.FHiddenSizes) do
+  begin
+      Write(F, RNN.FHiddenSizes[i]);
+      if i < High(RNN.FHiddenSizes) then
+          Write(F, ' ');
+  end;
+  WriteLn(F);
   WriteLn(F, 'cell_type ', Ord(RNN.FCellType)); // 0=rnn, 1=lstm, 2=gru
   WriteLn(F, 'activation ', Ord(RNN.FActivation));
   WriteLn(F, 'output_activation ', Ord(RNN.FOutputActivation));
@@ -1347,12 +1371,17 @@ var
     Result := StrToInt(n);
   end;
   function ReadDoubleLine: Double;
-  var s, n: string;
+var s, n: string;
+
   begin
     ReadLn(F, s);
     n := Trim(Copy(s, Pos(' ',s)+1, MaxInt));
     Result := StrToFloat(n);
   end;
+
+var     sizes: TIntArray;
+    prevSize: Integer;
+
 begin
   AssignFile(F, Filename);
   Reset(F);
@@ -1363,8 +1392,8 @@ begin
   nLayers := ReadIntLine; // "hidden_layers"
   SetLength(RNN.FHiddenSizes, nLayers);
   ReadLn(F, line);        // sizes
-  var sizes := line.Split([' ']);
-  for i := 0 to nLayers-1 do RNN.FHiddenSizes[i] := StrToInt(sizes[i]);
+  sizes := SplitLineToIntArray(line);
+  for i := 0 to nLayers-1 do RNN.FHiddenSizes[i] := sizes[i];
 
   RNN.FCellType := TCellType(ReadIntLine); // "cell_type"
   RNN.FActivation := TActivationType(ReadIntLine);
@@ -1375,7 +1404,7 @@ begin
   RNN.FBPTTSteps := ReadIntLine;
 
   // Build cell objects
-  var prevSize := RNN.FInputSize;
+  prevSize := RNN.FInputSize;
   case RNN.FCellType of
     ctSimpleRNN:
       begin
@@ -1468,63 +1497,98 @@ begin
 end;
 
 
+
 procedure ParseArgs;
 var i: Integer;
     arg: string;
+    InputFile, TargetFile, OutputFile, ModelFile: string;
+    CellTypeStr, LossTypeStr, ActivationTypeStr, OutputActivationStr: string;
+    HiddenSize, Layers, SequenceLen, InputSize, OutputSize, Epochs, BatchSize, LogInterval, BPTTSteps, Seed: Integer;
+    ValSplit, LR, ClipVal: Double;
+    Quiet, PredictMode: Boolean;
 begin
   // Set full defaults
-  InputFile := ''; TargetFile := ''; OutputFile := ''; ModelFile := '';
-  CellTypeStr := 'lstm'; LossTypeStr := 'mse'; ActivationTypeStr := 'tanh'; OutputActivationStr := 'linear';
-  HiddenSize := 16; Layers := 1; SequenceLen := 10;
-  InputSize := 2; OutputSize := 2; Epochs := 200; BatchSize := 1; LogInterval := 20; BPTTSteps := 0;
-  ValSplit := 0.2; LR := 0.01; ClipVal := 5.0; Seed := 0;
-  Quiet := False; PredictMode := False;
+    InputFile := ''; TargetFile := ''; OutputFile := ''; ModelFile := '';
+    CellTypeStr := 'lstm'; LossTypeStr := 'mse'; ActivationTypeStr := 'tanh'; OutputActivationStr := 'linear';
+    HiddenSize := 16; Layers := 1; SequenceLen := 10;
+    InputSize := 2; OutputSize := 2; Epochs := 200; BatchSize := 1; LogInterval := 20; BPTTSteps := 0;
+    ValSplit := 0.2; LR := 0.01; ClipVal := 5.0; Seed := 0;
+    Quiet := False; PredictMode := False;
 
-  i := 1;
-  while i <= ParamCount do begin
-    arg := LowerCase(ParamStr(i));
-    if (arg='-h') or (arg='--help') then begin ShowHelp; Halt(0); end
-    else if (arg='--quiet') then Quiet:=True
-    else if (arg='--predict') then PredictMode:=True
-    else if (arg='-i') or (arg='--input') then begin Inc(i); if i<=ParamCount then InputFile:=ParamStr(i); end
-    else if (arg='-t') or (arg='--target') then begin Inc(i); if i<=ParamCount then TargetFile:=ParamStr(i); end
-    else if (arg='-o') or (arg='--output') then begin Inc(i); if i<=ParamCount then OutputFile:=ParamStr(i); end
-    else if (arg='-m') or (arg='--model') then begin Inc(i); if i<=ParamCount then ModelFile:=ParamStr(i); end
-    else if (arg='--cell') then begin Inc(i); if i<=ParamCount then CellTypeStr:=LowerCase(ParamStr(i)); end
-    else if (arg='--hidden') then begin Inc(i); if i<=ParamCount then HiddenSize:=StrToIntDef(ParamStr(i), HiddenSize); end
-    else if (arg='--layers') then begin Inc(i); if i<=ParamCount then Layers:=StrToIntDef(ParamStr(i), Layers); end
-    else if (arg='--epochs') then begin Inc(i); if i<=ParamCount then Epochs:=StrToIntDef(ParamStr(i), Epochs); end
-    else if (arg='--batch-size') then begin Inc(i); if i<=ParamCount then BatchSize:=StrToIntDef(ParamStr(i), BatchSize); end
-    else if (arg='--lr') then begin Inc(i); if i<=ParamCount then LR:=StrToFloatDef(ParamStr(i), LR); end
-    else if (arg='--clip') then begin Inc(i); if i<=ParamCount then ClipVal:=StrToFloatDef(ParamStr(i), ClipVal); end
-    else if (arg='--val-split') then begin Inc(i); if i<=ParamCount then ValSplit:=StrToFloatDef(ParamStr(i), ValSplit); end
-    else if (arg='--log-interval') then begin Inc(i); if i<=ParamCount then LogInterval:=StrToIntDef(ParamStr(i), LogInterval); end
-    else if (arg='--activation') then begin Inc(i); if i<=ParamCount then ActivationTypeStr:=LowerCase(ParamStr(i)); end
-    else if (arg='--out-activation') then begin Inc(i); if i<=ParamCount then OutputActivationStr:=LowerCase(ParamStr(i)); end
-    else if (arg='--loss') then begin Inc(i); if i<=ParamCount then LossTypeStr:=LowerCase(ParamStr(i)); end
-    else if (arg='--seed') then begin Inc(i); if i<=ParamCount then Seed:=StrToIntDef(ParamStr(i), Seed); end
-    else if (arg='--bptt-steps') then begin Inc(i); if i<=ParamCount then BPTTSteps:=StrToIntDef(ParamStr(i), BPTTSteps); end;
-    Inc(i);
-  end;
+    i := 1;
+    while i <= ParamCount do begin
+        arg := LowerCase(ParamStr(i));
+        if (arg='-h') or (arg='--help') then begin ShowHelp; Halt(0); end
+        else if (arg='--quiet') then Quiet:=True
+        else if (arg='--predict') then PredictMode:=True
+        else if (arg='-i') or (arg='--input') then begin Inc(i); if i<=ParamCount then InputFile:=ParamStr(i); end
+        else if (arg='-t') or (arg='--target') then begin Inc(i); if i<=ParamCount then TargetFile:=ParamStr(i); end
+        else if (arg='-o') or (arg='--output') then begin Inc(i); if i<=ParamCount then OutputFile:=ParamStr(i); end
+        else if (arg='-m') or (arg='--model') then begin Inc(i); if i<=ParamCount then ModelFile:=ParamStr(i); end
+        else if (arg='--cell') then begin Inc(i); if i<=ParamCount then CellTypeStr:=LowerCase(ParamStr(i)); end
+        else if (arg='--hidden') then begin Inc(i); if i<=ParamCount then HiddenSize:=StrToIntDef(ParamStr(i), HiddenSize); end
+        else if (arg='--layers') then begin Inc(i); if i<=ParamCount then Layers:=StrToIntDef(ParamStr(i), Layers); end
+        else if (arg='--epochs') then begin Inc(i); if i<=ParamCount then Epochs:=StrToIntDef(ParamStr(i), Epochs); end
+        else if (arg='--batch-size') then begin Inc(i); if i<=ParamCount then BatchSize:=StrToIntDef(ParamStr(i), BatchSize); end
+        else if (arg='--lr') then begin Inc(i); if i<=ParamCount then LR:=StrToFloatDef(ParamStr(i), LR); end
+        else if (arg='--clip') then begin Inc(i); if i<=ParamCount then ClipVal:=StrToFloatDef(ParamStr(i), ClipVal); end
+        else if (arg='--val-split') then begin Inc(i); if i<=ParamCount then ValSplit:=StrToFloatDef(ParamStr(i), ValSplit); end
+        else if (arg='--log-interval') then begin Inc(i); if i<=ParamCount then LogInterval:=StrToIntDef(ParamStr(i), LogInterval); end
+        else if (arg='--activation') then begin Inc(i); if i<=ParamCount then ActivationTypeStr:=LowerCase(ParamStr(i)); end
+        else if (arg='--out-activation') then begin Inc(i); if i<=ParamCount then OutputActivationStr:=LowerCase(ParamStr(i)); end
+        else if (arg='--loss') then begin Inc(i); if i<=ParamCount then LossTypeStr:=LowerCase(ParamStr(i)); end
+        else if (arg='--seed') then begin Inc(i); if i<=ParamCount then Seed:=StrToIntDef(ParamStr(i), Seed); end
+        else if (arg='--bptt-steps') then begin Inc(i); if i<=ParamCount then BPTTSteps:=StrToIntDef(ParamStr(i), BPTTSteps); end;
+        Inc(i);
+    end;
 end;
 
 procedure StringToEnums;
+var
+    CellTypeStr, ActivationTypeStr, OutputActivationStr, LossTypeStr: string;
+    CellType: TCellType;
+    ActivationType, OutputActivation: TActivationType;
+    LossType: TLossType;
 begin
   { Map the string options to enum types }
-  if CellTypeStr='rnn' then CellType:=ctSimpleRNN
-  else if CellTypeStr='gru' then CellType:=ctGRU
-  else CellType:=ctLSTM;
-  if ActivationTypeStr='relu' then ActivationType:=atReLU
-  else if ActivationTypeStr='sigmoid' then ActivationType:=atSigmoid
-  else ActivationType:=atTanh;
-  if OutputActivationStr='sigmoid' then OutputActivation:=atSigmoid
-  else if OutputActivationStr='tanh' then OutputActivation:=atTanh
-  else if OutputActivationStr='relu' then OutputActivation:=atReLU
-  else OutputActivation:=atLinear;
-  if LossTypeStr='crossentropy' then LossType:=ltCrossEntropy
-  else LossType:=ltMSE;
+    if CellTypeStr='rnn' then CellType:=ctSimpleRNN
+    else if CellTypeStr='gru' then CellType:=ctGRU
+    else CellType:=ctLSTM;
+    if ActivationTypeStr='relu' then ActivationType:=atReLU
+    else if ActivationTypeStr='sigmoid' then ActivationType:=atSigmoid
+    else ActivationType:=atTanh;
+    if OutputActivationStr='sigmoid' then OutputActivation:=atSigmoid
+    else if OutputActivationStr='tanh' then OutputActivation:=atTanh
+    else if OutputActivationStr='relu' then OutputActivation:=atReLU
+    else OutputActivation:=atLinear;
+    if LossTypeStr='crossentropy' then LossType:=ltCrossEntropy
+    else LossType:=ltMSE;
 end;
+var
+    // Configurable parameters
+    InputFile, TargetFile, OutputFile, ModelFile: string;
+    CellTypeStr, ActivationTypeStr, OutputActivationStr, LossTypeStr: string;
+    HiddenSize, Layers, SequenceLen, InputSize, OutputSize, Epochs, BatchSize, LogInterval, BPTTSteps, Seed, t: Integer;
+    ValSplit: Double;
+    LR, ClipVal: Double;
+    Quiet, PredictMode: Boolean;
+    CellType: TCellType; 
+    ActivationType, OutputActivation: TActivationType;
+    LossType: TLossType;
 
+    // Data
+    Inputs, Targets: TDArray2D;
+    Split: TDataSplit;
+    
+    // RNN
+    RNN: TAdvancedRNN;
+    
+    // Training
+    epoch, b: Integer;
+    TrainLoss, ValLoss: Double;
+    
+    // Predictions
+    Predictions: TDArray2D;
 // ========== Main ==========
 begin
   ParseArgs;
@@ -1645,7 +1709,7 @@ begin
       );
     // Optionally save model
     if ModelFile <> '' then
-      SaveModel(ModelFile, RNN);
+      SaveModelToFile(ModelFile, RNN);
   end;
   RNN.Free;
 end.
