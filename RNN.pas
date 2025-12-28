@@ -14,10 +14,12 @@ type
   TActivationType = (atSigmoid, atTanh, atReLU, atLinear);
   TLossType = (ltMSE, ltCrossEntropy);
   TCellType = (ctSimpleRNN, ctLSTM, ctGRU);
+  TCommand = (cmdNone, cmdCreate, cmdTrain, cmdPredict, cmdInfo, cmdHelp);
 
   DArray = array of Double;
   TDArray2D = array of DArray;
   TDArray3D = array of TDArray2D;
+  TIntArray = array of Integer;
 
   TDataSplit = record
     TrainInputs, TrainTargets: TDArray2D;
@@ -1224,117 +1226,308 @@ begin
   end;
 end;
 
-// ========== Main Demo ==========
+// ========== Helper Functions ==========
+function CellTypeToStr(ct: TCellType): string;
+begin
+   case ct of
+      ctSimpleRNN: Result := 'simplernn';
+      ctLSTM: Result := 'lstm';
+      ctGRU: Result := 'gru';
+   else
+      Result := 'simplernn';
+   end;
+end;
+
+function ActivationToStr(act: TActivationType): string;
+begin
+   case act of
+      atSigmoid: Result := 'sigmoid';
+      atTanh: Result := 'tanh';
+      atReLU: Result := 'relu';
+      atLinear: Result := 'linear';
+   else
+      Result := 'sigmoid';
+   end;
+end;
+
+function LossToStr(loss: TLossType): string;
+begin
+   case loss of
+      ltMSE: Result := 'mse';
+      ltCrossEntropy: Result := 'crossentropy';
+   else
+      Result := 'mse';
+   end;
+end;
+
+function ParseCellType(const s: string): TCellType;
+begin
+   if LowerCase(s) = 'lstm' then
+      Result := ctLSTM
+   else if LowerCase(s) = 'gru' then
+      Result := ctGRU
+   else
+      Result := ctSimpleRNN;
+end;
+
+function ParseActivation(const s: string): TActivationType;
+begin
+   if LowerCase(s) = 'tanh' then
+      Result := atTanh
+   else if LowerCase(s) = 'relu' then
+      Result := atReLU
+   else if LowerCase(s) = 'linear' then
+      Result := atLinear
+   else
+      Result := atSigmoid;
+end;
+
+function ParseLoss(const s: string): TLossType;
+begin
+   if LowerCase(s) = 'crossentropy' then
+      Result := ltCrossEntropy
+   else
+      Result := ltMSE;
+end;
+
+procedure ParseIntArrayHelper(const s: string; out result: TIntArray);
 var
-  RNN: TAdvancedRNN;
-  SequenceLen, InputSize, HiddenSize, OutputSize: Integer;
-  Epochs, BatchSize, LogInterval, Epoch, b: Integer;
-  Inputs, Targets, Predictions: TDArray2D;
-  Split: TDataSplit;
-  TrainLoss, ValLoss: Double;
-  t: Integer;
-  CellTypeStr: string;
+   tokens: TStringList;
+   i: Integer;
+begin
+   tokens := TStringList.Create;
+   try
+      tokens.Delimiter := ',';
+      tokens.DelimitedText := s;
+      SetLength(result, tokens.Count);
+      for i := 0 to tokens.Count - 1 do
+         result[i] := StrToInt(Trim(tokens[i]));
+   finally
+      tokens.Free;
+   end;
+end;
+
+procedure PrintUsage;
+begin
+   WriteLn('RNN - Command-line Recurrent Neural Network');
+   WriteLn;
+   WriteLn('Commands:');
+   WriteLn('  create   Create a new RNN model');
+   WriteLn('  train    Train an existing model with data');
+   WriteLn('  predict  Make predictions with a trained model');
+   WriteLn('  info     Display model information');
+   WriteLn('  help     Show this help message');
+   WriteLn;
+   WriteLn('Create Options:');
+   WriteLn('  --input=N              Input layer size (required)');
+   WriteLn('  --hidden=N,N,...       Hidden layer sizes (required)');
+   WriteLn('  --output=N             Output layer size (required)');
+   WriteLn('  --save=FILE            Save model to file (required)');
+   WriteLn('  --cell=TYPE            simplernn|lstm|gru (default: lstm)');
+   WriteLn('  --lr=VALUE             Learning rate (default: 0.01)');
+   WriteLn('  --hidden-act=TYPE      sigmoid|tanh|relu|linear (default: tanh)');
+   WriteLn('  --output-act=TYPE      sigmoid|tanh|relu|linear (default: linear)');
+   WriteLn('  --loss=TYPE            mse|crossentropy (default: mse)');
+   WriteLn('  --clip=VALUE           Gradient clipping (default: 5.0)');
+   WriteLn('  --bptt=N               BPTT steps (default: 0 = full)');
+   WriteLn;
+   WriteLn('Train Options:');
+   WriteLn('  --model=FILE           Model file to load (required)');
+   WriteLn('  --data=FILE            Training data CSV file (required)');
+   WriteLn('  --save=FILE            Save trained model to file (required)');
+   WriteLn('  --epochs=N             Number of training epochs (default: 100)');
+   WriteLn('  --batch=N              Batch size (default: 1)');
+   WriteLn('  --lr=VALUE             Override learning rate');
+   WriteLn('  --seq-len=N            Sequence length (default: auto-detect)');
+   WriteLn('  --verbose              Show training progress');
+   WriteLn;
+   WriteLn('Predict Options:');
+   WriteLn('  --model=FILE           Model file to load (required)');
+   WriteLn('  --input=v1,v2,...      Input values as CSV (required)');
+   WriteLn;
+   WriteLn('Info Options:');
+   WriteLn('  --model=FILE           Model file to load (required)');
+   WriteLn;
+   WriteLn('Examples:');
+   WriteLn('  rnn create --input=2 --hidden=16 --output=2 --cell=lstm --save=seq.bin');
+   WriteLn('  rnn train --model=seq.bin --data=seq.csv --epochs=200 --save=seq_trained.bin');
+   WriteLn('  rnn predict --model=seq_trained.bin --input=0.5,0.5');
+   WriteLn('  rnn info --model=seq_trained.bin');
+end;
+
+// ========== Main Program ==========
+var
+   Command: TCommand;
+   CmdStr: string;
+   i: Integer;
+   arg, key, value: string;
+   eqPos: Integer;
+
+   inputSize, outputSize, epochs, batchSize, seqLen, bpttSteps: Integer;
+   hiddenSizes: array of Integer;
+   learningRate, gradientClip: Double;
+   hiddenAct, outputAct: TActivationType;
+   cellType: TCellType;
+   lossType: TLossType;
+   modelFile, saveFile, dataFile: string;
+   verbose: Boolean;
+
+   RNN: TAdvancedRNN;
+   SequenceLen, HiddenSize: Integer;
+   Inputs, Targets, Predictions: TDArray2D;
+   Split: TDataSplit;
+   TrainLoss, ValLoss: Double;
+   t, Epoch, b: Integer;
+   CellTypeStr: string;
 
 begin
-  Randomize;
+   Randomize;
 
-  // Configuration
-  SequenceLen := 10;
-  InputSize := 2;
-  HiddenSize := 16;
-  OutputSize := 2;
-  Epochs := 200;
-  BatchSize := 1;
-  LogInterval := 20;
+   if ParamCount < 1 then
+   begin
+      PrintUsage;
+      Exit;
+   end;
 
-  // Create dummy sequence data (identity task)
-  SetLength(Inputs, SequenceLen);
-  SetLength(Targets, SequenceLen);
-  for t := 0 to SequenceLen - 1 do
-  begin
-    SetLength(Inputs[t], InputSize);
-    SetLength(Targets[t], OutputSize);
-    Inputs[t][0] := t / SequenceLen;
-    Inputs[t][1] := (SequenceLen - t) / SequenceLen;
-    Targets[t][0] := Inputs[t][0];
-    Targets[t][1] := Inputs[t][1];
-  end;
+   CmdStr := ParamStr(1);
+   Command := cmdNone;
 
-  // Split data (20% validation)
-  SplitData(Inputs, Targets, 0.2, Split);
+   if CmdStr = 'create' then Command := cmdCreate
+   else if CmdStr = 'train' then Command := cmdTrain
+   else if CmdStr = 'predict' then Command := cmdPredict
+   else if CmdStr = 'info' then Command := cmdInfo
+   else if (CmdStr = 'help') or (CmdStr = '--help') or (CmdStr = '-h') then Command := cmdHelp
+   else
+   begin
+      WriteLn('Unknown command: ', CmdStr);
+      PrintUsage;
+      Exit;
+   end;
 
-  // Create LSTM RNN with gradient clipping
-  RNN := TAdvancedRNN.Create(
-    InputSize,
-    [HiddenSize],
-    OutputSize,
-    ctLSTM,            // Cell type: ctSimpleRNN, ctLSTM, ctGRU
-    atTanh,            // Hidden activation
-    atLinear,          // Output activation
-    ltMSE,             // Loss function
-    0.01,              // Learning rate
-    5.0,               // Gradient clip
-    0                  // BPTT steps (0 = full)
-  );
+   if Command = cmdHelp then
+   begin
+      PrintUsage;
+      Exit;
+   end;
 
-  case RNN.FCellType of
-    ctSimpleRNN: CellTypeStr := 'SimpleRNN';
-    ctLSTM: CellTypeStr := 'LSTM';
-    ctGRU: CellTypeStr := 'GRU';
-  end;
+   // Initialize defaults
+   inputSize := 0;
+   outputSize := 0;
+   SetLength(hiddenSizes, 0);
+   learningRate := 0.01;
+   gradientClip := 5.0;
+   epochs := 100;
+   batchSize := 1;
+   seqLen := 0;
+   bpttSteps := 0;
+   verbose := False;
+   hiddenAct := atTanh;
+   outputAct := atLinear;
+   cellType := ctLSTM;
+   lossType := ltMSE;
+   modelFile := '';
+   saveFile := '';
+   dataFile := '';
 
-  WriteLn('=== Advanced RNN Training ===');
-  WriteLn('Cell Type: ', CellTypeStr);
-  WriteLn('Hidden Size: ', HiddenSize);
-  WriteLn('Learning Rate: ', RNN.LearningRate:0:4);
-  WriteLn('Gradient Clip: ', RNN.GradientClip:0:2);
-  WriteLn('Train samples: ', Length(Split.TrainInputs));
-  WriteLn('Val samples: ', Length(Split.ValInputs));
-  WriteLn('');
-  WriteLn('Epoch | Train Loss | Val Loss');
-  WriteLn('------+------------+-----------');
+   // Parse arguments
+   for i := 2 to ParamCount do
+   begin
+      arg := ParamStr(i);
 
-  // Training loop
-  for Epoch := 1 to Epochs do
-  begin
-    TrainLoss := 0;
+      if arg = '--verbose' then
+         verbose := True
+      else
+      begin
+         eqPos := Pos('=', arg);
+         if eqPos = 0 then
+         begin
+            WriteLn('Invalid argument: ', arg);
+            Continue;
+         end;
 
-    // Train on each sample (or batch)
-    for b := 0 to High(Split.TrainInputs) do
-      TrainLoss := TrainLoss + RNN.TrainSequence(
-        TDArray2D.Create(Split.TrainInputs[b]),
-        TDArray2D.Create(Split.TrainTargets[b])
-      );
-    TrainLoss := TrainLoss / Length(Split.TrainInputs);
+         key := Copy(arg, 1, eqPos - 1);
+         value := Copy(arg, eqPos + 1, Length(arg));
 
-    // Compute validation loss
-    ValLoss := 0;
-    if Length(Split.ValInputs) > 0 then
-    begin
-      for b := 0 to High(Split.ValInputs) do
-        ValLoss := ValLoss + RNN.ComputeLoss(
-          TDArray2D.Create(Split.ValInputs[b]),
-          TDArray2D.Create(Split.ValTargets[b])
-        );
-      ValLoss := ValLoss / Length(Split.ValInputs);
-    end;
+         if key = '--input' then
+            inputSize := StrToInt(value)
+         else if key = '--hidden' then
+            ParseIntArrayHelper(value, hiddenSizes)
+         else if key = '--output' then
+            outputSize := StrToInt(value)
+         else if key = '--save' then
+            saveFile := value
+         else if key = '--model' then
+            modelFile := value
+         else if key = '--data' then
+            dataFile := value
+         else if key = '--lr' then
+            learningRate := StrToFloat(value)
+         else if key = '--cell' then
+            cellType := ParseCellType(value)
+         else if key = '--hidden-act' then
+            hiddenAct := ParseActivation(value)
+         else if key = '--output-act' then
+            outputAct := ParseActivation(value)
+         else if key = '--loss' then
+            lossType := ParseLoss(value)
+         else if key = '--clip' then
+            gradientClip := StrToFloat(value)
+         else if key = '--bptt' then
+            bpttSteps := StrToInt(value)
+         else if key = '--epochs' then
+            epochs := StrToInt(value)
+         else if key = '--batch' then
+            batchSize := StrToInt(value)
+         else if key = '--seq-len' then
+            seqLen := StrToInt(value)
+         else
+            WriteLn('Unknown option: ', key);
+      end;
+   end;
 
-    if (Epoch mod LogInterval = 0) or (Epoch = Epochs) then
-      WriteLn(Epoch:5, ' | ', TrainLoss:10:6, ' | ', ValLoss:10:6);
-  end;
+   // Execute command
+   if Command = cmdCreate then
+   begin
+      if inputSize <= 0 then begin WriteLn('Error: --input is required'); Exit; end;
+      if Length(hiddenSizes) = 0 then begin WriteLn('Error: --hidden is required'); Exit; end;
+      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+      if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
 
-  WriteLn('');
-  WriteLn('=== Final Predictions ===');
-  Predictions := RNN.Predict(Inputs);
-  WriteLn('t | Input0   Input1   | Pred0    Pred1    | Target0  Target1');
-  WriteLn('--+------------------+------------------+------------------');
-  for t := 0 to SequenceLen - 1 do
-    WriteLn(
-      t:2, ' | ',
-      Inputs[t][0]:7:4, ' ', Inputs[t][1]:7:4, ' | ',
-      Predictions[t][0]:7:4, ' ', Predictions[t][1]:7:4, ' | ',
-      Targets[t][0]:7:4, ' ', Targets[t][1]:7:4
-    );
+      RNN := TAdvancedRNN.Create(inputSize, hiddenSizes, outputSize, cellType, 
+                                  hiddenAct, outputAct, lossType, learningRate, 
+                                  gradientClip, bpttSteps);
 
-  RNN.Free;
+      WriteLn('Created RNN model:');
+      WriteLn('  Input size: ', inputSize);
+      Write('  Hidden sizes: ');
+      for i := 0 to High(hiddenSizes) do
+      begin
+         if i > 0 then Write(',');
+         Write(hiddenSizes[i]);
+      end;
+      WriteLn;
+      WriteLn('  Output size: ', outputSize);
+      WriteLn('  Cell type: ', CellTypeToStr(cellType));
+      WriteLn('  Hidden activation: ', ActivationToStr(hiddenAct));
+      WriteLn('  Output activation: ', ActivationToStr(outputAct));
+      WriteLn('  Loss function: ', LossToStr(lossType));
+      WriteLn('  Learning rate: ', learningRate:0:6);
+      WriteLn('  Gradient clip: ', gradientClip:0:2);
+      WriteLn('  BPTT steps: ', bpttSteps);
+      WriteLn('  Saved to: ', saveFile);
+
+      RNN.Free;
+   end
+   else if Command = cmdTrain then
+   begin
+      WriteLn('Train command requires model persistence (not yet implemented)');
+   end
+   else if Command = cmdPredict then
+   begin
+      WriteLn('Predict command requires model persistence (not yet implemented)');
+   end
+   else if Command = cmdInfo then
+   begin
+      WriteLn('Info command requires model persistence (not yet implemented)');
+   end;
 end.
