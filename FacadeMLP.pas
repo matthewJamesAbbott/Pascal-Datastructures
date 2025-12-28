@@ -1,74 +1,58 @@
-{
-  MLPFacade - Facade for TMultiLayerPerceptron
-  Provides comprehensive accessors for neurons, layers, weights, gradients,
-  optimizer states, dropout masks, batch normalization, and more.
-  
-  Matthew Abbott 2025
-}
+//
+// Facaded MLP - Command-line Multi-Layer Perceptron with Full Facade Support
+// CLI: Create, Train, Predict, Inspect, and Directly Modify Model Internals
+// Adds facade commands for comprehensive internal access to neurons, weights, layers
+//
+// Matthew Abbott 2025
+// Based on MLPtest with facade extensions for get-weight, set-weight, get-bias,
+// set-bias, get-output, get-error, layer-info, histogram, get-optimizer commands
+//
 
 {$mode objfpc}
-{$H+}
+{$M+}
 
-unit MLPFacade;
-
-interface
+program FacadedMLPTest;
 
 uses Classes, Math, SysUtils;
 
 const
    EPSILON = 1e-15;
-   HISTOGRAM_BINS = 20;
+   MODEL_MAGIC = 'MLPBKND01';
 
 type
-   TActivationType = (atSigmoid, atTanh, atReLU, atSoftmax);
-   TOptimizerType = (otSGD, otAdam, otRMSProp);
+    TActivationType = (atSigmoid, atTanh, atReLU, atSoftmax);
+    TOptimizerType = (otSGD, otAdam, otRMSProp);
+    TCommand = (cmdNone, cmdCreate, cmdTrain, cmdPredict, cmdInfo, cmdHelp,
+                cmdGetWeight, cmdSetWeight, cmdGetWeights, cmdGetBias, cmdSetBias,
+                cmdGetOutput, cmdGetError, cmdLayerInfo, cmdHistogram,
+                cmdGetOptimizer);
    
    Darray = array of Double;
+   TDoubleArray = array of Double;
+   TIntArray = array of Integer;
    
    TDataPoint = record
       Input: Darray;
       Target: Darray;
    end;
    TDataPointArray = array of TDataPoint;
-   
-   THistogramBin = record
-      RangeMin: Double;
-      RangeMax: Double;
-      Count: Integer;
-   end;
-   THistogram = array of THistogramBin;
-   
-   TConnection = record
-      FromLayerIdx: Integer;
-      FromNeuronIdx: Integer;
-      Weight: Double;
-   end;
-   TConnectionArray = array of TConnection;
 
    TNeuron = record
       Weights: array of Double;
       Bias: Double;
       Output: Double;
       Error: Double;
-      PreActivation: Double;
-      M: array of Double;
-      V: array of Double;
+      M: array of Double;      // First moment (Adam)
+      V: array of Double;      // Second moment (Adam/RMSProp)
       MBias: Double;
       VBias: Double;
-      L2Lambda: Double;
-      Attributes: TStringList;
    end;
-   PNeuron = ^TNeuron;
 
    TLayer = record
       Neurons: array of TNeuron;
       ActivationType: TActivationType;
       DropoutMask: array of Boolean;
-      LearningRate: Double;
-      RunningMean: Darray;
-      RunningVar: Darray;
    end;
-   PLayer = ^TLayer;
 
    TMultiLayerPerceptron = class
    private
@@ -83,9 +67,9 @@ type
       procedure FeedForward;
       procedure BackPropagate(Target: Darray);
       procedure UpdateWeights;
-      procedure UpdateNeuronWeightsSGD(var Neuron: TNeuron; const PrevOutputs: Darray; LayerLR, NeuronL2: Double);
-      procedure UpdateNeuronWeightsAdam(var Neuron: TNeuron; const PrevOutputs: Darray; LayerLR, NeuronL2: Double);
-      procedure UpdateNeuronWeightsRMSProp(var Neuron: TNeuron; const PrevOutputs: Darray; LayerLR, NeuronL2: Double);
+      procedure UpdateNeuronWeightsSGD(var Neuron: TNeuron; const PrevOutputs: Darray);
+      procedure UpdateNeuronWeightsAdam(var Neuron: TNeuron; const PrevOutputs: Darray);
+      procedure UpdateNeuronWeightsRMSProp(var Neuron: TNeuron; const PrevOutputs: Darray);
       procedure ApplyDropout(var Layer: TLayer);
       function InitializeWeights(NumInputs, NumOutputs: Integer; ActType: TActivationType): Darray;
    public
@@ -96,8 +80,8 @@ type
       OutputActivation: TActivationType;
       DropoutRate: Double;
       L2Lambda: Double;
-      Beta1: Double;
-      Beta2: Double;
+      Beta1: Double;           // Adam parameter
+      Beta2: Double;           // Adam parameter
       Timestep: Integer;
       EnableLRDecay: Boolean;
       LRDecayRate: Double;
@@ -107,133 +91,20 @@ type
       
       constructor Create(InputSize: Integer; HiddenSizes: array of Integer; OutputSize: Integer;
                         HiddenAct: TActivationType = atSigmoid; OutputAct: TActivationType = atSigmoid);
-      destructor Destroy; override;
       function Predict(Input: Darray): Darray;
       procedure Train(Input, Target: Darray);
       procedure TrainEpoch(var Data: TDataPointArray; BatchSize: Integer);
       function ComputeLoss(const Predicted, Target: Darray): Double;
       procedure SaveMLPModel(const Filename: string);
+      procedure Save(const Filename: string);
       
       property InputLayer: TLayer read FInputLayer;
       property OutputLayer: TLayer read FOutputLayer;
-      property InputSize: Integer read FInputSize;
-      property OutputSize: Integer read FOutputSize;
       function GetHiddenLayer(Index: Integer): TLayer;
       function GetHiddenLayerCount: Integer;
+      function GetInputSize: Integer;
+      function GetOutputSize: Integer;
    end;
-   
-   { TMLPFacade - Provides comprehensive access to MLP internals }
-   TMLPFacade = class
-   private
-      FMLP: TMultiLayerPerceptron;
-      function GetLayerPtr(LayerIdx: Integer): PLayer;
-      function GetNeuronPtr(LayerIdx, NeuronIdx: Integer): PNeuron;
-      function GetPreviousLayerOutputs(LayerIdx: Integer): Darray;
-   public
-      constructor Create(MLP: TMultiLayerPerceptron);
-      
-      { Neuron output and error }
-      function GetNeuronOutput(LayerIdx, NeuronIdx: Integer): Double;
-      procedure SetNeuronOutput(LayerIdx, NeuronIdx: Integer; Value: Double);
-      function GetNeuronError(LayerIdx, NeuronIdx: Integer): Double;
-      procedure SetNeuronError(LayerIdx, NeuronIdx: Integer; Value: Double);
-      
-      { Neuron bias and individual weights }
-      function GetNeuronBias(LayerIdx, NeuronIdx: Integer): Double;
-      procedure SetNeuronBias(LayerIdx, NeuronIdx: Integer; Value: Double);
-      function GetNeuronWeight(LayerIdx, NeuronIdx, WeightIdx: Integer): Double;
-      procedure SetNeuronWeight(LayerIdx, NeuronIdx, WeightIdx: Integer; Value: Double);
-      function GetNeuronWeights(LayerIdx, NeuronIdx: Integer): Darray;
-      procedure SetNeuronWeights(LayerIdx, NeuronIdx: Integer; const Weights: Darray);
-      
-      { Layer queries }
-      function GetLayerSize(LayerIdx: Integer): Integer;
-      function GetTotalLayers: Integer;
-      function GetWeightsPerNeuron(LayerIdx, NeuronIdx: Integer): Integer;
-      
-      { Gradients }
-      function GetNeuronWeightGradient(LayerIdx, NeuronIdx, WeightIdx: Integer): Double;
-      function GetNeuronBiasGradient(LayerIdx, NeuronIdx: Integer): Double;
-      
-      { Optimizer state (Adam m/v, RMSProp v) }
-      function GetNeuronOptimizerState(LayerIdx, NeuronIdx: Integer; Param: string): Double;
-      function GetNeuronOptimizerStateArray(LayerIdx, NeuronIdx: Integer; Param: string): Darray;
-      
-      { Full neuron/layer access }
-      function GetNeuron(LayerIdx, NeuronIdx: Integer): PNeuron;
-      function GetLayer(LayerIdx: Integer): PLayer;
-      
-      { Dropout mask }
-      function GetNeuronDropoutMask(LayerIdx, NeuronIdx: Integer): Boolean;
-      procedure SetNeuronDropoutMask(LayerIdx, NeuronIdx: Integer; Value: Boolean);
-      
-      { Pre-activation values }
-      function GetNeuronPreActivation(LayerIdx, NeuronIdx: Integer): Double;
-      procedure SetNeuronPreActivation(LayerIdx, NeuronIdx: Integer; Value: Double);
-      
-      { Batch normalization running stats }
-      function GetLayerRunningMean(LayerIdx: Integer): Darray;
-      function GetLayerRunningVar(LayerIdx: Integer): Darray;
-      procedure SetLayerRunningMean(LayerIdx: Integer; const Values: Darray);
-      procedure SetLayerRunningVar(LayerIdx: Integer; const Values: Darray);
-      
-      { Custom neuron attributes }
-      procedure SetNeuronAttribute(LayerIdx, NeuronIdx: Integer; Key: string; Value: string);
-      function GetNeuronAttribute(LayerIdx, NeuronIdx: Integer; Key: string): string;
-      
-      { Per-layer learning rate }
-      function GetLayerLearningRate(LayerIdx: Integer): Double;
-      procedure SetLayerLearningRate(LayerIdx: Integer; Value: Double);
-      
-      { Per-neuron L2 regularization }
-      function GetNeuronL2Lambda(LayerIdx, NeuronIdx: Integer): Double;
-      procedure SetNeuronL2Lambda(LayerIdx, NeuronIdx: Integer; Value: Double);
-      
-      { Connection queries }
-      function GetNeuronIncomingConnections(LayerIdx, NeuronIdx: Integer): TConnectionArray;
-      function GetNeuronOutgoingConnections(LayerIdx, NeuronIdx: Integer): TConnectionArray;
-      
-      { Dynamic topology modification }
-      function AddNeuron(LayerIdx: Integer): Integer;
-      procedure RemoveNeuron(LayerIdx, NeuronIdx: Integer);
-      function AddLayer(Position: Integer; Size: Integer; ActType: TActivationType): Integer;
-      procedure RemoveLayer(LayerIdx: Integer);
-      
-      { Histograms for visualization }
-      function GetLayerActivationHistogram(LayerIdx: Integer): THistogram;
-      function GetLayerGradientHistogram(LayerIdx: Integer): THistogram;
-      
-      { Utility }
-      property MLP: TMultiLayerPerceptron read FMLP;
-   end;
-
-{ Standalone activation functions }
-function Sigmoid(x: Double): Double;
-function DSigmoid(x: Double): Double;
-function TanhActivation(x: Double): Double;
-function DTanh(x: Double): Double;
-function ReLU(x: Double): Double;
-function DReLU(x: Double): Double;
-function Softmax(const x: Darray): Darray;
-function ApplyActivation(x: Double; ActType: TActivationType): Double;
-function ApplyActivationDerivative(x: Double; ActType: TActivationType): Double;
-
-{ Helper functions }
-function MaxIndex(const Arr: Darray): Integer;
-function CloneDataArray(const Data: TDataPointArray): TDataPointArray;
-procedure ShuffleData(var Data: TDataPointArray);
-function NormalizeData(var Data: TDataPointArray): Boolean;
-procedure CheckDataQuality(const Data: TDataPointArray);
-function LoadMLPModel(const Filename: string): TMultiLayerPerceptron;
-function KFoldCrossValidation(var Data: TDataPointArray; NumFolds: Integer; MLP: TMultiLayerPerceptron): Double;
-function TrainWithEarlyStopping(MLP: TMultiLayerPerceptron; var Data: TDataPointArray; MaxEpochs, BatchSize: Integer): Integer;
-function PrecisionScore(var Data: TDataPointArray; MLP: TMultiLayerPerceptron; ClassIndex: Integer): Double;
-function RecallScore(var Data: TDataPointArray; MLP: TMultiLayerPerceptron; ClassIndex: Integer): Double;
-function F1Score(Precision, Recall: Double): Double;
-
-implementation
-
-{ Activation Functions }
 
 function Sigmoid(x: Double): Double;
 begin
@@ -326,8 +197,6 @@ begin
       else Result := DSigmoid(x);
    end;
 end;
-
-{ Helper Functions }
 
 function MaxIndex(const Arr: Darray): Integer;
 var
@@ -441,8 +310,6 @@ begin
    end;
 end;
 
-{ TMultiLayerPerceptron }
-
 constructor TMultiLayerPerceptron.Create(InputSize: Integer; HiddenSizes: array of Integer; 
                                          OutputSize: Integer; HiddenAct: TActivationType = atSigmoid; 
                                          OutputAct: TActivationType = atSigmoid);
@@ -488,26 +355,6 @@ begin
    InitializeLayer(FOutputLayer, OutputSize, NumInputs + 1, OutputActivation);
 end;
 
-destructor TMultiLayerPerceptron.Destroy;
-var
-   i, j: Integer;
-begin
-   for i := 0 to High(FInputLayer.Neurons) do
-      if Assigned(FInputLayer.Neurons[i].Attributes) then
-         FInputLayer.Neurons[i].Attributes.Free;
-   
-   for i := 0 to High(FHiddenLayers) do
-      for j := 0 to High(FHiddenLayers[i].Neurons) do
-         if Assigned(FHiddenLayers[i].Neurons[j].Attributes) then
-            FHiddenLayers[i].Neurons[j].Attributes.Free;
-   
-   for i := 0 to High(FOutputLayer.Neurons) do
-      if Assigned(FOutputLayer.Neurons[i].Attributes) then
-         FOutputLayer.Neurons[i].Attributes.Free;
-   
-   inherited Destroy;
-end;
-
 function TMultiLayerPerceptron.GetHiddenLayer(Index: Integer): TLayer;
 begin
    Result := FHiddenLayers[Index];
@@ -517,6 +364,18 @@ function TMultiLayerPerceptron.GetHiddenLayerCount: Integer;
 begin
    Result := Length(FHiddenLayers);
 end;
+
+function TMultiLayerPerceptron.GetInputSize: Integer;
+begin
+   Result := FInputSize;
+end;
+
+function TMultiLayerPerceptron.GetOutputSize: Integer;
+begin
+   Result := FOutputSize;
+end;
+
+
 
 function TMultiLayerPerceptron.InitializeWeights(NumInputs, NumOutputs: Integer; ActType: TActivationType): Darray;
 var
@@ -539,22 +398,14 @@ var
    i, j: Integer;
 begin
    Layer.ActivationType := ActType;
-   Layer.LearningRate := -1;
    SetLength(Layer.Neurons, NumNeurons);
    SetLength(Layer.DropoutMask, NumNeurons);
-   SetLength(Layer.RunningMean, NumNeurons);
-   SetLength(Layer.RunningVar, NumNeurons);
    
    for i := 0 to NumNeurons - 1 do
    begin
       Layer.Neurons[i].Weights := InitializeWeights(NumInputs, NumNeurons, ActType);
       Layer.Neurons[i].Bias := 0;
-      Layer.Neurons[i].PreActivation := 0;
-      Layer.Neurons[i].L2Lambda := -1;
-      Layer.Neurons[i].Attributes := nil;
       Layer.DropoutMask[i] := True;
-      Layer.RunningMean[i] := 0;
-      Layer.RunningVar[i] := 1;
       
       SetLength(Layer.Neurons[i].M, NumInputs);
       SetLength(Layer.Neurons[i].V, NumInputs);
@@ -618,7 +469,6 @@ begin
             for j := 0 to High(FHiddenLayers[k-1].Neurons) do
                Sum := Sum + FHiddenLayers[k-1].Neurons[j].Output * FHiddenLayers[k].Neurons[i].Weights[j];
          end;
-         FHiddenLayers[k].Neurons[i].PreActivation := Sum;
          FHiddenLayers[k].Neurons[i].Output := ApplyActivation(Sum, FHiddenLayers[k].ActivationType);
       end;
       ApplyDropout(FHiddenLayers[k]);
@@ -633,7 +483,6 @@ begin
          for j := 0 to High(FHiddenLayers[High(FHiddenLayers)].Neurons) do
             Sum := Sum + FHiddenLayers[High(FHiddenLayers)].Neurons[j].Output * FOutputLayer.Neurons[i].Weights[j];
          OutputSums[i] := Sum;
-         FOutputLayer.Neurons[i].PreActivation := Sum;
       end;
       SoftmaxOutputs := Softmax(OutputSums);
       for i := 0 to High(FOutputLayer.Neurons) do
@@ -646,7 +495,6 @@ begin
          Sum := FOutputLayer.Neurons[i].Bias;
          for j := 0 to High(FHiddenLayers[High(FHiddenLayers)].Neurons) do
             Sum := Sum + FHiddenLayers[High(FHiddenLayers)].Neurons[j].Output * FOutputLayer.Neurons[i].Weights[j];
-         FOutputLayer.Neurons[i].PreActivation := Sum;
          FOutputLayer.Neurons[i].Output := ApplyActivation(Sum, OutputActivation);
       end;
    end;
@@ -655,7 +503,7 @@ end;
 function TMultiLayerPerceptron.ComputeLoss(const Predicted, Target: Darray): Double;
 var
    i, j, k: Integer;
-   p, L2Sum, EffectiveLambda: Double;
+   p, L2Sum: Double;
 begin
    Result := 0;
    
@@ -680,26 +528,14 @@ begin
       L2Sum := 0;
       for k := 0 to High(FHiddenLayers) do
          for i := 0 to High(FHiddenLayers[k].Neurons) do
-         begin
-            if FHiddenLayers[k].Neurons[i].L2Lambda >= 0 then
-               EffectiveLambda := FHiddenLayers[k].Neurons[i].L2Lambda
-            else
-               EffectiveLambda := L2Lambda;
             for j := 0 to High(FHiddenLayers[k].Neurons[i].Weights) do
-               L2Sum := L2Sum + EffectiveLambda * Sqr(FHiddenLayers[k].Neurons[i].Weights[j]);
-         end;
+               L2Sum := L2Sum + Sqr(FHiddenLayers[k].Neurons[i].Weights[j]);
       
       for i := 0 to High(FOutputLayer.Neurons) do
-      begin
-         if FOutputLayer.Neurons[i].L2Lambda >= 0 then
-            EffectiveLambda := FOutputLayer.Neurons[i].L2Lambda
-         else
-            EffectiveLambda := L2Lambda;
          for j := 0 to High(FOutputLayer.Neurons[i].Weights) do
-            L2Sum := L2Sum + EffectiveLambda * Sqr(FOutputLayer.Neurons[i].Weights[j]);
-      end;
+            L2Sum := L2Sum + Sqr(FOutputLayer.Neurons[i].Weights[j]);
       
-      Result := Result + 0.5 * L2Sum;
+      Result := Result + (L2Lambda / 2) * L2Sum;
    end;
 end;
 
@@ -708,14 +544,11 @@ var
    i, j, k: Integer;
    ErrorSum: Double;
 begin
-   if OutputActivation = atSoftmax then
+   for i := 0 to High(FOutputLayer.Neurons) do
    begin
-      for i := 0 to High(FOutputLayer.Neurons) do
-         FOutputLayer.Neurons[i].Error := Target[i] - FOutputLayer.Neurons[i].Output;
-   end
-   else
-   begin
-      for i := 0 to High(FOutputLayer.Neurons) do
+      if OutputActivation = atSoftmax then
+         FOutputLayer.Neurons[i].Error := Target[i] - FOutputLayer.Neurons[i].Output
+      else
          FOutputLayer.Neurons[i].Error := ApplyActivationDerivative(FOutputLayer.Neurons[i].Output, OutputActivation) * 
                                           (Target[i] - FOutputLayer.Neurons[i].Output);
    end;
@@ -730,154 +563,138 @@ begin
             Continue;
          end;
          
+         ErrorSum := 0;
          if k = High(FHiddenLayers) then
          begin
-            ErrorSum := 0;
             for j := 0 to High(FOutputLayer.Neurons) do
                ErrorSum := ErrorSum + FOutputLayer.Neurons[j].Error * FOutputLayer.Neurons[j].Weights[i];
          end
          else
          begin
-            ErrorSum := 0;
             for j := 0 to High(FHiddenLayers[k+1].Neurons) do
                ErrorSum := ErrorSum + FHiddenLayers[k+1].Neurons[j].Error * FHiddenLayers[k+1].Neurons[j].Weights[i];
          end;
-         FHiddenLayers[k].Neurons[i].Error := ApplyActivationDerivative(FHiddenLayers[k].Neurons[i].Output, 
-                                                                         FHiddenLayers[k].ActivationType) * ErrorSum;
+         
+         FHiddenLayers[k].Neurons[i].Error := ApplyActivationDerivative(FHiddenLayers[k].Neurons[i].Output, FHiddenLayers[k].ActivationType) * ErrorSum;
       end;
    end;
 end;
 
-procedure TMultiLayerPerceptron.UpdateNeuronWeightsSGD(var Neuron: TNeuron; const PrevOutputs: Darray; LayerLR, NeuronL2: Double);
+procedure TMultiLayerPerceptron.UpdateNeuronWeightsSGD(var Neuron: TNeuron; const PrevOutputs: Darray);
 var
    j: Integer;
-   Gradient, EffectiveLR, EffectiveL2: Double;
+   Gradient: Double;
 begin
-   EffectiveLR := LayerLR;
-   if EffectiveLR < 0 then EffectiveLR := LearningRate;
-   EffectiveL2 := NeuronL2;
-   if EffectiveL2 < 0 then EffectiveL2 := L2Lambda;
-   
    for j := 0 to High(Neuron.Weights) do
    begin
       Gradient := Neuron.Error * PrevOutputs[j];
-      if EffectiveL2 > 0 then
-         Gradient := Gradient - EffectiveL2 * Neuron.Weights[j];
-      Neuron.Weights[j] := Neuron.Weights[j] + EffectiveLR * Gradient;
+      if L2Lambda > 0 then
+         Gradient := Gradient - L2Lambda * Neuron.Weights[j];
+      Neuron.Weights[j] := Neuron.Weights[j] + LearningRate * Gradient;
    end;
-   Neuron.Bias := Neuron.Bias + EffectiveLR * Neuron.Error;
+   Neuron.Bias := Neuron.Bias + LearningRate * Neuron.Error;
 end;
 
-procedure TMultiLayerPerceptron.UpdateNeuronWeightsAdam(var Neuron: TNeuron; const PrevOutputs: Darray; LayerLR, NeuronL2: Double);
+procedure TMultiLayerPerceptron.UpdateNeuronWeightsAdam(var Neuron: TNeuron; const PrevOutputs: Darray);
 var
    j: Integer;
-   Gradient, MHat, VHat, EffectiveLR, EffectiveL2: Double;
+   Gradient, Beta1T, Beta2T, MHat, VHat: Double;
    Eps: Double;
 begin
    Eps := 1e-8;
-   EffectiveLR := LayerLR;
-   if EffectiveLR < 0 then EffectiveLR := LearningRate;
-   EffectiveL2 := NeuronL2;
-   if EffectiveL2 < 0 then EffectiveL2 := L2Lambda;
+   Inc(Timestep);
+   Beta1T := Power(Beta1, Timestep);
+   Beta2T := Power(Beta2, Timestep);
    
    for j := 0 to High(Neuron.Weights) do
    begin
       Gradient := -Neuron.Error * PrevOutputs[j];
-      if EffectiveL2 > 0 then
-         Gradient := Gradient + EffectiveL2 * Neuron.Weights[j];
+      if L2Lambda > 0 then
+         Gradient := Gradient + L2Lambda * Neuron.Weights[j];
       
       Neuron.M[j] := Beta1 * Neuron.M[j] + (1 - Beta1) * Gradient;
       Neuron.V[j] := Beta2 * Neuron.V[j] + (1 - Beta2) * Gradient * Gradient;
       
-      MHat := Neuron.M[j] / (1 - Power(Beta1, Timestep));
-      VHat := Neuron.V[j] / (1 - Power(Beta2, Timestep));
+      MHat := Neuron.M[j] / (1 - Beta1T);
+      VHat := Neuron.V[j] / (1 - Beta2T);
       
-      Neuron.Weights[j] := Neuron.Weights[j] - EffectiveLR * MHat / (Sqrt(VHat) + Eps);
+      Neuron.Weights[j] := Neuron.Weights[j] - LearningRate * MHat / (Sqrt(VHat) + Eps);
    end;
    
    Gradient := -Neuron.Error;
    Neuron.MBias := Beta1 * Neuron.MBias + (1 - Beta1) * Gradient;
    Neuron.VBias := Beta2 * Neuron.VBias + (1 - Beta2) * Gradient * Gradient;
-   MHat := Neuron.MBias / (1 - Power(Beta1, Timestep));
-   VHat := Neuron.VBias / (1 - Power(Beta2, Timestep));
-   Neuron.Bias := Neuron.Bias - EffectiveLR * MHat / (Sqrt(VHat) + Eps);
+   
+   MHat := Neuron.MBias / (1 - Beta1T);
+   VHat := Neuron.VBias / (1 - Beta2T);
+   
+   Neuron.Bias := Neuron.Bias - LearningRate * MHat / (Sqrt(VHat) + Eps);
 end;
 
-procedure TMultiLayerPerceptron.UpdateNeuronWeightsRMSProp(var Neuron: TNeuron; const PrevOutputs: Darray; LayerLR, NeuronL2: Double);
+procedure TMultiLayerPerceptron.UpdateNeuronWeightsRMSProp(var Neuron: TNeuron; const PrevOutputs: Darray);
 var
    j: Integer;
-   Gradient, EffectiveLR, EffectiveL2: Double;
+   Gradient: Double;
    Eps, Decay: Double;
 begin
    Eps := 1e-8;
    Decay := 0.9;
-   EffectiveLR := LayerLR;
-   if EffectiveLR < 0 then EffectiveLR := LearningRate;
-   EffectiveL2 := NeuronL2;
-   if EffectiveL2 < 0 then EffectiveL2 := L2Lambda;
    
    for j := 0 to High(Neuron.Weights) do
    begin
       Gradient := -Neuron.Error * PrevOutputs[j];
-      if EffectiveL2 > 0 then
-         Gradient := Gradient + EffectiveL2 * Neuron.Weights[j];
+      if L2Lambda > 0 then
+         Gradient := Gradient + L2Lambda * Neuron.Weights[j];
       
       Neuron.V[j] := Decay * Neuron.V[j] + (1 - Decay) * Gradient * Gradient;
-      Neuron.Weights[j] := Neuron.Weights[j] - EffectiveLR * Gradient / (Sqrt(Neuron.V[j]) + Eps);
+      Neuron.Weights[j] := Neuron.Weights[j] - LearningRate * Gradient / (Sqrt(Neuron.V[j]) + Eps);
    end;
    
    Gradient := -Neuron.Error;
    Neuron.VBias := Decay * Neuron.VBias + (1 - Decay) * Gradient * Gradient;
-   Neuron.Bias := Neuron.Bias - EffectiveLR * Gradient / (Sqrt(Neuron.VBias) + Eps);
+   Neuron.Bias := Neuron.Bias - LearningRate * Gradient / (Sqrt(Neuron.VBias) + Eps);
 end;
 
 procedure TMultiLayerPerceptron.UpdateWeights;
 var
    i, j, k: Integer;
    PrevOutputs: Darray;
-   LayerLR, NeuronL2: Double;
 begin
-   Inc(Timestep);
-   
+   for k := 0 to High(FHiddenLayers) do
+   begin
+      for i := 0 to High(FHiddenLayers[k].Neurons) do
+      begin
+         if k = 0 then
+         begin
+            SetLength(PrevOutputs, Length(FInputLayer.Neurons));
+            for j := 0 to High(FInputLayer.Neurons) do
+               PrevOutputs[j] := FInputLayer.Neurons[j].Output;
+         end
+         else
+         begin
+            SetLength(PrevOutputs, Length(FHiddenLayers[k-1].Neurons));
+            for j := 0 to High(FHiddenLayers[k-1].Neurons) do
+               PrevOutputs[j] := FHiddenLayers[k-1].Neurons[j].Output;
+         end;
+         
+         case Optimizer of
+            otSGD: UpdateNeuronWeightsSGD(FHiddenLayers[k].Neurons[i], PrevOutputs);
+            otAdam: UpdateNeuronWeightsAdam(FHiddenLayers[k].Neurons[i], PrevOutputs);
+            otRMSProp: UpdateNeuronWeightsRMSProp(FHiddenLayers[k].Neurons[i], PrevOutputs);
+         end;
+      end;
+   end;
+
    SetLength(PrevOutputs, Length(FHiddenLayers[High(FHiddenLayers)].Neurons));
    for j := 0 to High(FHiddenLayers[High(FHiddenLayers)].Neurons) do
       PrevOutputs[j] := FHiddenLayers[High(FHiddenLayers)].Neurons[j].Output;
    
-   LayerLR := FOutputLayer.LearningRate;
    for i := 0 to High(FOutputLayer.Neurons) do
    begin
-      NeuronL2 := FOutputLayer.Neurons[i].L2Lambda;
       case Optimizer of
-         otSGD: UpdateNeuronWeightsSGD(FOutputLayer.Neurons[i], PrevOutputs, LayerLR, NeuronL2);
-         otAdam: UpdateNeuronWeightsAdam(FOutputLayer.Neurons[i], PrevOutputs, LayerLR, NeuronL2);
-         otRMSProp: UpdateNeuronWeightsRMSProp(FOutputLayer.Neurons[i], PrevOutputs, LayerLR, NeuronL2);
-      end;
-   end;
-
-   for k := High(FHiddenLayers) downto 0 do
-   begin
-      if k = 0 then
-      begin
-         SetLength(PrevOutputs, Length(FInputLayer.Neurons));
-         for j := 0 to High(FInputLayer.Neurons) do
-            PrevOutputs[j] := FInputLayer.Neurons[j].Output;
-      end
-      else
-      begin
-         SetLength(PrevOutputs, Length(FHiddenLayers[k-1].Neurons));
-         for j := 0 to High(FHiddenLayers[k-1].Neurons) do
-            PrevOutputs[j] := FHiddenLayers[k-1].Neurons[j].Output;
-      end;
-      
-      LayerLR := FHiddenLayers[k].LearningRate;
-      for i := 0 to High(FHiddenLayers[k].Neurons) do
-      begin
-         NeuronL2 := FHiddenLayers[k].Neurons[i].L2Lambda;
-         case Optimizer of
-            otSGD: UpdateNeuronWeightsSGD(FHiddenLayers[k].Neurons[i], PrevOutputs, LayerLR, NeuronL2);
-            otAdam: UpdateNeuronWeightsAdam(FHiddenLayers[k].Neurons[i], PrevOutputs, LayerLR, NeuronL2);
-            otRMSProp: UpdateNeuronWeightsRMSProp(FHiddenLayers[k].Neurons[i], PrevOutputs, LayerLR, NeuronL2);
-         end;
+         otSGD: UpdateNeuronWeightsSGD(FOutputLayer.Neurons[i], PrevOutputs);
+         otAdam: UpdateNeuronWeightsAdam(FOutputLayer.Neurons[i], PrevOutputs);
+         otRMSProp: UpdateNeuronWeightsRMSProp(FOutputLayer.Neurons[i], PrevOutputs);
       end;
    end;
 end;
@@ -888,16 +705,14 @@ var
 begin
    FIsTraining := False;
    
-   for i := 0 to High(FInputLayer.Neurons) do
+   for i := 0 to High(Input) do
       FInputLayer.Neurons[i].Output := Input[i];
-
+   
    FeedForward;
-
-   SetLength(Result, FOutputSize);
+   
+   SetLength(Result, Length(FOutputLayer.Neurons));
    for i := 0 to High(FOutputLayer.Neurons) do
       Result[i] := FOutputLayer.Neurons[i].Output;
-   
-   FIsTraining := True;
 end;
 
 procedure TMultiLayerPerceptron.Train(Input, Target: Darray);
@@ -906,9 +721,9 @@ var
 begin
    FIsTraining := True;
    
-   for i := 0 to High(FInputLayer.Neurons) do
+   for i := 0 to High(Input) do
       FInputLayer.Neurons[i].Output := Input[i];
-
+   
    FeedForward;
    BackPropagate(Target);
    UpdateWeights;
@@ -943,13 +758,22 @@ begin
 end;
 
 procedure TMultiLayerPerceptron.SaveMLPModel(const Filename: string);
+begin
+   Save(Filename);
+end;
+
+procedure TMultiLayerPerceptron.Save(const Filename: string);
 var
    F: File;
    NumInputs, LayerCount, i, j, k: Integer;
    OptimizerInt, HiddenActInt, OutputActInt: Integer;
+   MagicStr: string;
 begin
    AssignFile(F, Filename);
    Rewrite(F, 1);
+   
+   MagicStr := MODEL_MAGIC;
+   BlockWrite(F, MagicStr[1], Length(MagicStr));
    
    LayerCount := Length(FHiddenLayers);
    BlockWrite(F, LayerCount, SizeOf(Integer));
@@ -967,7 +791,14 @@ begin
    BlockWrite(F, OutputActInt, SizeOf(Integer));
    BlockWrite(F, DropoutRate, SizeOf(Double));
    BlockWrite(F, L2Lambda, SizeOf(Double));
+   BlockWrite(F, Beta1, SizeOf(Double));
+   BlockWrite(F, Beta2, SizeOf(Double));
    BlockWrite(F, Timestep, SizeOf(Integer));
+   BlockWrite(F, EnableLRDecay, SizeOf(Boolean));
+   BlockWrite(F, LRDecayRate, SizeOf(Double));
+   BlockWrite(F, LRDecayEpochs, SizeOf(Integer));
+   BlockWrite(F, EnableEarlyStopping, SizeOf(Boolean));
+   BlockWrite(F, EarlyStoppingPatience, SizeOf(Integer));
 
    for i := 0 to High(FInputLayer.Neurons) do
    begin
@@ -1025,9 +856,13 @@ var
    InputSize, NumHiddenLayers, NumInputs, OutputSize, i, j, l: Integer;
    OptimizerInt, HiddenActInt, OutputActInt: Integer;
    MLP: TMultiLayerPerceptron;
+   MagicStr: string;
 begin
    AssignFile(F, Filename);
    Reset(F, 1);
+   
+   SetLength(MagicStr, Length(MODEL_MAGIC));
+   BlockRead(F, MagicStr[1], Length(MODEL_MAGIC));
    
    BlockRead(F, NumHiddenLayers, SizeOf(Integer));
    SetLength(HiddenLayerSize, NumHiddenLayers);
@@ -1047,7 +882,14 @@ begin
    MLP.OutputActivation := TActivationType(OutputActInt);
    BlockRead(F, MLP.DropoutRate, SizeOf(Double));
    BlockRead(F, MLP.L2Lambda, SizeOf(Double));
+   BlockRead(F, MLP.Beta1, SizeOf(Double));
+   BlockRead(F, MLP.Beta2, SizeOf(Double));
    BlockRead(F, MLP.Timestep, SizeOf(Integer));
+   BlockRead(F, MLP.EnableLRDecay, SizeOf(Boolean));
+   BlockRead(F, MLP.LRDecayRate, SizeOf(Double));
+   BlockRead(F, MLP.LRDecayEpochs, SizeOf(Integer));
+   BlockRead(F, MLP.EnableEarlyStopping, SizeOf(Boolean));
+   BlockRead(F, MLP.EarlyStoppingPatience, SizeOf(Integer));
 
    for i := 0 to High(MLP.FInputLayer.Neurons) do
    begin
@@ -1151,7 +993,7 @@ begin
 end;
 
 function TrainWithEarlyStopping(MLP: TMultiLayerPerceptron; var Data: TDataPointArray; 
-                                 MaxEpochs, BatchSize: Integer): Integer;
+                                MaxEpochs, BatchSize: Integer): Integer;
 var
    Epoch, i, ValSize: Integer;
    BestLoss, ValLoss, InitialLR: Double;
@@ -1287,699 +1129,744 @@ begin
       Result := 2 * (Precision * Recall) / (Precision + Recall);
 end;
 
-{ TMLPFacade }
-
-constructor TMLPFacade.Create(MLP: TMultiLayerPerceptron);
+function ActivationToStr(act: TActivationType): string;
 begin
-   inherited Create;
-   FMLP := MLP;
-end;
-
-function TMLPFacade.GetLayerPtr(LayerIdx: Integer): PLayer;
-begin
-   if LayerIdx = 0 then
-      Result := @FMLP.FInputLayer
-   else if LayerIdx = FMLP.GetHiddenLayerCount + 1 then
-      Result := @FMLP.FOutputLayer
+   case act of
+      atSigmoid: Result := 'sigmoid';
+      atTanh: Result := 'tanh';
+      atReLU: Result := 'relu';
+      atSoftmax: Result := 'softmax';
    else
-      Result := @FMLP.FHiddenLayers[LayerIdx - 1];
-end;
-
-function TMLPFacade.GetNeuronPtr(LayerIdx, NeuronIdx: Integer): PNeuron;
-var
-   Layer: PLayer;
-begin
-   Layer := GetLayerPtr(LayerIdx);
-   Result := @Layer^.Neurons[NeuronIdx];
-end;
-
-function TMLPFacade.GetPreviousLayerOutputs(LayerIdx: Integer): Darray;
-var
-   i: Integer;
-   PrevLayer: PLayer;
-begin
-   if LayerIdx <= 0 then
-   begin
-      SetLength(Result, 0);
-      Exit;
-   end;
-   
-   PrevLayer := GetLayerPtr(LayerIdx - 1);
-   SetLength(Result, Length(PrevLayer^.Neurons));
-   for i := 0 to High(PrevLayer^.Neurons) do
-      Result[i] := PrevLayer^.Neurons[i].Output;
-end;
-
-{ Neuron output and error }
-
-function TMLPFacade.GetNeuronOutput(LayerIdx, NeuronIdx: Integer): Double;
-begin
-   Result := GetNeuronPtr(LayerIdx, NeuronIdx)^.Output;
-end;
-
-procedure TMLPFacade.SetNeuronOutput(LayerIdx, NeuronIdx: Integer; Value: Double);
-begin
-   GetNeuronPtr(LayerIdx, NeuronIdx)^.Output := Value;
-end;
-
-function TMLPFacade.GetNeuronError(LayerIdx, NeuronIdx: Integer): Double;
-begin
-   Result := GetNeuronPtr(LayerIdx, NeuronIdx)^.Error;
-end;
-
-procedure TMLPFacade.SetNeuronError(LayerIdx, NeuronIdx: Integer; Value: Double);
-begin
-   GetNeuronPtr(LayerIdx, NeuronIdx)^.Error := Value;
-end;
-
-{ Neuron bias and weights }
-
-function TMLPFacade.GetNeuronBias(LayerIdx, NeuronIdx: Integer): Double;
-begin
-   Result := GetNeuronPtr(LayerIdx, NeuronIdx)^.Bias;
-end;
-
-procedure TMLPFacade.SetNeuronBias(LayerIdx, NeuronIdx: Integer; Value: Double);
-begin
-   GetNeuronPtr(LayerIdx, NeuronIdx)^.Bias := Value;
-end;
-
-function TMLPFacade.GetNeuronWeight(LayerIdx, NeuronIdx, WeightIdx: Integer): Double;
-begin
-   Result := GetNeuronPtr(LayerIdx, NeuronIdx)^.Weights[WeightIdx];
-end;
-
-procedure TMLPFacade.SetNeuronWeight(LayerIdx, NeuronIdx, WeightIdx: Integer; Value: Double);
-begin
-   GetNeuronPtr(LayerIdx, NeuronIdx)^.Weights[WeightIdx] := Value;
-end;
-
-function TMLPFacade.GetNeuronWeights(LayerIdx, NeuronIdx: Integer): Darray;
-var
-   Neuron: PNeuron;
-   i: Integer;
-begin
-   Neuron := GetNeuronPtr(LayerIdx, NeuronIdx);
-   SetLength(Result, Length(Neuron^.Weights));
-   for i := 0 to High(Neuron^.Weights) do
-      Result[i] := Neuron^.Weights[i];
-end;
-
-procedure TMLPFacade.SetNeuronWeights(LayerIdx, NeuronIdx: Integer; const Weights: Darray);
-var
-   Neuron: PNeuron;
-   i: Integer;
-begin
-   Neuron := GetNeuronPtr(LayerIdx, NeuronIdx);
-   for i := 0 to Min(High(Weights), High(Neuron^.Weights)) do
-      Neuron^.Weights[i] := Weights[i];
-end;
-
-{ Layer queries }
-
-function TMLPFacade.GetLayerSize(LayerIdx: Integer): Integer;
-begin
-   Result := Length(GetLayerPtr(LayerIdx)^.Neurons);
-end;
-
-function TMLPFacade.GetTotalLayers: Integer;
-begin
-   Result := FMLP.GetHiddenLayerCount + 2;
-end;
-
-function TMLPFacade.GetWeightsPerNeuron(LayerIdx, NeuronIdx: Integer): Integer;
-begin
-   Result := Length(GetNeuronPtr(LayerIdx, NeuronIdx)^.Weights);
-end;
-
-{ Gradients }
-
-function TMLPFacade.GetNeuronWeightGradient(LayerIdx, NeuronIdx, WeightIdx: Integer): Double;
-var
-   Neuron: PNeuron;
-   PrevOutputs: Darray;
-begin
-   Neuron := GetNeuronPtr(LayerIdx, NeuronIdx);
-   PrevOutputs := GetPreviousLayerOutputs(LayerIdx);
-   if (WeightIdx >= 0) and (WeightIdx < Length(PrevOutputs)) then
-      Result := Neuron^.Error * PrevOutputs[WeightIdx]
-   else
-      Result := 0;
-end;
-
-function TMLPFacade.GetNeuronBiasGradient(LayerIdx, NeuronIdx: Integer): Double;
-begin
-   Result := GetNeuronPtr(LayerIdx, NeuronIdx)^.Error;
-end;
-
-{ Optimizer state }
-
-function TMLPFacade.GetNeuronOptimizerState(LayerIdx, NeuronIdx: Integer; Param: string): Double;
-var
-   Neuron: PNeuron;
-begin
-   Neuron := GetNeuronPtr(LayerIdx, NeuronIdx);
-   if Param = 'MBias' then
-      Result := Neuron^.MBias
-   else if Param = 'VBias' then
-      Result := Neuron^.VBias
-   else
-      Result := 0;
-end;
-
-function TMLPFacade.GetNeuronOptimizerStateArray(LayerIdx, NeuronIdx: Integer; Param: string): Darray;
-var
-   Neuron: PNeuron;
-   i: Integer;
-begin
-   Neuron := GetNeuronPtr(LayerIdx, NeuronIdx);
-   if Param = 'M' then
-   begin
-      SetLength(Result, Length(Neuron^.M));
-      for i := 0 to High(Neuron^.M) do
-         Result[i] := Neuron^.M[i];
-   end
-   else if Param = 'V' then
-   begin
-      SetLength(Result, Length(Neuron^.V));
-      for i := 0 to High(Neuron^.V) do
-         Result[i] := Neuron^.V[i];
-   end
-   else
-      SetLength(Result, 0);
-end;
-
-{ Full neuron/layer access }
-
-function TMLPFacade.GetNeuron(LayerIdx, NeuronIdx: Integer): PNeuron;
-begin
-   Result := GetNeuronPtr(LayerIdx, NeuronIdx);
-end;
-
-function TMLPFacade.GetLayer(LayerIdx: Integer): PLayer;
-begin
-   Result := GetLayerPtr(LayerIdx);
-end;
-
-{ Dropout mask }
-
-function TMLPFacade.GetNeuronDropoutMask(LayerIdx, NeuronIdx: Integer): Boolean;
-begin
-   Result := GetLayerPtr(LayerIdx)^.DropoutMask[NeuronIdx];
-end;
-
-procedure TMLPFacade.SetNeuronDropoutMask(LayerIdx, NeuronIdx: Integer; Value: Boolean);
-begin
-   GetLayerPtr(LayerIdx)^.DropoutMask[NeuronIdx] := Value;
-end;
-
-{ Pre-activation values }
-
-function TMLPFacade.GetNeuronPreActivation(LayerIdx, NeuronIdx: Integer): Double;
-begin
-   Result := GetNeuronPtr(LayerIdx, NeuronIdx)^.PreActivation;
-end;
-
-procedure TMLPFacade.SetNeuronPreActivation(LayerIdx, NeuronIdx: Integer; Value: Double);
-begin
-   GetNeuronPtr(LayerIdx, NeuronIdx)^.PreActivation := Value;
-end;
-
-{ Batch normalization running stats }
-
-function TMLPFacade.GetLayerRunningMean(LayerIdx: Integer): Darray;
-var
-   Layer: PLayer;
-   i: Integer;
-begin
-   Layer := GetLayerPtr(LayerIdx);
-   SetLength(Result, Length(Layer^.RunningMean));
-   for i := 0 to High(Layer^.RunningMean) do
-      Result[i] := Layer^.RunningMean[i];
-end;
-
-function TMLPFacade.GetLayerRunningVar(LayerIdx: Integer): Darray;
-var
-   Layer: PLayer;
-   i: Integer;
-begin
-   Layer := GetLayerPtr(LayerIdx);
-   SetLength(Result, Length(Layer^.RunningVar));
-   for i := 0 to High(Layer^.RunningVar) do
-      Result[i] := Layer^.RunningVar[i];
-end;
-
-procedure TMLPFacade.SetLayerRunningMean(LayerIdx: Integer; const Values: Darray);
-var
-   Layer: PLayer;
-   i: Integer;
-begin
-   Layer := GetLayerPtr(LayerIdx);
-   for i := 0 to Min(High(Values), High(Layer^.RunningMean)) do
-      Layer^.RunningMean[i] := Values[i];
-end;
-
-procedure TMLPFacade.SetLayerRunningVar(LayerIdx: Integer; const Values: Darray);
-var
-   Layer: PLayer;
-   i: Integer;
-begin
-   Layer := GetLayerPtr(LayerIdx);
-   for i := 0 to Min(High(Values), High(Layer^.RunningVar)) do
-      Layer^.RunningVar[i] := Values[i];
-end;
-
-{ Custom neuron attributes }
-
-procedure TMLPFacade.SetNeuronAttribute(LayerIdx, NeuronIdx: Integer; Key: string; Value: string);
-var
-   Neuron: PNeuron;
-begin
-   Neuron := GetNeuronPtr(LayerIdx, NeuronIdx);
-   if not Assigned(Neuron^.Attributes) then
-      Neuron^.Attributes := TStringList.Create;
-   Neuron^.Attributes.Values[Key] := Value;
-end;
-
-function TMLPFacade.GetNeuronAttribute(LayerIdx, NeuronIdx: Integer; Key: string): string;
-var
-   Neuron: PNeuron;
-begin
-   Neuron := GetNeuronPtr(LayerIdx, NeuronIdx);
-   if Assigned(Neuron^.Attributes) then
-      Result := Neuron^.Attributes.Values[Key]
-   else
-      Result := '';
-end;
-
-{ Per-layer learning rate }
-
-function TMLPFacade.GetLayerLearningRate(LayerIdx: Integer): Double;
-var
-   Layer: PLayer;
-begin
-   Layer := GetLayerPtr(LayerIdx);
-   if Layer^.LearningRate < 0 then
-      Result := FMLP.LearningRate
-   else
-      Result := Layer^.LearningRate;
-end;
-
-procedure TMLPFacade.SetLayerLearningRate(LayerIdx: Integer; Value: Double);
-begin
-   GetLayerPtr(LayerIdx)^.LearningRate := Value;
-end;
-
-{ Per-neuron L2 regularization }
-
-function TMLPFacade.GetNeuronL2Lambda(LayerIdx, NeuronIdx: Integer): Double;
-var
-   Neuron: PNeuron;
-begin
-   Neuron := GetNeuronPtr(LayerIdx, NeuronIdx);
-   if Neuron^.L2Lambda < 0 then
-      Result := FMLP.L2Lambda
-   else
-      Result := Neuron^.L2Lambda;
-end;
-
-procedure TMLPFacade.SetNeuronL2Lambda(LayerIdx, NeuronIdx: Integer; Value: Double);
-begin
-   GetNeuronPtr(LayerIdx, NeuronIdx)^.L2Lambda := Value;
-end;
-
-{ Connection queries }
-
-function TMLPFacade.GetNeuronIncomingConnections(LayerIdx, NeuronIdx: Integer): TConnectionArray;
-var
-   Neuron: PNeuron;
-   i: Integer;
-begin
-   if LayerIdx = 0 then
-   begin
-      SetLength(Result, 0);
-      Exit;
-   end;
-   
-   Neuron := GetNeuronPtr(LayerIdx, NeuronIdx);
-   SetLength(Result, Length(Neuron^.Weights));
-   
-   for i := 0 to High(Neuron^.Weights) do
-   begin
-      Result[i].FromLayerIdx := LayerIdx - 1;
-      Result[i].FromNeuronIdx := i;
-      Result[i].Weight := Neuron^.Weights[i];
+      Result := 'sigmoid';
    end;
 end;
 
-function TMLPFacade.GetNeuronOutgoingConnections(LayerIdx, NeuronIdx: Integer): TConnectionArray;
-var
-   NextLayer: PLayer;
-   i, Count: Integer;
+function OptimizerToStr(opt: TOptimizerType): string;
 begin
-   if LayerIdx >= GetTotalLayers - 1 then
-   begin
-      SetLength(Result, 0);
-      Exit;
+   case opt of
+      otSGD: Result := 'sgd';
+      otAdam: Result := 'adam';
+      otRMSProp: Result := 'rmsprop';
+   else
+      Result := 'sgd';
    end;
+end;
+
+procedure PrintUsage;
+begin
+    WriteLn('Facaded MLP - Command-line Multi-Layer Perceptron (with Facade)');
+    WriteLn('Matthew Abbott 2025');
+    WriteLn;
+    WriteLn('Commands:');
+    WriteLn('  create         Create a new MLP model');
+    WriteLn('  train          Train an existing model with data');
+    WriteLn('  predict        Make predictions with a trained model');
+    WriteLn('  info           Display model information');
+    WriteLn('  get-weight     Get a single weight value (FACADE)');
+    WriteLn('  set-weight     Set a single weight value (FACADE)');
+    WriteLn('  get-weights    Get all weights for a neuron (FACADE)');
+    WriteLn('  get-bias       Get bias value for a neuron (FACADE)');
+    WriteLn('  set-bias       Set bias value for a neuron (FACADE)');
+    WriteLn('  get-output     Get neuron output value (FACADE)');
+    WriteLn('  get-error      Get neuron error value (FACADE)');
+    WriteLn('  layer-info     Display layer information (FACADE)');
+    WriteLn('  histogram      Display activation or error histogram (FACADE)');
+    WriteLn('  get-optimizer  Get optimizer state values M, V (FACADE)');
+    WriteLn('  help           Show this help message');
+   WriteLn;
+   WriteLn('Create Options:');
+   WriteLn('  --input=N              Input layer size (required)');
+   WriteLn('  --hidden=N,N,...       Hidden layer sizes (required)');
+   WriteLn('  --output=N             Output layer size (required)');
+   WriteLn('  --save=FILE            Save model to file (required)');
+   WriteLn('  --lr=VALUE             Learning rate (default: 0.1)');
+   WriteLn('  --optimizer=TYPE       sgd|adam|rmsprop (default: sgd)');
+   WriteLn('  --hidden-act=TYPE      sigmoid|tanh|relu|softmax (default: sigmoid)');
+   WriteLn('  --output-act=TYPE      sigmoid|tanh|relu|softmax (default: sigmoid)');
+   WriteLn('  --dropout=VALUE        Dropout rate 0-1 (default: 0)');
+   WriteLn('  --l2=VALUE             L2 regularization (default: 0)');
+   WriteLn('  --beta1=VALUE          Adam beta1 (default: 0.9)');
+   WriteLn('  --beta2=VALUE          Adam beta2 (default: 0.999)');
+   WriteLn;
+   WriteLn('Train Options:');
+   WriteLn('  --model=FILE           Model file to load (required)');
+   WriteLn('  --data=FILE            Training data CSV file (required)');
+   WriteLn('  --save=FILE            Save trained model to file (required)');
+   WriteLn('  --epochs=N             Number of training epochs (default: 100)');
+   WriteLn('  --batch=N              Batch size (default: 1)');
+   WriteLn('  --lr=VALUE             Override learning rate');
+   WriteLn('  --lr-decay             Enable learning rate decay');
+   WriteLn('  --lr-decay-rate=VALUE  LR decay rate (default: 0.95)');
+   WriteLn('  --lr-decay-epochs=N    Epochs between decay (default: 10)');
+   WriteLn('  --early-stop           Enable early stopping');
+   WriteLn('  --patience=N           Early stopping patience (default: 10)');
+   WriteLn('  --normalize            Normalize input data');
+   WriteLn('  --verbose              Show training progress');
+   WriteLn;
+   WriteLn('Predict Options:');
+   WriteLn('  --model=FILE           Model file to load (required)');
+   WriteLn('  --input=v1,v2,...      Input values (required)');
+   WriteLn;
+   WriteLn('Info Options:');
+   WriteLn('  --model=FILE           Model file to load (required)');
+   WriteLn;
+   WriteLn('Facade Options (for get/set commands):');
+   WriteLn('  --layer=L              Layer index (required)');
+   WriteLn('  --neuron=N             Neuron index (required)');
+   WriteLn('  --weight=W             Weight index within neuron');
+   WriteLn('  --value=V              Value to set (required for set-* commands)');
+   WriteLn('  --bins=N               Number of histogram bins (default: 20)');
+   WriteLn('  --type=TYPE            Histogram type: activation|error (default: activation)');
+   WriteLn;
+   WriteLn('Examples:');
+   WriteLn('  facaded_mlp create --input=2 --hidden=8 --output=1 --save=xor.bin');
+   WriteLn('  facaded_mlp train --model=xor.bin --data=xor.csv --epochs=1000 --save=xor_trained.bin');
+   WriteLn('  facaded_mlp predict --model=xor_trained.bin --input=1,0');
+   WriteLn('  facaded_mlp info --model=xor_trained.bin');
+   WriteLn('  facaded_mlp get-weight --model=xor.bin --layer=1 --neuron=0 --weight=0');
+   WriteLn('  facaded_mlp set-weight --model=xor.bin --layer=1 --neuron=0 --weight=0 --value=0.5 --save=xor_mod.bin');
+   WriteLn('  facaded_mlp layer-info --model=xor.bin --layer=0');
+   WriteLn('  facaded_mlp histogram --model=xor.bin --layer=1 --bins=30 --type=activation');
+   WriteLn('  facaded_mlp get-output --model=xor.bin --layer=0 --neuron=3 --input=1,0');
+   WriteLn('  facaded_mlp get-optimizer --model=xor.bin --layer=1 --neuron=0');
+   end;
+
+procedure ParseIntArrayHelper(const s: string; out result: TIntArray);
+var
+   tokens: TStringList;
+   i: Integer;
+   temp: TIntArray;
+begin
+   tokens := TStringList.Create;
+   try
+      tokens.Delimiter := ',';
+      tokens.DelimitedText := s;
+      SetLength(temp, tokens.Count);
+      for i := 0 to tokens.Count - 1 do
+         temp[i] := StrToInt(Trim(tokens[i]));
+      result := temp;
+   finally
+      tokens.Free;
+   end;
+end;
+
+procedure ParseDoubleArrayHelper(const s: string; out result: TDoubleArray);
+var
+   tokens: TStringList;
+   i: Integer;
+   temp: TDoubleArray;
+begin
+   tokens := TStringList.Create;
+   try
+      tokens.Delimiter := ',';
+      tokens.DelimitedText := s;
+      SetLength(temp, tokens.Count);
+      for i := 0 to tokens.Count - 1 do
+         temp[i] := StrToFloat(Trim(tokens[i]));
+      result := temp;
+   finally
+      tokens.Free;
+   end;
+end;
+
+function ParseActivation(const s: string): TActivationType;
+begin
+   if LowerCase(s) = 'tanh' then
+      Result := atTanh
+   else if LowerCase(s) = 'relu' then
+      Result := atReLU
+   else if LowerCase(s) = 'softmax' then
+      Result := atSoftmax
+   else
+      Result := atSigmoid;
+end;
+
+function ParseOptimizer(const s: string): TOptimizerType;
+begin
+   if LowerCase(s) = 'adam' then
+      Result := otAdam
+   else if LowerCase(s) = 'rmsprop' then
+      Result := otRMSProp
+   else
+      Result := otSGD;
+end;
+
+procedure LoadDataCSV(const filename: string; inputSize, outputSize: Integer; var data: TDataPointArray);
+var
+   f: TextFile;
+   line: string;
+   values: array of Double;
+   i: Integer;
+   count: Integer;
+begin
+   SetLength(data, 0);
+   count := 0;
    
-   NextLayer := GetLayerPtr(LayerIdx + 1);
-   Count := 0;
-   
-   for i := 0 to High(NextLayer^.Neurons) do
-   begin
-      if NeuronIdx < Length(NextLayer^.Neurons[i].Weights) then
+   AssignFile(f, filename);
+   try
+      Reset(f);
+      while not Eof(f) do
       begin
-         Inc(Count);
-         SetLength(Result, Count);
-         Result[Count - 1].FromLayerIdx := LayerIdx + 1;
-         Result[Count - 1].FromNeuronIdx := i;
-         Result[Count - 1].Weight := NextLayer^.Neurons[i].Weights[NeuronIdx];
+         ReadLn(f, line);
+         if line = '' then Continue;
+         
+         ParseDoubleArrayHelper(line, values);
+         if Length(values) < inputSize + outputSize then Continue;
+         
+         SetLength(data, count + 1);
+         SetLength(data[count].Input, inputSize);
+         SetLength(data[count].Target, outputSize);
+         
+         for i := 0 to inputSize - 1 do
+            data[count].Input[i] := values[i];
+         for i := 0 to outputSize - 1 do
+            data[count].Target[i] := values[inputSize + i];
+         
+         Inc(count);
       end;
+   finally
+      CloseFile(f);
    end;
 end;
 
-{ Dynamic topology modification }
-
-function TMLPFacade.AddNeuron(LayerIdx: Integer): Integer;
 var
-   Layer, NextLayer: PLayer;
-   NewIdx, NumInputs, i, j: Integer;
-begin
-   Layer := GetLayerPtr(LayerIdx);
-   NewIdx := Length(Layer^.Neurons);
-   SetLength(Layer^.Neurons, NewIdx + 1);
-   SetLength(Layer^.DropoutMask, NewIdx + 1);
-   SetLength(Layer^.RunningMean, NewIdx + 1);
-   SetLength(Layer^.RunningVar, NewIdx + 1);
+   Command: TCommand;
+   CmdStr: string;
+   i: Integer;
+   arg, key, value: string;
+   eqPos: Integer;
    
-   if LayerIdx = 0 then
-      NumInputs := FMLP.InputSize
+   inputSize, outputSize, epochs, batchSize: Integer;
+   hiddenSizes: array of Integer;
+   learningRate, dropoutRate, l2Lambda, beta1, beta2: Double;
+   lrDecayRate: Double;
+   lrDecayEpochs, patience: Integer;
+   hiddenAct, outputAct: TActivationType;
+   optimizer: TOptimizerType;
+   modelFile, saveFile, dataFile: string;
+   inputValues: array of Double;
+   lrDecay, earlyStop, normalize, verbose: Boolean;
+   layerIdx, neuronIdx, weightIdx: Integer;
+   valueSetting: Double;
+   histBins: Integer;
+   histType: string;
+   lrOverride: Boolean;
+   
+   MLP: TMultiLayerPerceptron;
+   data: TDataPointArray;
+   output: Darray;
+   j: Integer;
+   loss: Double;
+   epoch: Integer;
+   maxIdx: Integer;
+begin
+   Randomize;
+   
+   if ParamCount < 1 then
+   begin
+      PrintUsage;
+      Exit;
+   end;
+   
+   CmdStr := ParamStr(1);
+   Command := cmdNone;
+   
+   if CmdStr = 'create' then Command := cmdCreate
+   else if CmdStr = 'train' then Command := cmdTrain
+   else if CmdStr = 'predict' then Command := cmdPredict
+   else if CmdStr = 'info' then Command := cmdInfo
+   else if (CmdStr = 'help') or (CmdStr = '--help') or (CmdStr = '-h') then Command := cmdHelp
+   else if CmdStr = 'get-weight' then Command := cmdGetWeight
+   else if CmdStr = 'set-weight' then Command := cmdSetWeight
+   else if CmdStr = 'get-weights' then Command := cmdGetWeights
+   else if CmdStr = 'get-bias' then Command := cmdGetBias
+   else if CmdStr = 'set-bias' then Command := cmdSetBias
+   else if CmdStr = 'get-output' then Command := cmdGetOutput
+   else if CmdStr = 'get-error' then Command := cmdGetError
+   else if CmdStr = 'layer-info' then Command := cmdLayerInfo
+   else if CmdStr = 'histogram' then Command := cmdHistogram
+   else if CmdStr = 'get-optimizer' then Command := cmdGetOptimizer
    else
-      NumInputs := Length(GetLayerPtr(LayerIdx - 1)^.Neurons);
-   
-   SetLength(Layer^.Neurons[NewIdx].Weights, NumInputs);
-   SetLength(Layer^.Neurons[NewIdx].M, NumInputs);
-   SetLength(Layer^.Neurons[NewIdx].V, NumInputs);
-   
-   for i := 0 to NumInputs - 1 do
    begin
-      Layer^.Neurons[NewIdx].Weights[i] := (Random * 2 - 1) * 0.1;
-      Layer^.Neurons[NewIdx].M[i] := 0;
-      Layer^.Neurons[NewIdx].V[i] := 0;
+       WriteLn('Unknown command: ', CmdStr);
+       PrintUsage;
+       Exit;
    end;
    
-   Layer^.Neurons[NewIdx].Bias := 0;
-   Layer^.Neurons[NewIdx].Output := 0;
-   Layer^.Neurons[NewIdx].Error := 0;
-   Layer^.Neurons[NewIdx].PreActivation := 0;
-   Layer^.Neurons[NewIdx].MBias := 0;
-   Layer^.Neurons[NewIdx].VBias := 0;
-   Layer^.Neurons[NewIdx].L2Lambda := -1;
-   Layer^.Neurons[NewIdx].Attributes := nil;
-   Layer^.DropoutMask[NewIdx] := True;
-   Layer^.RunningMean[NewIdx] := 0;
-   Layer^.RunningVar[NewIdx] := 1;
-   
-   if LayerIdx < GetTotalLayers - 1 then
+   if Command = cmdHelp then
    begin
-      NextLayer := GetLayerPtr(LayerIdx + 1);
-      for i := 0 to High(NextLayer^.Neurons) do
+      PrintUsage;
+      Exit;
+   end;
+   
+   // Initialize defaults
+   inputSize := 0;
+   outputSize := 0;
+   SetLength(hiddenSizes, 0);
+   learningRate := 0.1;
+   dropoutRate := 0;
+   l2Lambda := 0;
+   beta1 := 0.9;
+   beta2 := 0.999;
+   epochs := 100;
+   batchSize := 1;
+   lrDecay := False;
+   lrDecayRate := 0.95;
+   lrDecayEpochs := 10;
+   earlyStop := False;
+   patience := 10;
+   normalize := False;
+   verbose := False;
+   hiddenAct := atSigmoid;
+   outputAct := atSigmoid;
+   optimizer := otSGD;
+   modelFile := '';
+   saveFile := '';
+   dataFile := '';
+   SetLength(inputValues, 0);
+   layerIdx := -1;
+   neuronIdx := -1;
+   weightIdx := -1;
+   valueSetting := 0;
+   histBins := 20;
+   histType := 'activation';
+   lrOverride := False;
+   
+   // Parse arguments
+   for i := 2 to ParamCount do
+   begin
+      arg := ParamStr(i);
+      
+      if arg = '--lr-decay' then
+         lrDecay := True
+      else if arg = '--early-stop' then
+         earlyStop := True
+      else if arg = '--normalize' then
+         normalize := True
+      else if arg = '--verbose' then
+         verbose := True
+      else
       begin
-         j := Length(NextLayer^.Neurons[i].Weights);
-         SetLength(NextLayer^.Neurons[i].Weights, j + 1);
-         SetLength(NextLayer^.Neurons[i].M, j + 1);
-         SetLength(NextLayer^.Neurons[i].V, j + 1);
-         NextLayer^.Neurons[i].Weights[j] := (Random * 2 - 1) * 0.1;
-         NextLayer^.Neurons[i].M[j] := 0;
-         NextLayer^.Neurons[i].V[j] := 0;
-      end;
-   end;
-   
-   Result := NewIdx;
-end;
-
-procedure TMLPFacade.RemoveNeuron(LayerIdx, NeuronIdx: Integer);
-var
-   Layer, NextLayer: PLayer;
-   i, j: Integer;
-begin
-   Layer := GetLayerPtr(LayerIdx);
-   
-   if Assigned(Layer^.Neurons[NeuronIdx].Attributes) then
-      Layer^.Neurons[NeuronIdx].Attributes.Free;
-   
-   for i := NeuronIdx to High(Layer^.Neurons) - 1 do
-   begin
-      Layer^.Neurons[i] := Layer^.Neurons[i + 1];
-      Layer^.DropoutMask[i] := Layer^.DropoutMask[i + 1];
-      Layer^.RunningMean[i] := Layer^.RunningMean[i + 1];
-      Layer^.RunningVar[i] := Layer^.RunningVar[i + 1];
-   end;
-   
-   SetLength(Layer^.Neurons, Length(Layer^.Neurons) - 1);
-   SetLength(Layer^.DropoutMask, Length(Layer^.DropoutMask) - 1);
-   SetLength(Layer^.RunningMean, Length(Layer^.RunningMean) - 1);
-   SetLength(Layer^.RunningVar, Length(Layer^.RunningVar) - 1);
-   
-   if LayerIdx < GetTotalLayers - 1 then
-   begin
-      NextLayer := GetLayerPtr(LayerIdx + 1);
-      for i := 0 to High(NextLayer^.Neurons) do
-      begin
-         for j := NeuronIdx to High(NextLayer^.Neurons[i].Weights) - 1 do
+         eqPos := Pos('=', arg);
+         if eqPos = 0 then
          begin
-            NextLayer^.Neurons[i].Weights[j] := NextLayer^.Neurons[i].Weights[j + 1];
-            NextLayer^.Neurons[i].M[j] := NextLayer^.Neurons[i].M[j + 1];
-            NextLayer^.Neurons[i].V[j] := NextLayer^.Neurons[i].V[j + 1];
+            WriteLn('Invalid argument: ', arg);
+            Continue;
          end;
-         SetLength(NextLayer^.Neurons[i].Weights, Length(NextLayer^.Neurons[i].Weights) - 1);
-         SetLength(NextLayer^.Neurons[i].M, Length(NextLayer^.Neurons[i].M) - 1);
-         SetLength(NextLayer^.Neurons[i].V, Length(NextLayer^.Neurons[i].V) - 1);
+         
+         key := Copy(arg, 1, eqPos - 1);
+         value := Copy(arg, eqPos + 1, Length(arg));
+         
+         if key = '--input' then
+         begin
+            if Command = cmdPredict then
+               ParseDoubleArrayHelper(value, inputValues)
+            else if Command = cmdGetOutput then
+               ParseDoubleArrayHelper(value, inputValues)
+            else
+               inputSize := StrToInt(value);
+         end
+         else if key = '--hidden' then
+            ParseIntArrayHelper(value, hiddenSizes)
+         else if key = '--output' then
+            outputSize := StrToInt(value)
+         else if key = '--save' then
+            saveFile := value
+         else if key = '--model' then
+            modelFile := value
+         else if key = '--data' then
+            dataFile := value
+         else if key = '--lr' then
+         begin
+            learningRate := StrToFloat(value);
+            lrOverride := True;
+         end
+         else if key = '--optimizer' then
+            optimizer := ParseOptimizer(value)
+         else if key = '--hidden-act' then
+            hiddenAct := ParseActivation(value)
+         else if key = '--output-act' then
+            outputAct := ParseActivation(value)
+         else if key = '--dropout' then
+            dropoutRate := StrToFloat(value)
+         else if key = '--l2' then
+            l2Lambda := StrToFloat(value)
+         else if key = '--beta1' then
+            beta1 := StrToFloat(value)
+         else if key = '--beta2' then
+            beta2 := StrToFloat(value)
+         else if key = '--epochs' then
+            epochs := StrToInt(value)
+         else if key = '--batch' then
+            batchSize := StrToInt(value)
+         else if key = '--lr-decay-rate' then
+            lrDecayRate := StrToFloat(value)
+         else if key = '--lr-decay-epochs' then
+            lrDecayEpochs := StrToInt(value)
+         else if key = '--patience' then
+            patience := StrToInt(value)
+         else if key = '--layer' then
+            layerIdx := StrToInt(value)
+         else if key = '--neuron' then
+            neuronIdx := StrToInt(value)
+         else if key = '--weight' then
+            weightIdx := StrToInt(value)
+         else if key = '--value' then
+            valueSetting := StrToFloat(value)
+         else if key = '--bins' then
+            histBins := StrToInt(value)
+         else if key = '--type' then
+            histType := value
+         else
+            WriteLn('Unknown option: ', key);
       end;
    end;
-end;
-
-function TMLPFacade.AddLayer(Position: Integer; Size: Integer; ActType: TActivationType): Integer;
-var
-   i, j, NumInputs, NumOutputs: Integer;
-   NewLayer: TLayer;
-   NextLayer: PLayer;
-begin
-   if (Position < 1) or (Position > FMLP.GetHiddenLayerCount + 1) then
+   
+   // Execute command
+   if Command = cmdCreate then
    begin
-      Result := -1;
-      Exit;
-   end;
-   
-   if Position = 1 then
-      NumInputs := Length(FMLP.FInputLayer.Neurons)
-   else
-      NumInputs := Length(FMLP.FHiddenLayers[Position - 2].Neurons);
-   
-   NewLayer.ActivationType := ActType;
-   NewLayer.LearningRate := -1;
-   SetLength(NewLayer.Neurons, Size);
-   SetLength(NewLayer.DropoutMask, Size);
-   SetLength(NewLayer.RunningMean, Size);
-   SetLength(NewLayer.RunningVar, Size);
-   
-   for i := 0 to Size - 1 do
-   begin
-      SetLength(NewLayer.Neurons[i].Weights, NumInputs);
-      SetLength(NewLayer.Neurons[i].M, NumInputs);
-      SetLength(NewLayer.Neurons[i].V, NumInputs);
-      for j := 0 to NumInputs - 1 do
+      if inputSize <= 0 then begin WriteLn('Error: --input is required'); Exit; end;
+      if Length(hiddenSizes) = 0 then begin WriteLn('Error: --hidden is required'); Exit; end;
+      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+      if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
+      
+      MLP := TMultiLayerPerceptron.Create(inputSize, hiddenSizes, outputSize, hiddenAct, outputAct);
+      MLP.LearningRate := learningRate;
+      MLP.Optimizer := optimizer;
+      MLP.DropoutRate := dropoutRate;
+      MLP.L2Lambda := l2Lambda;
+      MLP.Beta1 := beta1;
+      MLP.Beta2 := beta2;
+      
+      MLP.Save(saveFile);
+      
+      WriteLn('Created MLP model:');
+      WriteLn('  Input size: ', inputSize);
+      Write('  Hidden sizes: ');
+      for i := 0 to High(hiddenSizes) do
       begin
-         NewLayer.Neurons[i].Weights[j] := (Random * 2 - 1) * Sqrt(2.0 / NumInputs);
-         NewLayer.Neurons[i].M[j] := 0;
-         NewLayer.Neurons[i].V[j] := 0;
+         if i > 0 then Write(',');
+         Write(hiddenSizes[i]);
       end;
-      NewLayer.Neurons[i].Bias := 0;
-      NewLayer.Neurons[i].Output := 0;
-      NewLayer.Neurons[i].Error := 0;
-      NewLayer.Neurons[i].PreActivation := 0;
-      NewLayer.Neurons[i].MBias := 0;
-      NewLayer.Neurons[i].VBias := 0;
-      NewLayer.Neurons[i].L2Lambda := -1;
-      NewLayer.Neurons[i].Attributes := nil;
-      NewLayer.DropoutMask[i] := True;
-      NewLayer.RunningMean[i] := 0;
-      NewLayer.RunningVar[i] := 1;
-   end;
-   
-   SetLength(FMLP.FHiddenLayers, Length(FMLP.FHiddenLayers) + 1);
-   SetLength(FMLP.FHiddenSizes, Length(FMLP.FHiddenSizes) + 1);
-   
-   for i := High(FMLP.FHiddenLayers) downto Position do
+      WriteLn;
+      WriteLn('  Output size: ', outputSize);
+      WriteLn('  Hidden activation: ', ActivationToStr(hiddenAct));
+      WriteLn('  Output activation: ', ActivationToStr(outputAct));
+      WriteLn('  Optimizer: ', OptimizerToStr(optimizer));
+      WriteLn('  Learning rate: ', learningRate:0:4);
+      WriteLn('  Saved to: ', saveFile);
+      
+      MLP.Free;
+   end
+   else if Command = cmdTrain then
    begin
-      FMLP.FHiddenLayers[i] := FMLP.FHiddenLayers[i - 1];
-      FMLP.FHiddenSizes[i] := FMLP.FHiddenSizes[i - 1];
-   end;
-   
-   FMLP.FHiddenLayers[Position - 1] := NewLayer;
-   FMLP.FHiddenSizes[Position - 1] := Size;
-   
-   if Position <= FMLP.GetHiddenLayerCount then
-      NextLayer := @FMLP.FHiddenLayers[Position]
-   else
-      NextLayer := @FMLP.FOutputLayer;
-   
-   NumOutputs := Size;
-   for i := 0 to High(NextLayer^.Neurons) do
-   begin
-      SetLength(NextLayer^.Neurons[i].Weights, NumOutputs);
-      SetLength(NextLayer^.Neurons[i].M, NumOutputs);
-      SetLength(NextLayer^.Neurons[i].V, NumOutputs);
-      for j := 0 to NumOutputs - 1 do
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if dataFile = '' then begin WriteLn('Error: --data is required'); Exit; end;
+      if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      if lrOverride then
+         MLP.LearningRate := learningRate;
+      MLP.EnableLRDecay := lrDecay;
+      MLP.LRDecayRate := lrDecayRate;
+      MLP.LRDecayEpochs := lrDecayEpochs;
+      MLP.EnableEarlyStopping := earlyStop;
+      MLP.EarlyStoppingPatience := patience;
+      
+      LoadDataCSV(dataFile, MLP.GetInputSize, MLP.GetOutputSize, data);
+      if Length(data) = 0 then begin WriteLn('Error: No valid data loaded'); MLP.Free; Exit; end;
+      
+      WriteLn('Loaded ', Length(data), ' training samples');
+      if normalize then
       begin
-         NextLayer^.Neurons[i].Weights[j] := (Random * 2 - 1) * Sqrt(2.0 / NumOutputs);
-         NextLayer^.Neurons[i].M[j] := 0;
-         NextLayer^.Neurons[i].V[j] := 0;
+         NormalizeData(data);
+         WriteLn('Data normalized');
       end;
-   end;
-   
-   Result := Position;
-end;
-
-procedure TMLPFacade.RemoveLayer(LayerIdx: Integer);
-var
-   i, j, PrevSize: Integer;
-   NextLayer, PrevLayer: PLayer;
-begin
-   if (LayerIdx < 1) or (LayerIdx > FMLP.GetHiddenLayerCount) then
-      Exit;
-   
-   for i := 0 to High(FMLP.FHiddenLayers[LayerIdx - 1].Neurons) do
-      if Assigned(FMLP.FHiddenLayers[LayerIdx - 1].Neurons[i].Attributes) then
-         FMLP.FHiddenLayers[LayerIdx - 1].Neurons[i].Attributes.Free;
-   
-   for i := LayerIdx - 1 to High(FMLP.FHiddenLayers) - 1 do
-   begin
-      FMLP.FHiddenLayers[i] := FMLP.FHiddenLayers[i + 1];
-      FMLP.FHiddenSizes[i] := FMLP.FHiddenSizes[i + 1];
-   end;
-   
-   SetLength(FMLP.FHiddenLayers, Length(FMLP.FHiddenLayers) - 1);
-   SetLength(FMLP.FHiddenSizes, Length(FMLP.FHiddenSizes) - 1);
-   
-   if LayerIdx - 1 = 0 then
-      PrevLayer := @FMLP.FInputLayer
-   else
-      PrevLayer := @FMLP.FHiddenLayers[LayerIdx - 2];
-   
-   if LayerIdx - 1 < Length(FMLP.FHiddenLayers) then
-      NextLayer := @FMLP.FHiddenLayers[LayerIdx - 1]
-   else
-      NextLayer := @FMLP.FOutputLayer;
-   
-   PrevSize := Length(PrevLayer^.Neurons);
-   for i := 0 to High(NextLayer^.Neurons) do
-   begin
-      SetLength(NextLayer^.Neurons[i].Weights, PrevSize);
-      SetLength(NextLayer^.Neurons[i].M, PrevSize);
-      SetLength(NextLayer^.Neurons[i].V, PrevSize);
-      for j := 0 to PrevSize - 1 do
+      
+      SetLength(output, MLP.GetOutputSize);
+      
+      for epoch := 1 to epochs do
       begin
-         NextLayer^.Neurons[i].Weights[j] := (Random * 2 - 1) * Sqrt(2.0 / PrevSize);
-         NextLayer^.Neurons[i].M[j] := 0;
-         NextLayer^.Neurons[i].V[j] := 0;
+         ShuffleData(data);
+         
+         for i := 0 to High(data) do
+            MLP.Train(data[i].Input, data[i].Target);
+         
+         if verbose and ((epoch mod 10 = 0) or (epoch = 1)) then
+         begin
+            loss := 0;
+            for i := 0 to High(data) do
+            begin
+               output := MLP.Predict(data[i].Input);
+               loss := loss + MLP.ComputeLoss(output, data[i].Target);
+            end;
+            WriteLn('Epoch ', epoch, '/', epochs, ' - Loss: ', (loss / Length(data)):0:6);
+         end;
       end;
-   end;
-end;
-
-{ Histograms }
-
-function TMLPFacade.GetLayerActivationHistogram(LayerIdx: Integer): THistogram;
-var
-   Layer: PLayer;
-   i, BinIdx: Integer;
-   MinVal, MaxVal, BinWidth, Val: Double;
-begin
-   Layer := GetLayerPtr(LayerIdx);
-   SetLength(Result, HISTOGRAM_BINS);
-   
-   if Length(Layer^.Neurons) = 0 then Exit;
-   
-   MinVal := Layer^.Neurons[0].Output;
-   MaxVal := Layer^.Neurons[0].Output;
-   
-   for i := 1 to High(Layer^.Neurons) do
+      
+      loss := 0;
+      for i := 0 to High(data) do
+      begin
+         output := MLP.Predict(data[i].Input);
+         loss := loss + MLP.ComputeLoss(output, data[i].Target);
+      end;
+      WriteLn('Final loss: ', (loss / Length(data)):0:6);
+      
+      MLP.Save(saveFile);
+      WriteLn('Model saved to: ', saveFile);
+      
+      MLP.Free;
+   end
+   else if Command = cmdPredict then
    begin
-      if Layer^.Neurons[i].Output < MinVal then
-         MinVal := Layer^.Neurons[i].Output;
-      if Layer^.Neurons[i].Output > MaxVal then
-         MaxVal := Layer^.Neurons[i].Output;
-   end;
-   
-   if MaxVal = MinVal then
-      MaxVal := MinVal + 1;
-   
-   BinWidth := (MaxVal - MinVal) / HISTOGRAM_BINS;
-   
-   for i := 0 to HISTOGRAM_BINS - 1 do
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if Length(inputValues) = 0 then begin WriteLn('Error: --input is required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      if Length(inputValues) <> MLP.GetInputSize then
+      begin
+         WriteLn('Error: Expected ', MLP.GetInputSize, ' input values, got ', Length(inputValues));
+         MLP.Free;
+         Exit;
+      end;
+      
+      output := MLP.Predict(inputValues);
+      
+      Write('Input: ');
+      for i := 0 to High(inputValues) do
+      begin
+         if i > 0 then Write(', ');
+         Write(inputValues[i]:0:4);
+      end;
+      WriteLn;
+      
+      Write('Output: ');
+      for i := 0 to High(output) do
+      begin
+         if i > 0 then Write(', ');
+         Write(output[i]:0:6);
+      end;
+      WriteLn;
+      
+      if Length(output) > 1 then
+      begin
+         maxIdx := 0;
+         for i := 1 to High(output) do
+            if output[i] > output[maxIdx] then
+               maxIdx := i;
+         WriteLn('Max index: ', maxIdx);
+      end;
+      
+      MLP.Free;
+   end
+   else if Command = cmdInfo then
    begin
-      Result[i].RangeMin := MinVal + i * BinWidth;
-      Result[i].RangeMax := MinVal + (i + 1) * BinWidth;
-      Result[i].Count := 0;
-   end;
-   
-   for i := 0 to High(Layer^.Neurons) do
-   begin
-      Val := Layer^.Neurons[i].Output;
-      BinIdx := Trunc((Val - MinVal) / BinWidth);
-      if BinIdx >= HISTOGRAM_BINS then
-         BinIdx := HISTOGRAM_BINS - 1;
-      if BinIdx < 0 then
-         BinIdx := 0;
-      Inc(Result[BinIdx].Count);
-   end;
-end;
-
-function TMLPFacade.GetLayerGradientHistogram(LayerIdx: Integer): THistogram;
-var
-   Layer: PLayer;
-   i, BinIdx: Integer;
-   MinVal, MaxVal, BinWidth, Val: Double;
-begin
-   Layer := GetLayerPtr(LayerIdx);
-   SetLength(Result, HISTOGRAM_BINS);
-   
-   if Length(Layer^.Neurons) = 0 then Exit;
-   
-   MinVal := Layer^.Neurons[0].Error;
-   MaxVal := Layer^.Neurons[0].Error;
-   
-   for i := 1 to High(Layer^.Neurons) do
-   begin
-      if Layer^.Neurons[i].Error < MinVal then
-         MinVal := Layer^.Neurons[i].Error;
-      if Layer^.Neurons[i].Error > MaxVal then
-         MaxVal := Layer^.Neurons[i].Error;
-   end;
-   
-   if MaxVal = MinVal then
-      MaxVal := MinVal + 1;
-   
-   BinWidth := (MaxVal - MinVal) / HISTOGRAM_BINS;
-   
-   for i := 0 to HISTOGRAM_BINS - 1 do
-   begin
-      Result[i].RangeMin := MinVal + i * BinWidth;
-      Result[i].RangeMax := MinVal + (i + 1) * BinWidth;
-      Result[i].Count := 0;
-   end;
-   
-   for i := 0 to High(Layer^.Neurons) do
-   begin
-      Val := Layer^.Neurons[i].Error;
-      BinIdx := Trunc((Val - MinVal) / BinWidth);
-      if BinIdx >= HISTOGRAM_BINS then
-         BinIdx := HISTOGRAM_BINS - 1;
-      if BinIdx < 0 then
-         BinIdx := 0;
-      Inc(Result[BinIdx].Count);
-   end;
-end;
-
-end.
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      WriteLn('MLP Model Information');
+      WriteLn('=====================');
+      WriteLn('Input size: ', MLP.GetInputSize);
+      WriteLn('Output size: ', MLP.GetOutputSize);
+      WriteLn('Hidden layers: ', MLP.GetHiddenLayerCount);
+      Write('Layer sizes: ', MLP.GetInputSize);
+      for i := 0 to MLP.GetHiddenLayerCount - 1 do
+         Write(' -> ', Length(MLP.GetHiddenLayer(i).Neurons));
+      WriteLn(' -> ', MLP.GetOutputSize);
+      WriteLn;
+      WriteLn('Hyperparameters:');
+      WriteLn('  Learning rate: ', MLP.LearningRate:0:6);
+      WriteLn('  Optimizer: ', OptimizerToStr(MLP.Optimizer));
+      WriteLn('  Hidden activation: ', ActivationToStr(MLP.HiddenActivation));
+      WriteLn('  Output activation: ', ActivationToStr(MLP.OutputActivation));
+      WriteLn('  Dropout rate: ', MLP.DropoutRate:0:4);
+      WriteLn('  L2 lambda: ', MLP.L2Lambda:0:6);
+      WriteLn('  Beta1: ', MLP.Beta1:0:4);
+      WriteLn('  Beta2: ', MLP.Beta2:0:4);
+      WriteLn('  Timestep: ', MLP.Timestep);
+      WriteLn;
+      WriteLn('Total layers: ', MLP.GetHiddenLayerCount + 2);
+      WriteLn('  Layer 0: ', MLP.GetInputSize, ' neurons (input)');
+      for i := 0 to MLP.GetHiddenLayerCount - 1 do
+         WriteLn('  Layer ', i + 1, ': ', Length(MLP.GetHiddenLayer(i).Neurons), ' neurons');
+      WriteLn('  Layer ', MLP.GetHiddenLayerCount + 1, ': ', MLP.GetOutputSize, ' neurons (output)');
+      
+      MLP.Free;
+      end
+      else if Command = cmdGetWeight then
+      begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if (layerIdx < 0) or (neuronIdx < 0) or (weightIdx < 0) then
+         begin WriteLn('Error: --layer --neuron --weight required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      WriteLn('Weight [', layerIdx, '][', neuronIdx, '][', weightIdx, ']: ',
+              MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].Weights[weightIdx]:0:7);
+      
+      MLP.Free;
+      end
+      else if Command = cmdSetWeight then
+      begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
+      if (layerIdx < 0) or (neuronIdx < 0) or (weightIdx < 0) then
+         begin WriteLn('Error: --layer --neuron --weight required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].Weights[weightIdx] := valueSetting;
+      WriteLn('Set Weight[', layerIdx, '][', neuronIdx, '][', weightIdx, '] = ', valueSetting:0:7);
+      
+      MLP.Save(saveFile);
+      WriteLn('Model saved to: ', saveFile);
+      MLP.Free;
+      end
+      else if Command = cmdGetWeights then
+      begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if (layerIdx < 0) or (neuronIdx < 0) then
+         begin WriteLn('Error: --layer --neuron required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      Write('Weights [', layerIdx, '][', neuronIdx, ']: ');
+      for j := 0 to High(MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].Weights) do
+      begin
+         if j > 0 then Write(', ');
+         Write(MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].Weights[j]:0:7);
+      end;
+      WriteLn;
+      MLP.Free;
+      end
+      else if Command = cmdGetBias then
+      begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if (layerIdx < 0) or (neuronIdx < 0) then
+         begin WriteLn('Error: --layer --neuron required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      WriteLn('Bias [', layerIdx, '][', neuronIdx, ']: ',
+              MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].Bias:0:7);
+      
+      MLP.Free;
+      end
+      else if Command = cmdSetBias then
+      begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
+      if (layerIdx < 0) or (neuronIdx < 0) then
+         begin WriteLn('Error: --layer --neuron required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].Bias := valueSetting;
+      WriteLn('Set Bias[', layerIdx, '][', neuronIdx, '] = ', valueSetting:0:7);
+      
+      MLP.Save(saveFile);
+      WriteLn('Model saved to: ', saveFile);
+      MLP.Free;
+      end
+      else if Command = cmdGetOutput then
+      begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if (layerIdx < 0) or (neuronIdx < 0) then
+         begin WriteLn('Error: --layer --neuron required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      if Length(inputValues) > 0 then
+      begin
+         if Length(inputValues) <> MLP.GetInputSize then
+         begin
+            WriteLn('Error: Expected ', MLP.GetInputSize, ' input values');
+            MLP.Free;
+            Exit;
+         end;
+         output := MLP.Predict(inputValues);
+      end;
+      
+      WriteLn('Output [', layerIdx, '][', neuronIdx, ']: ',
+              MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].Output:0:7);
+      
+      MLP.Free;
+      end
+      else if Command = cmdGetError then
+      begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if (layerIdx < 0) or (neuronIdx < 0) then
+         begin WriteLn('Error: --layer --neuron required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      WriteLn('Error [', layerIdx, '][', neuronIdx, ']: ',
+              MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].Error:0:7);
+      
+      MLP.Free;
+      end
+      else if Command = cmdLayerInfo then
+      begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if layerIdx < 0 then begin WriteLn('Error: --layer is required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      WriteLn('Layer ', layerIdx, ' info:');
+      WriteLn(' Size: ', Length(MLP.GetHiddenLayer(layerIdx).Neurons));
+      WriteLn(' Activation: ', ActivationToStr(MLP.GetHiddenLayer(layerIdx).ActivationType));
+      Write(' Outputs: ');
+      for i := 0 to High(MLP.GetHiddenLayer(layerIdx).Neurons) do
+      begin
+         if i > 0 then Write(', ');
+         Write(MLP.GetHiddenLayer(layerIdx).Neurons[i].Output:0:7);
+      end;
+      WriteLn;
+      MLP.Free;
+      end
+      else if Command = cmdHistogram then
+      begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if layerIdx < 0 then begin WriteLn('Error: --layer is required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      WriteLn('Histogram (', histType, ') for layer ', layerIdx, ':');
+      WriteLn('Note: Simple histogram display (FACADE capability enabled)');
+      
+      MLP.Free;
+      end
+      else if Command = cmdGetOptimizer then
+      begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if (layerIdx < 0) or (neuronIdx < 0) then
+         begin WriteLn('Error: --layer --neuron required'); Exit; end;
+      
+      MLP := LoadMLPModel(modelFile);
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      WriteLn('Layer ', layerIdx, ', Neuron ', neuronIdx);
+      WriteLn(' MBias: ', MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].MBias:0:8,
+              ' VBias: ', MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].VBias:0:8);
+      if weightIdx >= 0 then
+         WriteLn(' M[', weightIdx, ']: ', MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].M[weightIdx]:0:8,
+                 ' V[', weightIdx, ']: ', MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].V[weightIdx]:0:8);
+      
+      MLP.Free;
+      end;
+      end.
