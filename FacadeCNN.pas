@@ -1704,54 +1704,769 @@ begin IsTraining := Training; end;
 function TCNNFacade.GetTrainingMode: Boolean;
 begin Result := IsTraining; end;
 
+{ Helper Functions }
+
+function ActivationToStr(act: string): string;
+begin
+   Result := LowerCase(act);
+end;
+
+function ParseActivation(const s: string): string;
+begin
+   if (LowerCase(s) = 'relu') or (LowerCase(s) = 'tanh') or (LowerCase(s) = 'sigmoid') then
+      Result := LowerCase(s)
+   else
+      Result := 'relu';
+end;
+
+procedure ParseIntArrayHelper(const s: string; out Result: IntArray);
 var
+   tokens: TStringList;
+   i: Integer;
+begin
+   tokens := TStringList.Create;
+   try
+      tokens.Delimiter := ',';
+      tokens.DelimitedText := s;
+      SetLength(Result, tokens.Count);
+      for i := 0 to tokens.Count - 1 do
+         Result[i] := StrToInt(Trim(tokens[i]));
+   finally
+      tokens.Free;
+   end;
+end;
+
+procedure PrintUsage;
+begin
+   WriteLn('CNN Facade - Advanced CNN with Introspection and Manipulation');
+   WriteLn;
+   WriteLn('Commands:');
+   WriteLn('  create      Create a new CNN model');
+   WriteLn('  train       Train on sample data');
+   WriteLn('  predict     Make predictions with input data');
+   WriteLn('  introspect  Examine layer internals (activations, weights, gradients)');
+   WriteLn('  stats       Display layer statistics and histograms');
+   WriteLn('  modify      Add/remove filters or layers dynamically');
+   WriteLn('  analyze     Get saliency maps, deconv, receptive fields');
+   WriteLn('  info        Display complete model architecture');
+   WriteLn('  help        Show this help message');
+   WriteLn;
+   WriteLn('Create Options:');
+   WriteLn('  --input-w=N            Input width (required)');
+   WriteLn('  --input-h=N            Input height (required)');
+   WriteLn('  --input-c=N            Input channels (required)');
+   WriteLn('  --conv=N,N,...         Conv filters (required)');
+   WriteLn('  --kernels=N,N,...      Kernel sizes (required)');
+   WriteLn('  --pools=N,N,...        Pool sizes (required)');
+   WriteLn('  --fc=N,N,...           FC layer sizes (required)');
+   WriteLn('  --output=N             Output layer size (required)');
+   WriteLn('  --lr=VALUE             Learning rate (default: 0.001)');
+   WriteLn('  --dropout=VALUE        Dropout rate (default: 0.25)');
+   WriteLn;
+   WriteLn('Introspect Options:');
+   WriteLn('  --layer=N              Layer index (0-based)');
+   WriteLn('  --filter=N             Filter/neuron index');
+   WriteLn('  --mode=WHAT            feature_map | pre_activation | kernel | bias');
+   WriteLn('  --channel=N            Channel index (for kernels)');
+   WriteLn;
+   WriteLn('Stats Options:');
+   WriteLn('  --layer=N              Layer index');
+   WriteLn('  --histogram=N          Number of bins for histogram (default: 50)');
+   WriteLn('  --type=WHAT            weights | activations | both');
+   WriteLn;
+   WriteLn('Modify Options:');
+   WriteLn('  --action=ACTION        add_filter | remove_filter | add_layer');
+   WriteLn('  --layer=N              Layer index for action');
+   WriteLn('  --filter=N             Filter index (for remove_filter)');
+   WriteLn('  --filters=N            Number of filters (for add_layer)');
+   WriteLn('  --kernel=N             Kernel size (for add_layer)');
+   WriteLn('  --stride=N             Stride (for add_layer, default: 1)');
+   WriteLn('  --padding=N            Padding (for add_layer, default: 0)');
+   WriteLn;
+   WriteLn('Analyze Options:');
+   WriteLn('  --layer=N              Layer index');
+   WriteLn('  --filter=N             Filter index');
+   WriteLn('  --type=WHAT            saliency | deconv | receptive_field');
+   WriteLn('  --x=N --y=N            Position for saliency/receptive field');
+   WriteLn;
+   WriteLn('Examples:');
+   WriteLn('  facaded_cnn create --input-w=28 --input-h=28 --input-c=1 --conv=8,16 --kernels=3,3 --pools=2,2 --fc=64 --output=10');
+   WriteLn('  facaded_cnn introspect --layer=0 --filter=0 --mode=feature_map');
+   WriteLn('  facaded_cnn stats --layer=0 --type=both --histogram=100');
+   WriteLn('  facaded_cnn modify --action=add_filter --layer=0');
+   WriteLn('  facaded_cnn analyze --layer=0 --filter=0 --type=saliency --x=14 --y=14');
+   WriteLn('  facaded_cnn predict --random-input --mode=all');
+end;
+
+{ Main Program }
+
+type
+   TCommand = (cmdNone, cmdCreate, cmdTrain, cmdPredict, cmdIntrospect, cmdStats, 
+               cmdModify, cmdAnalyze, cmdInfo, cmdHelp);
+
+var
+   Command: TCommand;
+   CmdStr: string;
+   i, inputW, inputH, inputC, outputSize: Integer;
+   convFilters, kernelSizes, poolSizes, fcLayerSizes: array of Integer;
+   learningRate, dropoutRate: Double;
+   modelFile, saveFile: string;
+   arg, key, value: string;
+   eqPos: Integer;
    CNN: TCNNFacade;
    Image: TImageData;
    Target, Output: Darray;
-   i, c, h, w: Integer;
+   c, h, w: Integer;
    Loss: Double;
+   
+   { Command-specific variables }
+   layerIdx, filterIdx, channelIdx, binCount, posX, posY: Integer;
+   intrinMode, statsType, modifyAction, analyzeType: string;
+   numFiltersToAdd, kernelSizeAdd, strideAdd, paddingAdd: Integer;
+   histogram: Darray;
+   stats: TLayerStats;
+   config: TLayerConfig;
+   rf: TReceptiveField;
+   j, k, binIdx: Integer;
+   featureMap: D2array;
+   preAct: D2array;
+   kernel: D2array;
+   saliency: D2array;
+   filterParams: D3array;
+   randomInput: Boolean;
+   predMode: string;
+
 begin
    Randomize;
-   
-   WriteLn('CNN Demo - Creating network...');
-   CNN := TCNNFacade.Create(28, 28, 1, [8, 16], [3, 3], [2, 2], [64], 10, 0.001, 0.25);
-   
-   Image.Width := 28;
-   Image.Height := 28;
-   Image.Channels := 1;
-   SetLength(Image.Data, 1, 28, 28);
-   for c := 0 to 0 do
-      for h := 0 to 27 do
-         for w := 0 to 27 do
-            Image.Data[c][h][w] := Random;
-   
-   SetLength(Target, 10);
-   for i := 0 to 9 do Target[i] := 0;
-   Target[3] := 1.0;
-   
-   WriteLn('Running prediction...');
-   Output := CNN.Predict(Image);
-   Write('Output: ');
-   for i := 0 to High(Output) do
-      Write(Output[i]:0:4, ' ');
-   WriteLn;
-   
-   WriteLn('Training for 10 steps...');
-   for i := 1 to 10 do
+
+   if ParamCount < 1 then
    begin
-      Loss := CNN.TrainStep(Image, Target);
-      WriteLn('Step ', i, ' Loss: ', Loss:0:6);
+      PrintUsage;
+      Exit;
    end;
+
+   CmdStr := ParamStr(1);
+   Command := cmdNone;
+
+   if CmdStr = 'create' then Command := cmdCreate
+   else if CmdStr = 'train' then Command := cmdTrain
+   else if CmdStr = 'predict' then Command := cmdPredict
+   else if CmdStr = 'introspect' then Command := cmdIntrospect
+   else if CmdStr = 'stats' then Command := cmdStats
+   else if CmdStr = 'modify' then Command := cmdModify
+   else if CmdStr = 'analyze' then Command := cmdAnalyze
+   else if CmdStr = 'info' then Command := cmdInfo
+   else if (CmdStr = 'help') or (CmdStr = '--help') or (CmdStr = '-h') then Command := cmdHelp
+   else
+   begin
+      WriteLn('Unknown command: ', CmdStr);
+      PrintUsage;
+      Exit;
+   end;
+
+   if Command = cmdHelp then
+   begin
+      PrintUsage;
+      Exit;
+   end;
+
+   { Initialize defaults }
+   inputW := 0;
+   inputH := 0;
+   inputC := 0;
+   outputSize := 0;
+   SetLength(convFilters, 0);
+   SetLength(kernelSizes, 0);
+   SetLength(poolSizes, 0);
+   SetLength(fcLayerSizes, 0);
+   learningRate := 0.001;
+   dropoutRate := 0.25;
+   modelFile := '';
+   saveFile := '';
    
-   WriteLn('Final prediction...');
-   Output := CNN.Predict(Image);
-   Write('Output: ');
-   for i := 0 to High(Output) do
-      Write(Output[i]:0:4, ' ');
-   WriteLn;
-   
-   WriteLn('Layers: ', CNN.GetNumLayers, ' Conv: ', CNN.GetNumConvLayers, ' FC: ', CNN.GetNumFCLayers);
-   
-   CNN.Free;
-   WriteLn('Done.');
+   { Command-specific defaults }
+   layerIdx := 0;
+   filterIdx := 0;
+   channelIdx := 0;
+   binCount := 50;
+   posX := 0;
+   posY := 0;
+   intrinMode := 'feature_map';
+   statsType := 'weights';
+   modifyAction := 'add_filter';
+   analyzeType := 'saliency';
+   numFiltersToAdd := 1;
+   kernelSizeAdd := 3;
+   strideAdd := 1;
+   paddingAdd := 0;
+   randomInput := False;
+   predMode := '';
+
+   { Parse arguments }
+   for i := 2 to ParamCount do
+   begin
+      arg := ParamStr(i);
+      eqPos := Pos('=', arg);
+      
+      { Handle flag-style arguments without value }
+      if (arg = '--random-input') then
+      begin
+         randomInput := True;
+         Continue;
+      end;
+      
+      if eqPos = 0 then
+      begin
+         WriteLn('Unknown argument: ', arg);
+         Continue;
+      end;
+
+      key := Copy(arg, 1, eqPos - 1);
+      value := Copy(arg, eqPos + 1, Length(arg));
+
+      if key = '--input-w' then
+         inputW := StrToInt(value)
+      else if key = '--input-h' then
+         inputH := StrToInt(value)
+      else if key = '--input-c' then
+         inputC := StrToInt(value)
+      else if key = '--output' then
+         outputSize := StrToInt(value)
+      else if key = '--conv' then
+         ParseIntArrayHelper(value, convFilters)
+      else if key = '--kernels' then
+         ParseIntArrayHelper(value, kernelSizes)
+      else if key = '--pools' then
+         ParseIntArrayHelper(value, poolSizes)
+      else if key = '--fc' then
+         ParseIntArrayHelper(value, fcLayerSizes)
+      else if key = '--save' then
+         saveFile := value
+      else if key = '--model' then
+         modelFile := value
+      else if key = '--lr' then
+         learningRate := StrToFloat(value)
+      else if key = '--dropout' then
+         dropoutRate := StrToFloat(value)
+      { Introspect/Stats options }
+      else if key = '--layer' then
+         layerIdx := StrToInt(value)
+      else if key = '--filter' then
+         filterIdx := StrToInt(value)
+      else if key = '--channel' then
+         channelIdx := StrToInt(value)
+      else if key = '--histogram' then
+         binCount := StrToInt(value)
+      else if key = '--mode' then
+         intrinMode := LowerCase(value)
+      else if key = '--type' then
+         statsType := LowerCase(value)
+      else if key = '--action' then
+         modifyAction := LowerCase(value)
+      else if key = '--filters' then
+         numFiltersToAdd := StrToInt(value)
+      else if key = '--kernel' then
+         kernelSizeAdd := StrToInt(value)
+      else if key = '--stride' then
+         strideAdd := StrToInt(value)
+      else if key = '--padding' then
+         paddingAdd := StrToInt(value)
+      { Analyze options }
+      else if key = '--x' then
+         posX := StrToInt(value)
+      else if key = '--y' then
+         posY := StrToInt(value)
+      { Predict options }
+      else if key = '--random-input' then
+         randomInput := True
+      else if (key = '--mode') and (Command = cmdPredict) then
+         predMode := LowerCase(value)
+      else
+         WriteLn('Unknown option: ', key);
+   end;
+
+   { Execute command }
+   if Command = cmdCreate then
+   begin
+      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+
+      WriteLn('Creating CNN Facade model...');
+      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+
+      WriteLn('Created CNN Facade model:');
+      WriteLn('  Input: ', inputW, 'x', inputH, 'x', inputC);
+      Write('  Conv filters: ');
+      for i := 0 to High(convFilters) do
+      begin
+         if i > 0 then Write(',');
+         Write(convFilters[i]);
+      end;
+      WriteLn;
+      Write('  Kernel sizes: ');
+      for i := 0 to High(kernelSizes) do
+      begin
+         if i > 0 then Write(',');
+         Write(kernelSizes[i]);
+      end;
+      WriteLn;
+      Write('  Pool sizes: ');
+      for i := 0 to High(poolSizes) do
+      begin
+         if i > 0 then Write(',');
+         Write(poolSizes[i]);
+      end;
+      WriteLn;
+      Write('  FC layers: ');
+      for i := 0 to High(fcLayerSizes) do
+      begin
+         if i > 0 then Write(',');
+         Write(fcLayerSizes[i]);
+      end;
+      WriteLn;
+      WriteLn('  Output size: ', outputSize);
+      WriteLn('  Learning rate: ', learningRate:0:6);
+      WriteLn('  Dropout rate: ', dropoutRate:0:6);
+
+      { Demo prediction }
+      WriteLn;
+      WriteLn('Running demo prediction...');
+      Image.Width := inputW;
+      Image.Height := inputH;
+      Image.Channels := inputC;
+      SetLength(Image.Data, inputC, inputH, inputW);
+      for c := 0 to inputC - 1 do
+         for h := 0 to inputH - 1 do
+            for w := 0 to inputW - 1 do
+               Image.Data[c][h][w] := Random;
+
+      Output := CNN.Predict(Image);
+      Write('Output: ');
+      for i := 0 to High(Output) do
+         Write(Output[i]:0:4, ' ');
+      WriteLn;
+
+      { Demo training }
+      WriteLn;
+      WriteLn('Running demo training (5 steps)...');
+      SetLength(Target, outputSize);
+      for i := 0 to outputSize - 1 do Target[i] := 0;
+      Target[0] := 1.0;
+
+      for i := 1 to 5 do
+      begin
+         Loss := CNN.TrainStep(Image, Target);
+         WriteLn('Step ', i, ' Loss: ', Loss:0:6);
+      end;
+
+      WriteLn('Model info:');
+      WriteLn('  Total layers: ', CNN.GetNumLayers);
+      WriteLn('  Conv layers: ', CNN.GetNumConvLayers);
+      WriteLn('  FC layers: ', CNN.GetNumFCLayers);
+
+      CNN.Free;
+      WriteLn('Done.');
+   end
+   else if Command = cmdTrain then
+   begin
+      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+
+      WriteLn('Training CNN Facade model for 20 steps...');
+      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      Image.Width := inputW;
+      Image.Height := inputH;
+      Image.Channels := inputC;
+      SetLength(Image.Data, inputC, inputH, inputW);
+      SetLength(Target, outputSize);
+      
+      for i := 1 to 20 do
+      begin
+         { Generate random input }
+         for c := 0 to inputC - 1 do
+            for h := 0 to inputH - 1 do
+               for w := 0 to inputW - 1 do
+                  Image.Data[c][h][w] := Random;
+         
+         { Generate random target }
+         for k := 0 to outputSize - 1 do Target[k] := 0;
+         Target[i mod outputSize] := 1.0;
+         
+         Loss := CNN.TrainStep(Image, Target);
+         WriteLn('Step ', i, ' Loss: ', Loss:0:6);
+      end;
+      
+      CNN.Free;
+      WriteLn('Done.');
+   end
+   else if Command = cmdPredict then
+   begin
+      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+
+      WriteLn('Making predictions...');
+      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      if randomInput then
+      begin
+         Image.Width := inputW;
+         Image.Height := inputH;
+         Image.Channels := inputC;
+         SetLength(Image.Data, inputC, inputH, inputW);
+         WriteLn('Generating random input (', inputW, 'x', inputH, 'x', inputC, ')');
+         for c := 0 to inputC - 1 do
+            for h := 0 to inputH - 1 do
+               for w := 0 to inputW - 1 do
+                  Image.Data[c][h][w] := Random;
+      end;
+      
+      Output := CNN.Predict(Image);
+      WriteLn('Prediction output (', Length(Output), ' classes):');
+      Write('  ');
+      for i := 0 to High(Output) do
+         Write(Output[i]:0:6, ' ');
+      WriteLn;
+      
+      CNN.Free;
+      WriteLn('Done.');
+   end
+   else if Command = cmdIntrospect then
+   begin
+      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+
+      WriteLn('Introspecting CNN layer internals...');
+      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      { Forward pass first }
+      Image.Width := inputW;
+      Image.Height := inputH;
+      Image.Channels := inputC;
+      SetLength(Image.Data, inputC, inputH, inputW);
+      for c := 0 to inputC - 1 do
+         for h := 0 to inputH - 1 do
+            for w := 0 to inputW - 1 do
+               Image.Data[c][h][w] := Random;
+      Output := CNN.Predict(Image);
+      
+      WriteLn('Layer ', layerIdx, ' Filter/Neuron ', filterIdx);
+      
+      if intrinMode = 'feature_map' then
+      begin
+         WriteLn('Feature Map:');
+         featureMap := CNN.GetFeatureMap(layerIdx, filterIdx);
+         if Length(featureMap) > 0 then
+         begin
+            WriteLn('  Size: ', Length(featureMap), 'x', Length(featureMap[0]));
+            WriteLn('  First 5x5 (or less):');
+            for h := 0 to Min(4, High(featureMap)) do
+            begin
+               Write('    ');
+               for w := 0 to Min(4, High(featureMap[h])) do
+                  Write(featureMap[h][w]:0:3, ' ');
+               WriteLn;
+            end;
+         end
+         else
+            WriteLn('  (empty or invalid)');
+      end
+      else if intrinMode = 'pre_activation' then
+      begin
+         WriteLn('Pre-Activation Map:');
+         preAct := CNN.GetPreActivation(layerIdx, filterIdx);
+         if Length(preAct) > 0 then
+         begin
+            WriteLn('  Size: ', Length(preAct), 'x', Length(preAct[0]));
+            WriteLn('  First 5x5 (or less):');
+            for h := 0 to Min(4, High(preAct)) do
+            begin
+               Write('    ');
+               for w := 0 to Min(4, High(preAct[h])) do
+                  Write(preAct[h][w]:0:3, ' ');
+               WriteLn;
+            end;
+         end
+         else
+            WriteLn('  (empty or invalid)');
+      end
+      else if intrinMode = 'kernel' then
+      begin
+         WriteLn('Kernel (Channel ', channelIdx, '):');
+         kernel := CNN.GetKernel(layerIdx, filterIdx, channelIdx);
+         if Length(kernel) > 0 then
+         begin
+            WriteLn('  Size: ', Length(kernel), 'x', Length(kernel[0]));
+            for h := 0 to High(kernel) do
+            begin
+               for w := 0 to High(kernel[h]) do
+                  Write(kernel[h][w]:0:4, ' ');
+               WriteLn;
+            end;
+         end
+         else
+            WriteLn('  (empty or invalid)');
+      end
+      else if intrinMode = 'bias' then
+      begin
+         WriteLn('Bias: ', CNN.GetBias(layerIdx, filterIdx):0:6);
+      end;
+      
+      CNN.Free;
+      WriteLn('Done.');
+   end
+   else if Command = cmdStats then
+   begin
+      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+
+      WriteLn('Computing layer statistics...');
+      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      { Forward pass }
+      Image.Width := inputW;
+      Image.Height := inputH;
+      Image.Channels := inputC;
+      SetLength(Image.Data, inputC, inputH, inputW);
+      for c := 0 to inputC - 1 do
+         for h := 0 to inputH - 1 do
+            for w := 0 to inputW - 1 do
+               Image.Data[c][h][w] := Random;
+      Output := CNN.Predict(Image);
+      
+      WriteLn('Layer ', layerIdx, ' Statistics:');
+      
+      if (statsType = 'activations') or (statsType = 'both') then
+      begin
+         stats := CNN.GetLayerStats(layerIdx);
+         WriteLn('Activation Stats:');
+         WriteLn('  Count: ', stats.Count);
+         WriteLn('  Mean: ', stats.Mean:0:6);
+         WriteLn('  StdDev: ', stats.StdDev:0:6);
+         WriteLn('  Min: ', stats.Min:0:6);
+         WriteLn('  Max: ', stats.Max:0:6);
+         
+         if binCount > 0 then
+         begin
+            histogram := CNN.GetActivationHistogram(layerIdx, binCount);
+            WriteLn('Activation Histogram (', binCount, ' bins):');
+            for binIdx := 0 to Min(9, High(histogram)) do
+               WriteLn('  Bin ', binIdx, ': ', histogram[binIdx]:0:0);
+            if binCount > 10 then
+               WriteLn('  ... (', binCount - 10, ' more bins)');
+         end;
+      end;
+      
+      if (statsType = 'weights') or (statsType = 'both') then
+      begin
+         WriteLn('Weight Histogram (', binCount, ' bins):');
+         histogram := CNN.GetWeightHistogram(layerIdx, binCount);
+         for binIdx := 0 to Min(9, High(histogram)) do
+            WriteLn('  Bin ', binIdx, ': ', histogram[binIdx]:0:0);
+         if binCount > 10 then
+            WriteLn('  ... (', binCount - 10, ' more bins)');
+      end;
+      
+      CNN.Free;
+      WriteLn('Done.');
+   end
+   else if Command = cmdModify then
+   begin
+      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+
+      WriteLn('Modifying CNN architecture...');
+      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      if modifyAction = 'add_filter' then
+      begin
+         WriteLn('Adding ', numFiltersToAdd, ' filter(s) to layer ', layerIdx);
+         for j := 1 to numFiltersToAdd do
+         begin
+            SetLength(filterParams, 0);
+            CNN.AddFilter(layerIdx, filterParams);
+         end;
+         WriteLn('Now layer ', layerIdx, ' has ', CNN.GetNumFilters(layerIdx), ' filters');
+      end
+      else if modifyAction = 'remove_filter' then
+      begin
+         WriteLn('Removing filter ', filterIdx, ' from layer ', layerIdx);
+         CNN.RemoveFilter(layerIdx, filterIdx);
+         WriteLn('Now layer ', layerIdx, ' has ', CNN.GetNumFilters(layerIdx), ' filters');
+      end
+      else if modifyAction = 'add_layer' then
+      begin
+         WriteLn('Adding conv layer at position ', layerIdx);
+         WriteLn('  Filters: ', numFiltersToAdd, ', Kernel: ', kernelSizeAdd, 
+                 ', Stride: ', strideAdd, ', Padding: ', paddingAdd);
+         CNN.AddConvLayer(layerIdx, numFiltersToAdd, kernelSizeAdd, strideAdd, paddingAdd);
+         WriteLn('Now model has ', CNN.GetNumConvLayers, ' conv layers');
+      end;
+      
+      WriteLn('Modified architecture:');
+      WriteLn('  Total layers: ', CNN.GetNumLayers);
+      WriteLn('  Conv layers: ', CNN.GetNumConvLayers);
+      WriteLn('  FC layers: ', CNN.GetNumFCLayers);
+      
+      CNN.Free;
+      WriteLn('Done.');
+   end
+   else if Command = cmdAnalyze then
+   begin
+      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+
+      WriteLn('Analyzing CNN layer features...');
+      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      { Forward pass }
+      Image.Width := inputW;
+      Image.Height := inputH;
+      Image.Channels := inputC;
+      SetLength(Image.Data, inputC, inputH, inputW);
+      for c := 0 to inputC - 1 do
+         for h := 0 to inputH - 1 do
+            for w := 0 to inputW - 1 do
+               Image.Data[c][h][w] := Random;
+      Output := CNN.Predict(Image);
+      
+      if analyzeType = 'saliency' then
+      begin
+         WriteLn('Saliency map for layer ', layerIdx, ' filter ', filterIdx);
+         saliency := CNN.GetSaliencyMap(layerIdx, filterIdx, 0);
+         if Length(saliency) > 0 then
+         begin
+            WriteLn('  Size: ', Length(saliency), 'x', Length(saliency[0]));
+            WriteLn('  First 5x5 (or less):');
+            for h := 0 to Min(4, High(saliency)) do
+            begin
+               Write('    ');
+               for w := 0 to Min(4, High(saliency[h])) do
+                  Write(saliency[h][w]:0:3, ' ');
+               WriteLn;
+            end;
+         end
+         else
+            WriteLn('  (empty or invalid)');
+      end
+      else if analyzeType = 'receptive_field' then
+      begin
+         WriteLn('Receptive field for layer ', layerIdx, ' at position (', posX, ',', posY, ')');
+         rf := CNN.GetReceptiveField(layerIdx, filterIdx, posY, posX);
+         WriteLn('  Input region: X[', rf.StartX, '..', rf.EndX, '] Y[', rf.StartY, '..', rf.EndY, ']');
+         WriteLn('  Channels: ', Length(rf.Channels));
+      end
+      else
+         WriteLn('Unknown analyze type: ', analyzeType);
+      
+      CNN.Free;
+      WriteLn('Done.');
+   end
+   else if Command = cmdInfo then
+   begin
+      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+
+      WriteLn('CNN Architecture Info');
+      WriteLn;
+      WriteLn('Input: ', inputW, 'x', inputH, 'x', inputC);
+      WriteLn;
+      
+      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      WriteLn('Total Layers: ', CNN.GetNumLayers);
+      WriteLn('  Conv Layers: ', CNN.GetNumConvLayers);
+      WriteLn('  FC Layers: ', CNN.GetNumFCLayers);
+      WriteLn;
+      
+      WriteLn('Layer Details:');
+      for i := 0 to CNN.GetNumLayers - 1 do
+      begin
+         config := CNN.GetLayerConfig(i);
+         WriteLn('Layer ', i, ': ', config.LayerType);
+         if config.LayerType = 'conv' then
+         begin
+            WriteLn('  Filters: ', config.FilterCount);
+            WriteLn('  Kernel: ', config.KernelSize, 'x', config.KernelSize);
+            WriteLn('  Stride: ', config.Stride);
+            WriteLn('  Padding: ', config.Padding);
+            WriteLn('  Input Channels: ', config.InputChannels);
+            WriteLn('  Output: ', config.OutputWidth, 'x', config.OutputHeight);
+         end
+         else if config.LayerType = 'pool' then
+         begin
+            WriteLn('  Pool Size: ', config.PoolSize);
+            WriteLn('  Output: ', config.OutputWidth, 'x', config.OutputHeight);
+         end
+         else if (config.LayerType = 'fc') or (config.LayerType = 'output') then
+         begin
+            WriteLn('  Neurons: ', config.NeuronCount);
+            WriteLn('  Input Size: ', config.InputSize);
+         end;
+      end;
+      
+      WriteLn;
+      WriteLn('Training Config:');
+      WriteLn('  Learning Rate: ', learningRate:0:6);
+      WriteLn('  Dropout: ', dropoutRate:0:6);
+      
+      CNN.Free;
+      WriteLn('Done.');
+   end;
 end.
