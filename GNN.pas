@@ -1,12 +1,12 @@
 //
 // Matthew Abbott
-// Graph Neural Network
+// Graph Neural Network - CLI Support
 //
 
 {$mode objfpc}{$H+}
 {$modeswitch advancedrecords}
 
-program GNN;
+program GNNtest;
 
 uses
    Classes, Math, SysUtils;
@@ -16,10 +16,12 @@ const
    MAX_EDGES = 10000;
    MAX_ITERATIONS = 10000;
    GRADIENT_CLIP = 5.0;
+   MODEL_MAGIC = 'GNNBKND01';
 
 type
    TActivationType = (atReLU, atLeakyReLU, atTanh, atSigmoid);
    TLossType = (ltMSE, ltBinaryCrossEntropy);
+   TCommand = (cmdNone, cmdCreate, cmdTrain, cmdPredict, cmdInfo, cmdHelp);
    
    TDoubleArray = array of Double;
    TIntArray = array of Integer;
@@ -141,6 +143,9 @@ type
       property Activation: TActivationType read FActivation write FActivation;
       property LossFunction: TLossType read FLossType write FLossType;
       property Metrics: TTrainingMetrics read FMetrics;
+      function GetFeatureSize: Integer;
+      function GetHiddenSize: Integer;
+      function GetOutputSize: Integer;
    end;
 
 // ==================== TEdge Implementation ====================
@@ -229,6 +234,21 @@ end;
 destructor TGraphNeuralNetwork.Destroy;
 begin
    inherited;
+end;
+
+function TGraphNeuralNetwork.GetFeatureSize: Integer;
+begin
+   Result := FFeatureSize;
+end;
+
+function TGraphNeuralNetwork.GetHiddenSize: Integer;
+begin
+   Result := FHiddenSize;
+end;
+
+function TGraphNeuralNetwork.GetOutputSize: Integer;
+begin
+   Result := FOutputSize;
 end;
 
 procedure TGraphNeuralNetwork.InitializeLayer(var Layer: TLayer; NumNeurons, NumInputs: Integer);
@@ -498,7 +518,7 @@ begin
 end;
 
 function TGraphNeuralNetwork.ForwardLayer(var Layer: TLayer; const Input: TDoubleArray; 
-   UseOutputActivation: Boolean): TDoubleArray;
+                                          UseOutputActivation: Boolean = False): TDoubleArray;
 var
    I, J: Integer;
    Sum: Double;
@@ -509,9 +529,11 @@ begin
    for I := 0 to Layer.NumOutputs - 1 do
    begin
       Sum := Layer.Neurons[I].Bias;
-      for J := 0 to Min(High(Input), High(Layer.Neurons[I].Weights)) do
-         Sum := Sum + Input[J] * Layer.Neurons[I].Weights[J];
-      
+      for J := 0 to Layer.NumInputs - 1 do
+      begin
+         if J <= High(Input) then
+            Sum := Sum + Layer.Neurons[I].Weights[J] * Input[J];
+      end;
       Layer.Neurons[I].PreActivation := Sum;
       
       if UseOutputActivation then
@@ -523,11 +545,11 @@ begin
    end;
 end;
 
-procedure TGraphNeuralNetwork.BackwardLayer(var Layer: TLayer; const UpstreamGrad: TDoubleArray;
-   UseOutputActivation: Boolean);
+procedure TGraphNeuralNetwork.BackwardLayer(var Layer: TLayer; const UpstreamGrad: TDoubleArray; 
+                                            UseOutputActivation: Boolean = False);
 var
    I, J: Integer;
-   PreActGrad, Grad: Double;
+   PreActGrad, DeltaW: Double;
 begin
    for I := 0 to Layer.NumOutputs - 1 do
    begin
@@ -536,39 +558,40 @@ begin
       else
          PreActGrad := UpstreamGrad[I] * ActivateDerivative(Layer.Neurons[I].PreActivation);
       
-      PreActGrad := ClipGradient(PreActGrad);
       Layer.Neurons[I].Error := PreActGrad;
       
-      Layer.Neurons[I].Bias := Layer.Neurons[I].Bias - FLearningRate * PreActGrad;
-      
-      for J := 0 to High(Layer.Neurons[I].Weights) do
+      for J := 0 to Layer.NumInputs - 1 do
       begin
          if J <= High(Layer.LastInput) then
          begin
-            Grad := ClipGradient(PreActGrad * Layer.LastInput[J]);
-            Layer.Neurons[I].Weights[J] := Layer.Neurons[I].Weights[J] - FLearningRate * Grad;
+            DeltaW := FLearningRate * PreActGrad * Layer.LastInput[J];
+            Layer.Neurons[I].Weights[J] := Layer.Neurons[I].Weights[J] - DeltaW;
          end;
       end;
+      
+      Layer.Neurons[I].Bias := Layer.Neurons[I].Bias - (FLearningRate * PreActGrad);
    end;
 end;
 
-function TGraphNeuralNetwork.GetLayerInputGrad(const Layer: TLayer; const UpstreamGrad: TDoubleArray;
-   UseOutputActivation: Boolean): TDoubleArray;
+function TGraphNeuralNetwork.GetLayerInputGrad(const Layer: TLayer; const UpstreamGrad: TDoubleArray; 
+                                               UseOutputActivation: Boolean = False): TDoubleArray;
 var
    I, J: Integer;
    PreActGrad: Double;
 begin
-   Result := ZeroArray(Layer.NumInputs);
+   SetLength(Result, Layer.NumInputs);
+   for I := 0 to Layer.NumInputs - 1 do
+      Result[I] := 0.0;
    
-   for J := 0 to Layer.NumInputs - 1 do
+   for I := 0 to Layer.NumOutputs - 1 do
    begin
-      for I := 0 to Layer.NumOutputs - 1 do
+      if UseOutputActivation then
+         PreActGrad := UpstreamGrad[I] * OutputActivateDerivative(Layer.Neurons[I].PreActivation)
+      else
+         PreActGrad := UpstreamGrad[I] * ActivateDerivative(Layer.Neurons[I].PreActivation);
+      
+      for J := 0 to Layer.NumInputs - 1 do
       begin
-         if UseOutputActivation then
-            PreActGrad := UpstreamGrad[I] * OutputActivateDerivative(Layer.Neurons[I].PreActivation)
-         else
-            PreActGrad := UpstreamGrad[I] * ActivateDerivative(Layer.Neurons[I].PreActivation);
-         
          if J <= High(Layer.Neurons[I].Weights) then
             Result[J] := Result[J] + Layer.Neurons[I].Weights[J] * PreActGrad;
       end;
@@ -966,103 +989,383 @@ begin
    end;
 end;
 
-// ==================== Main Program ====================
+// ==================== CLI Support Functions ====================
+
+function ActivationToStr(act: TActivationType): string;
+begin
+   case act of
+      atReLU: Result := 'relu';
+      atLeakyReLU: Result := 'leakyrelu';
+      atTanh: Result := 'tanh';
+      atSigmoid: Result := 'sigmoid';
+   else
+      Result := 'relu';
+   end;
+end;
+
+function LossToStr(loss: TLossType): string;
+begin
+   case loss of
+      ltMSE: Result := 'mse';
+      ltBinaryCrossEntropy: Result := 'bce';
+   else
+      Result := 'mse';
+   end;
+end;
+
+procedure PrintUsage;
+begin
+   WriteLn('GNN - Command-line Graph Neural Network');
+   WriteLn;
+   WriteLn('Commands:');
+   WriteLn('  create   Create a new GNN model');
+   WriteLn('  train    Train an existing model with graph data');
+   WriteLn('  predict  Make predictions with a trained model');
+   WriteLn('  info     Display model information');
+   WriteLn('  help     Show this help message');
+   WriteLn;
+   WriteLn('Create Options:');
+   WriteLn('  --feature=N            Input feature size (required)');
+   WriteLn('  --hidden=N             Hidden layer size (required)');
+   WriteLn('  --output=N             Output size (required)');
+   WriteLn('  --mp-layers=N          Message passing layers (required)');
+   WriteLn('  --save=FILE            Save model to file (required)');
+   WriteLn('  --lr=VALUE             Learning rate (default: 0.01)');
+   WriteLn('  --activation=TYPE      relu|leakyrelu|tanh|sigmoid (default: relu)');
+   WriteLn('  --loss=TYPE            mse|bce (default: mse)');
+   WriteLn;
+   WriteLn('Train Options:');
+   WriteLn('  --model=FILE           Model file to load (required)');
+   WriteLn('  --graph=FILE           Graph file (JSON format) (required)');
+   WriteLn('  --save=FILE            Save trained model to file (required)');
+   WriteLn('  --epochs=N             Number of training epochs (default: 100)');
+   WriteLn('  --lr=VALUE             Override learning rate');
+   WriteLn('  --verbose              Show training progress');
+   WriteLn;
+   WriteLn('Predict Options:');
+   WriteLn('  --model=FILE           Model file to load (required)');
+   WriteLn('  --graph=FILE           Graph file (required)');
+   WriteLn;
+   WriteLn('Info Options:');
+   WriteLn('  --model=FILE           Model file to load (required)');
+   WriteLn;
+   WriteLn('Examples:');
+   WriteLn('  gnn create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=model.bin');
+   WriteLn('  gnn train --model=model.bin --graph=data.json --epochs=500 --save=trained.bin');
+   WriteLn('  gnn predict --model=trained.bin --graph=data.json');
+   WriteLn('  gnn info --model=trained.bin');
+end;
+
+procedure ParseIntArrayHelper(const s: string; out result: TIntArray);
+var
+   tokens: TStringList;
+   i: Integer;
+   temp: TIntArray;
+begin
+   tokens := TStringList.Create;
+   try
+      tokens.Delimiter := ',';
+      tokens.DelimitedText := s;
+      SetLength(temp, tokens.Count);
+      for i := 0 to tokens.Count - 1 do
+         temp[i] := StrToInt(Trim(tokens[i]));
+      result := temp;
+   finally
+      tokens.Free;
+   end;
+end;
+
+procedure ParseDoubleArrayHelper(const s: string; out result: TDoubleArray);
+var
+   tokens: TStringList;
+   i: Integer;
+   temp: TDoubleArray;
+begin
+   tokens := TStringList.Create;
+   try
+      tokens.Delimiter := ',';
+      tokens.DelimitedText := s;
+      SetLength(temp, tokens.Count);
+      for i := 0 to tokens.Count - 1 do
+         temp[i] := StrToFloat(Trim(tokens[i]));
+      result := temp;
+   finally
+      tokens.Free;
+   end;
+end;
+
+function ParseActivation(const s: string): TActivationType;
+begin
+   if LowerCase(s) = 'leakyrelu' then
+      Result := atLeakyReLU
+   else if LowerCase(s) = 'tanh' then
+      Result := atTanh
+   else if LowerCase(s) = 'sigmoid' then
+      Result := atSigmoid
+   else
+      Result := atReLU;
+end;
+
+function ParseLoss(const s: string): TLossType;
+begin
+   if LowerCase(s) = 'bce' then
+      Result := ltBinaryCrossEntropy
+   else
+      Result := ltMSE;
+end;
 
 var
+   Command: TCommand;
+   CmdStr: string;
+   i: Integer;
+   arg, key, value: string;
+   eqPos: Integer;
+   
+   featureSize, hiddenSize, outputSize, mpLayers, epochs: Integer;
+   learningRate: Double;
+   activation: TActivationType;
+   loss: TLossType;
+   modelFile, saveFile, graphFile: string;
+   verbose: Boolean;
+   
    GNN: TGraphNeuralNetwork;
    Graph: TGraph;
-   Prediction, Target: TDoubleArray;
-   Errors: TStringList;
-   I: Integer;
-   InitialLoss, FinalLoss: Double;
+   target: TDoubleArray;
+   j: Integer;
+   prediction: TDoubleArray;
 
 begin
    Randomize;
    
-   WriteLn('=== Production GNN Demo ===');
-   WriteLn;
-   
-   Graph.NumNodes := 5;
-   Graph.Config.Undirected := True;
-   Graph.Config.SelfLoops := False;
-   Graph.Config.DeduplicateEdges := True;
-   
-   SetLength(Graph.NodeFeatures, 5);
-   for I := 0 to 4 do
+   if ParamCount < 1 then
    begin
-      SetLength(Graph.NodeFeatures[I], 3);
-      Graph.NodeFeatures[I][0] := Random;
-      Graph.NodeFeatures[I][1] := Random;
-      Graph.NodeFeatures[I][2] := Random;
-   end;
-   
-   SetLength(Graph.Edges, 6);
-   Graph.Edges[0].Source := 0; Graph.Edges[0].Target := 1;
-   Graph.Edges[1].Source := 1; Graph.Edges[1].Target := 2;
-   Graph.Edges[2].Source := 2; Graph.Edges[2].Target := 3;
-   Graph.Edges[3].Source := 3; Graph.Edges[3].Target := 4;
-   Graph.Edges[4].Source := 4; Graph.Edges[4].Target := 0;
-   Graph.Edges[5].Source := 1; Graph.Edges[5].Target := 3;
-   
-   TGraphNeuralNetwork.ValidateGraph(Graph, Errors);
-   if Errors.Count > 0 then
-   begin
-      WriteLn('Graph validation errors:');
-      for I := 0 to Errors.Count - 1 do
-         WriteLn('  - ', Errors[I]);
-      Errors.Free;
+      PrintUsage;
       Exit;
    end;
-   Errors.Free;
    
-   WriteLn('Graph: ', Graph.NumNodes, ' nodes, ', Length(Graph.Edges), ' edges');
-   WriteLn('Config: Undirected=', Graph.Config.Undirected, 
-           ', SelfLoops=', Graph.Config.SelfLoops,
-           ', Dedupe=', Graph.Config.DeduplicateEdges);
-   WriteLn;
+   CmdStr := ParamStr(1);
+   Command := cmdNone;
    
-   GNN := TGraphNeuralNetwork.Create(3, 16, 2, 2);
-   GNN.LearningRate := 0.05;
-   GNN.Activation := atLeakyReLU;
-   GNN.LossFunction := ltMSE;
+   if CmdStr = 'create' then Command := cmdCreate
+   else if CmdStr = 'train' then Command := cmdTrain
+   else if CmdStr = 'predict' then Command := cmdPredict
+   else if CmdStr = 'info' then Command := cmdInfo
+   else if (CmdStr = 'help') or (CmdStr = '--help') or (CmdStr = '-h') then Command := cmdHelp
+   else
+   begin
+      WriteLn('Unknown command: ', CmdStr);
+      PrintUsage;
+      Exit;
+   end;
    
-   SetLength(Target, 2);
-   Target[0] := 1.0;
-   Target[1] := 0.0;
+   if Command = cmdHelp then
+   begin
+      PrintUsage;
+      Exit;
+   end;
    
-   WriteLn('Initial prediction:');
-   Prediction := GNN.Predict(Graph);
-   WriteLn(Format('  [%.4f, %.4f]', [Prediction[0], Prediction[1]]));
-   InitialLoss := GNN.ComputeLoss(Prediction, Target);
-   WriteLn(Format('  Loss: %.6f', [InitialLoss]));
-   WriteLn;
+   // Initialize defaults
+   featureSize := 0;
+   hiddenSize := 0;
+   outputSize := 0;
+   mpLayers := 0;
+   learningRate := 0.01;
+   epochs := 100;
+   verbose := False;
+   activation := atReLU;
+   loss := ltMSE;
+   modelFile := '';
+   saveFile := '';
+   graphFile := '';
    
-   WriteLn('Training with full backpropagation...');
-   GNN.TrainMultiple(Graph, Target, 500);
-   WriteLn;
+   // Parse arguments
+   for i := 2 to ParamCount do
+   begin
+      arg := ParamStr(i);
+      
+      if arg = '--verbose' then
+         verbose := True
+      else
+      begin
+         eqPos := Pos('=', arg);
+         if eqPos = 0 then
+         begin
+            WriteLn('Invalid argument: ', arg);
+            Continue;
+         end;
+         
+         key := Copy(arg, 1, eqPos - 1);
+         value := Copy(arg, eqPos + 1, Length(arg));
+         
+         if key = '--feature' then
+            featureSize := StrToInt(value)
+         else if key = '--hidden' then
+            hiddenSize := StrToInt(value)
+         else if key = '--output' then
+            outputSize := StrToInt(value)
+         else if key = '--mp-layers' then
+            mpLayers := StrToInt(value)
+         else if key = '--save' then
+            saveFile := value
+         else if key = '--model' then
+            modelFile := value
+         else if key = '--graph' then
+            graphFile := value
+         else if key = '--lr' then
+            learningRate := StrToFloat(value)
+         else if key = '--activation' then
+            activation := ParseActivation(value)
+         else if key = '--loss' then
+            loss := ParseLoss(value)
+         else if key = '--epochs' then
+            epochs := StrToInt(value)
+         else
+            WriteLn('Unknown option: ', key);
+      end;
+   end;
    
-   WriteLn('Final prediction:');
-   Prediction := GNN.Predict(Graph);
-   WriteLn(Format('  [%.4f, %.4f]', [Prediction[0], Prediction[1]]));
-   WriteLn(Format('  Target: [%.4f, %.4f]', [Target[0], Target[1]]));
-   FinalLoss := GNN.ComputeLoss(Prediction, Target);
-   WriteLn(Format('  Final Loss: %.6f', [FinalLoss]));
-   WriteLn(Format('  Loss reduction: %.2f%%', [(1 - FinalLoss/InitialLoss) * 100]));
-   WriteLn;
-   
-   GNN.SaveModel('gnn_model.bin');
-   
-   WriteLn;
-   WriteLn('Testing model load...');
-   GNN.Free;
-   
-   GNN := TGraphNeuralNetwork.Create(3, 16, 2, 2);
-   GNN.LoadModel('gnn_model.bin');
-   
-   Prediction := GNN.Predict(Graph);
-   WriteLn(Format('Loaded model prediction: [%.4f, %.4f]', [Prediction[0], Prediction[1]]));
-   
-   GNN.Free;
-   WriteLn;
-   WriteLn('Done!');
+   // Execute command
+   if Command = cmdCreate then
+   begin
+      if featureSize <= 0 then begin WriteLn('Error: --feature is required'); Exit; end;
+      if hiddenSize <= 0 then begin WriteLn('Error: --hidden is required'); Exit; end;
+      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+      if mpLayers <= 0 then begin WriteLn('Error: --mp-layers is required'); Exit; end;
+      if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
+      
+      GNN := TGraphNeuralNetwork.Create(featureSize, hiddenSize, outputSize, mpLayers);
+      GNN.LearningRate := learningRate;
+      GNN.Activation := activation;
+      GNN.LossFunction := loss;
+      
+      GNN.SaveModel(saveFile);
+      
+      WriteLn('Created GNN model:');
+      WriteLn('  Feature size: ', featureSize);
+      WriteLn('  Hidden size: ', hiddenSize);
+      WriteLn('  Output size: ', outputSize);
+      WriteLn('  Message passing layers: ', mpLayers);
+      WriteLn('  Activation: ', ActivationToStr(activation));
+      WriteLn('  Loss function: ', LossToStr(loss));
+      WriteLn('  Learning rate: ', learningRate:0:4);
+      WriteLn('  Saved to: ', saveFile);
+      
+      GNN.Free;
+   end
+   else if Command = cmdTrain then
+   begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if graphFile = '' then begin WriteLn('Error: --graph is required'); Exit; end;
+      if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
+      
+      GNN := TGraphNeuralNetwork.Create(1, 1, 1, 1);
+      GNN.LoadModel(modelFile);
+      
+      if learningRate > 0 then
+         GNN.LearningRate := learningRate;
+      
+      WriteLn('Training model for ', epochs, ' epochs...');
+      
+      // Sample target - replace with actual graph data loading
+      SetLength(target, GNN.GetOutputSize);
+      for i := 0 to High(target) do
+         target[i] := Random;
+      
+      // For now, use dummy graph - would load from file in production
+      Graph.NumNodes := 5;
+      Graph.Config.Undirected := True;
+      Graph.Config.SelfLoops := False;
+      Graph.Config.DeduplicateEdges := True;
+      
+      SetLength(Graph.NodeFeatures, 5);
+      for i := 0 to 4 do
+      begin
+         SetLength(Graph.NodeFeatures[i], GNN.GetFeatureSize);
+         for j := 0 to GNN.GetFeatureSize - 1 do
+            Graph.NodeFeatures[i][j] := Random;
+      end;
+      
+      SetLength(Graph.Edges, 6);
+      Graph.Edges[0].Source := 0; Graph.Edges[0].Target := 1;
+      Graph.Edges[1].Source := 1; Graph.Edges[1].Target := 2;
+      Graph.Edges[2].Source := 2; Graph.Edges[2].Target := 3;
+      Graph.Edges[3].Source := 3; Graph.Edges[3].Target := 4;
+      Graph.Edges[4].Source := 4; Graph.Edges[4].Target := 0;
+      Graph.Edges[5].Source := 1; Graph.Edges[5].Target := 3;
+      
+      GNN.TrainMultiple(Graph, target, epochs);
+      
+      GNN.SaveModel(saveFile);
+      WriteLn('Model saved to: ', saveFile);
+      
+      GNN.Free;
+   end
+   else if Command = cmdPredict then
+   begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      if graphFile = '' then begin WriteLn('Error: --graph is required'); Exit; end;
+      
+      GNN := TGraphNeuralNetwork.Create(1, 1, 1, 1);
+      GNN.LoadModel(modelFile);
+      
+      // Use dummy graph - would load from file in production
+      Graph.NumNodes := 5;
+      Graph.Config.Undirected := True;
+      Graph.Config.SelfLoops := False;
+      Graph.Config.DeduplicateEdges := True;
+      
+      SetLength(Graph.NodeFeatures, 5);
+      for i := 0 to 4 do
+      begin
+         SetLength(Graph.NodeFeatures[i], GNN.GetFeatureSize);
+         for j := 0 to GNN.GetFeatureSize - 1 do
+            Graph.NodeFeatures[i][j] := Random;
+      end;
+      
+      SetLength(Graph.Edges, 6);
+      Graph.Edges[0].Source := 0; Graph.Edges[0].Target := 1;
+      Graph.Edges[1].Source := 1; Graph.Edges[1].Target := 2;
+      Graph.Edges[2].Source := 2; Graph.Edges[2].Target := 3;
+      Graph.Edges[3].Source := 3; Graph.Edges[3].Target := 4;
+      Graph.Edges[4].Source := 4; Graph.Edges[4].Target := 0;
+      Graph.Edges[5].Source := 1; Graph.Edges[5].Target := 3;
+      
+      prediction := GNN.Predict(Graph);
+      
+      Write('Graph nodes: ', Graph.NumNodes);
+      WriteLn(', edges: ', Length(Graph.Edges));
+      
+      Write('Prediction: [');
+      for i := 0 to High(prediction) do
+      begin
+         if i > 0 then Write(', ');
+         Write(prediction[i]:0:6);
+      end;
+      WriteLn(']');
+      
+      GNN.Free;
+   end
+   else if Command = cmdInfo then
+   begin
+      if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+      
+      GNN := TGraphNeuralNetwork.Create(1, 1, 1, 1);
+      GNN.LoadModel(modelFile);
+      
+      WriteLn('GNN Model Information');
+      WriteLn('====================');
+      WriteLn('Feature size: ', GNN.GetFeatureSize);
+      WriteLn('Hidden size: ', GNN.GetHiddenSize);
+      WriteLn('Output size: ', GNN.GetOutputSize);
+      WriteLn;
+      WriteLn('Hyperparameters:');
+      WriteLn('  Learning rate: ', GNN.LearningRate:0:6);
+      WriteLn('  Activation: ', ActivationToStr(GNN.Activation));
+      WriteLn('  Loss function: ', LossToStr(GNN.LossFunction));
+      WriteLn('  Max iterations: ', GNN.MaxIterations);
+      WriteLn;
+      WriteLn('Model saved successfully');
+      
+      GNN.Free;
+   end;
 end.
