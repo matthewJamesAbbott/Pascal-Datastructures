@@ -221,6 +221,7 @@ end;
 procedure PrintUsage;
 begin
   WriteLn('Facaded RNN - Command-line Recurrent Neural Network with Introspection');
+  WriteLn('Matthew Abbott 2025');
   WriteLn;
   WriteLn('Commands:');
   WriteLn('  create                Create a new RNN model');
