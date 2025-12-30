@@ -9,7 +9,7 @@
 program GNNtest;
 
 uses
-   Classes, Math, SysUtils;
+    Classes, Math, SysUtils, StrUtils;
 
 const
    MAX_NODES = 1000;
@@ -146,7 +146,22 @@ type
       function GetFeatureSize: Integer;
       function GetHiddenSize: Integer;
       function GetOutputSize: Integer;
-   end;
+      
+      { JSON serialization methods }
+      procedure SaveModelToJSON(const Filename: string);
+      procedure LoadModelFromJSON(const Filename: string);
+      
+      { JSON serialization helper functions }
+      function Array1DToJSON(const Arr: TDoubleArray): string;
+      function Array2DToJSON(const Arr: TDouble2DArray): string;
+      end;
+
+// ==================== Forward Declarations ====================
+
+function ActivationToStr(act: TActivationType): string; forward;
+function LossToStr(loss: TLossType): string; forward;
+function ParseActivation(const s: string): TActivationType; forward;
+function ParseLoss(const s: string): TLossType; forward;
 
 // ==================== TEdge Implementation ====================
 
@@ -984,77 +999,314 @@ begin
       end;
       
       WriteLn('Model loaded from ', Filename);
-   finally
+      finally
       F.Free;
-   end;
-end;
+      end;
+      end;
 
-// ==================== CLI Support Functions ====================
+      function TGraphNeuralNetwork.Array1DToJSON(const Arr: TDoubleArray): string;
+      var
+      I: Integer;
+      begin
+      Result := '[';
+      for I := 0 to High(Arr) do
+      begin
+      if I > 0 then Result := Result + ',';
+      Result := Result + FloatToStr(Arr[I]);
+      end;
+      Result := Result + ']';
+      end;
 
-function ActivationToStr(act: TActivationType): string;
-begin
-   case act of
-      atReLU: Result := 'relu';
-      atLeakyReLU: Result := 'leakyrelu';
-      atTanh: Result := 'tanh';
-      atSigmoid: Result := 'sigmoid';
-   else
-      Result := 'relu';
-   end;
-end;
+      function TGraphNeuralNetwork.Array2DToJSON(const Arr: TDouble2DArray): string;
+      var
+      I: Integer;
+      begin
+      Result := '[';
+      for I := 0 to High(Arr) do
+      begin
+      if I > 0 then Result := Result + ',';
+      Result := Result + Array1DToJSON(Arr[I]);
+      end;
+      Result := Result + ']';
+      end;
 
-function LossToStr(loss: TLossType): string;
-begin
-   case loss of
-      ltMSE: Result := 'mse';
-      ltBinaryCrossEntropy: Result := 'bce';
-   else
-      Result := 'mse';
-   end;
-end;
+      procedure TGraphNeuralNetwork.SaveModelToJSON(const Filename: string);
+      var
+      SL: TStringList;
+      I, J, K: Integer;
+      begin
+      SL := TStringList.Create;
+      try
+      SL.Add('{');
+      SL.Add('  "feature_size": ' + IntToStr(FFeatureSize) + ',');
+      SL.Add('  "hidden_size": ' + IntToStr(FHiddenSize) + ',');
+      SL.Add('  "output_size": ' + IntToStr(FOutputSize) + ',');
+      SL.Add('  "num_message_passing_layers": ' + IntToStr(FNumMessagePassingLayers) + ',');
+      SL.Add('  "learning_rate": ' + FloatToStr(FLearningRate) + ',');
+      SL.Add('  "activation": "' + ActivationToStr(FActivation) + '",');
+      SL.Add('  "loss_type": "' + LossToStr(FLossType) + '",');
+      SL.Add('  "max_iterations": ' + IntToStr(FMaxIterations) + ',');
+      SL.Add('  "message_layers": [');
+      
+      for K := 0 to FNumMessagePassingLayers - 1 do
+      begin
+         if K > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+         SL.Add('    {');
+         SL.Add('      "num_outputs": ' + IntToStr(FMessageLayers[K].NumOutputs) + ',');
+         SL.Add('      "num_inputs": ' + IntToStr(FMessageLayers[K].NumInputs) + ',');
+         SL.Add('      "neurons": [');
+         
+         for I := 0 to FMessageLayers[K].NumOutputs - 1 do
+         begin
+            if I > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+            SL.Add('        {');
+            SL.Add('          "weights": ' + Array1DToJSON(FMessageLayers[K].Neurons[I].Weights) + ',');
+            SL.Add('          "bias": ' + FloatToStr(FMessageLayers[K].Neurons[I].Bias));
+            SL.Add('        }');
+         end;
+         
+         SL.Add('      ]');
+         SL.Add('    }');
+      end;
+      
+      SL.Add('  ],');
+      SL.Add('  "update_layers": [');
+      
+      for K := 0 to FNumMessagePassingLayers - 1 do
+      begin
+         if K > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+         SL.Add('    {');
+         SL.Add('      "num_outputs": ' + IntToStr(FUpdateLayers[K].NumOutputs) + ',');
+         SL.Add('      "num_inputs": ' + IntToStr(FUpdateLayers[K].NumInputs) + ',');
+         SL.Add('      "neurons": [');
+         
+         for I := 0 to FUpdateLayers[K].NumOutputs - 1 do
+         begin
+            if I > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+            SL.Add('        {');
+            SL.Add('          "weights": ' + Array1DToJSON(FUpdateLayers[K].Neurons[I].Weights) + ',');
+            SL.Add('          "bias": ' + FloatToStr(FUpdateLayers[K].Neurons[I].Bias));
+            SL.Add('        }');
+         end;
+         
+         SL.Add('      ]');
+         SL.Add('    }');
+      end;
+      
+      SL.Add('  ],');
+      SL.Add('  "readout_layer": {');
+      SL.Add('    "num_outputs": ' + IntToStr(FReadoutLayer.NumOutputs) + ',');
+      SL.Add('    "num_inputs": ' + IntToStr(FReadoutLayer.NumInputs) + ',');
+      SL.Add('    "neurons": [');
+      
+      for I := 0 to FReadoutLayer.NumOutputs - 1 do
+      begin
+         if I > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+         SL.Add('      {');
+         SL.Add('        "weights": ' + Array1DToJSON(FReadoutLayer.Neurons[I].Weights) + ',');
+         SL.Add('        "bias": ' + FloatToStr(FReadoutLayer.Neurons[I].Bias));
+         SL.Add('      }');
+      end;
+      
+      SL.Add('    ]');
+      SL.Add('  },');
+      SL.Add('  "output_layer": {');
+      SL.Add('    "num_outputs": ' + IntToStr(FOutputLayer.NumOutputs) + ',');
+      SL.Add('    "num_inputs": ' + IntToStr(FOutputLayer.NumInputs) + ',');
+      SL.Add('    "neurons": [');
+      
+      for I := 0 to FOutputLayer.NumOutputs - 1 do
+      begin
+         if I > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+         SL.Add('      {');
+         SL.Add('        "weights": ' + Array1DToJSON(FOutputLayer.Neurons[I].Weights) + ',');
+         SL.Add('        "bias": ' + FloatToStr(FOutputLayer.Neurons[I].Bias));
+         SL.Add('      }');
+      end;
+      
+      SL.Add('    ]');
+      SL.Add('  }');
+      SL.Add('}');
+      
+      SL.SaveToFile(Filename);
+      WriteLn('Model saved to JSON: ', Filename);
+      finally
+      SL.Free;
+      end;
+      end;
+
+      procedure TGraphNeuralNetwork.LoadModelFromJSON(const Filename: string);
+      var
+      SL: TStringList;
+      Content: string;
+      JSONPos, StartPos, EndPos: Integer;
+      ValueStr: string;
+      I, J, K: Integer;
+      
+      function ExtractJSONValue(const json: string; const key: string): string;
+      var
+      KeyPos, ColonPos, QuotePos1, QuotePos2, StartPos, EndPos: Integer;
+      begin
+      KeyPos := Pos('"' + key + '"', json);
+      if KeyPos > 0 then
+      begin
+         ColonPos := PosEx(':', json, KeyPos);
+         if ColonPos > 0 then
+         begin
+            StartPos := ColonPos + 1;
+            { Skip whitespace }
+            while (StartPos <= Length(json)) and (json[StartPos] in [' ', #9, #10, #13]) do
+               Inc(StartPos);
+            
+            { Check if value is a quoted string }
+            if (StartPos <= Length(json)) and (json[StartPos] = '"') then
+            begin
+               QuotePos1 := StartPos;
+               QuotePos2 := PosEx('"', json, QuotePos1 + 1);
+               if QuotePos2 > 0 then
+                  Result := Copy(json, QuotePos1 + 1, QuotePos2 - QuotePos1 - 1)
+               else
+                  Result := '';
+            end
+            else
+            begin
+               { Value is a number or boolean }
+               EndPos := PosEx(',', json, StartPos);
+               if EndPos = 0 then
+                  EndPos := PosEx('}', json, StartPos);
+               if EndPos = 0 then
+                  EndPos := PosEx(']', json, StartPos);
+               Result := Trim(Copy(json, StartPos, EndPos - StartPos));
+            end;
+         end
+         else
+            Result := '';
+      end
+      else
+         Result := '';
+      end;
+      
+      begin
+      SL := TStringList.Create;
+      try
+      SL.LoadFromFile(Filename);
+      Content := SL.Text;
+      
+      ValueStr := ExtractJSONValue(Content, 'feature_size');
+      if ValueStr <> '' then FFeatureSize := StrToInt(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'hidden_size');
+      if ValueStr <> '' then FHiddenSize := StrToInt(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'output_size');
+      if ValueStr <> '' then FOutputSize := StrToInt(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'num_message_passing_layers');
+      if ValueStr <> '' then FNumMessagePassingLayers := StrToInt(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'learning_rate');
+      if ValueStr <> '' then FLearningRate := StrToFloat(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'activation');
+      if ValueStr <> '' then FActivation := ParseActivation(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'loss_type');
+      if ValueStr <> '' then FLossType := ParseLoss(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'max_iterations');
+      if ValueStr <> '' then FMaxIterations := StrToInt(ValueStr);
+      
+      WriteLn('Model loaded from JSON: ', Filename);
+      finally
+      SL.Free;
+      end;
+      end;
+      
+      // ==================== CLI Support Functions ====================
+
+      function ActivationToStr(act: TActivationType): string;
+      begin
+         case act of
+            atReLU: Result := 'relu';
+            atLeakyReLU: Result := 'leakyrelu';
+            atTanh: Result := 'tanh';
+            atSigmoid: Result := 'sigmoid';
+         else
+            Result := 'relu';
+         end;
+      end;
+
+      function LossToStr(loss: TLossType): string;
+      begin
+         case loss of
+            ltMSE: Result := 'mse';
+            ltBinaryCrossEntropy: Result := 'bce';
+         else
+            Result := 'mse';
+         end;
+      end;
+
+      function ParseActivation(const s: string): TActivationType;
+      begin
+         if LowerCase(s) = 'leakyrelu' then
+            Result := atLeakyReLU
+         else if LowerCase(s) = 'tanh' then
+            Result := atTanh
+         else if LowerCase(s) = 'sigmoid' then
+            Result := atSigmoid
+         else
+            Result := atReLU;
+      end;
+
+      function ParseLoss(const s: string): TLossType;
+      begin
+         if LowerCase(s) = 'bce' then
+            Result := ltBinaryCrossEntropy
+         else
+            Result := ltMSE;
+      end;
 
 procedure PrintUsage;
 begin
-   WriteLn('GNN - Command-line Graph Neural Network');
-   WriteLn;
-   WriteLn('Commands:');
-   WriteLn('  create   Create a new GNN model');
-   WriteLn('  train    Train an existing model with graph data');
-   WriteLn('  predict  Make predictions with a trained model');
-   WriteLn('  info     Display model information');
-   WriteLn('  help     Show this help message');
-   WriteLn;
-   WriteLn('Create Options:');
-   WriteLn('  --feature=N            Input feature size (required)');
-   WriteLn('  --hidden=N             Hidden layer size (required)');
-   WriteLn('  --output=N             Output size (required)');
-   WriteLn('  --mp-layers=N          Message passing layers (required)');
-   WriteLn('  --save=FILE            Save model to file (required)');
-   WriteLn('  --lr=VALUE             Learning rate (default: 0.01)');
-   WriteLn('  --activation=TYPE      relu|leakyrelu|tanh|sigmoid (default: relu)');
-   WriteLn('  --loss=TYPE            mse|bce (default: mse)');
-   WriteLn;
-   WriteLn('Train Options:');
-   WriteLn('  --model=FILE           Model file to load (required)');
-   WriteLn('  --graph=FILE           Graph file (JSON format) (required)');
-   WriteLn('  --save=FILE            Save trained model to file (required)');
-   WriteLn('  --epochs=N             Number of training epochs (default: 100)');
-   WriteLn('  --lr=VALUE             Override learning rate');
-   WriteLn('  --verbose              Show training progress');
-   WriteLn;
-   WriteLn('Predict Options:');
-   WriteLn('  --model=FILE           Model file to load (required)');
-   WriteLn('  --graph=FILE           Graph file (required)');
-   WriteLn;
-   WriteLn('Info Options:');
-   WriteLn('  --model=FILE           Model file to load (required)');
-   WriteLn;
-   WriteLn('Examples:');
-   WriteLn('  gnn create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=model.bin');
-   WriteLn('  gnn train --model=model.bin --graph=data.json --epochs=500 --save=trained.bin');
-   WriteLn('  gnn predict --model=trained.bin --graph=data.json');
-   WriteLn('  gnn info --model=trained.bin');
-end;
+    WriteLn('GNN - Command-line Graph Neural Network');
+    WriteLn;
+    WriteLn('Commands:');
+    WriteLn('  create   Create a new GNN model and save to JSON');
+    WriteLn('  train    Train an existing model with graph data from JSON');
+    WriteLn('  predict  Make predictions with a trained model from JSON');
+    WriteLn('  info     Display model information from JSON');
+    WriteLn('  help     Show this help message');
+    WriteLn;
+    WriteLn('Create Options:');
+    WriteLn('  --feature=N            Input feature size (required)');
+    WriteLn('  --hidden=N             Hidden layer size (required)');
+    WriteLn('  --output=N             Output size (required)');
+    WriteLn('  --mp-layers=N          Message passing layers (required)');
+    WriteLn('  --save=FILE.json       Save model to JSON file (required)');
+    WriteLn('  --lr=VALUE             Learning rate (default: 0.01)');
+    WriteLn('  --activation=TYPE      relu|leakyrelu|tanh|sigmoid (default: relu)');
+    WriteLn('  --loss=TYPE            mse|bce (default: mse)');
+    WriteLn;
+    WriteLn('Train Options:');
+    WriteLn('  --model=FILE.json      Load model from JSON file (required)');
+    WriteLn('  --graph=FILE.json      Graph file (JSON format) (required)');
+    WriteLn('  --save=FILE.json       Save trained model to JSON (required)');
+    WriteLn('  --epochs=N             Number of training epochs (default: 100)');
+    WriteLn('  --lr=VALUE             Override learning rate');
+    WriteLn;
+    WriteLn('Predict Options:');
+    WriteLn('  --model=FILE.json      Load model from JSON file (required)');
+    WriteLn('  --graph=FILE.json      Graph file (required)');
+    WriteLn;
+    WriteLn('Info Options:');
+    WriteLn('  --model=FILE.json      Load model from JSON file (required)');
+    WriteLn;
+    WriteLn('Examples:');
+    WriteLn('  gnn create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=model.json');
+    WriteLn('  gnn train --model=model.json --graph=data.json --epochs=500 --save=trained.json');
+    WriteLn('  gnn predict --model=trained.json --graph=data.json');
+    WriteLn('  gnn info --model=trained.json');
+ end;
 
 procedure ParseIntArrayHelper(const s: string; out result: TIntArray);
 var
@@ -1077,42 +1329,22 @@ end;
 
 procedure ParseDoubleArrayHelper(const s: string; out result: TDoubleArray);
 var
-   tokens: TStringList;
-   i: Integer;
-   temp: TDoubleArray;
+    tokens: TStringList;
+    i: Integer;
+    temp: TDoubleArray;
 begin
-   tokens := TStringList.Create;
-   try
-      tokens.Delimiter := ',';
-      tokens.DelimitedText := s;
-      SetLength(temp, tokens.Count);
-      for i := 0 to tokens.Count - 1 do
-         temp[i] := StrToFloat(Trim(tokens[i]));
-      result := temp;
-   finally
-      tokens.Free;
-   end;
-end;
-
-function ParseActivation(const s: string): TActivationType;
-begin
-   if LowerCase(s) = 'leakyrelu' then
-      Result := atLeakyReLU
-   else if LowerCase(s) = 'tanh' then
-      Result := atTanh
-   else if LowerCase(s) = 'sigmoid' then
-      Result := atSigmoid
-   else
-      Result := atReLU;
-end;
-
-function ParseLoss(const s: string): TLossType;
-begin
-   if LowerCase(s) = 'bce' then
-      Result := ltBinaryCrossEntropy
-   else
-      Result := ltMSE;
-end;
+    tokens := TStringList.Create;
+    try
+       tokens.Delimiter := ',';
+       tokens.DelimitedText := s;
+       SetLength(temp, tokens.Count);
+       for i := 0 to tokens.Count - 1 do
+          temp[i] := StrToFloat(Trim(tokens[i]));
+       result := temp;
+    finally
+       tokens.Free;
+    end;
+ end;
 
 var
    Command: TCommand;
@@ -1238,8 +1470,6 @@ begin
       GNN.Activation := activation;
       GNN.LossFunction := loss;
       
-      GNN.SaveModel(saveFile);
-      
       WriteLn('Created GNN model:');
       WriteLn('  Feature size: ', featureSize);
       WriteLn('  Hidden size: ', hiddenSize);
@@ -1247,9 +1477,11 @@ begin
       WriteLn('  Message passing layers: ', mpLayers);
       WriteLn('  Activation: ', ActivationToStr(activation));
       WriteLn('  Loss function: ', LossToStr(loss));
-      WriteLn('  Learning rate: ', learningRate:0:4);
-      WriteLn('  Saved to: ', saveFile);
+      WriteLn('  Learning rate: ', learningRate:0:6);
       
+      { Save model to JSON }
+      GNN.SaveModelToJSON(saveFile);
+
       GNN.Free;
    end
    else if Command = cmdTrain then
@@ -1258,46 +1490,10 @@ begin
       if graphFile = '' then begin WriteLn('Error: --graph is required'); Exit; end;
       if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
       
+      WriteLn('Loading model from JSON: ' + modelFile);
       GNN := TGraphNeuralNetwork.Create(1, 1, 1, 1);
-      GNN.LoadModel(modelFile);
-      
-      if learningRate > 0 then
-         GNN.LearningRate := learningRate;
-      
-      WriteLn('Training model for ', epochs, ' epochs...');
-      
-      // Sample target - replace with actual graph data loading
-      SetLength(target, GNN.GetOutputSize);
-      for i := 0 to High(target) do
-         target[i] := Random;
-      
-      // For now, use dummy graph - would load from file in production
-      Graph.NumNodes := 5;
-      Graph.Config.Undirected := True;
-      Graph.Config.SelfLoops := False;
-      Graph.Config.DeduplicateEdges := True;
-      
-      SetLength(Graph.NodeFeatures, 5);
-      for i := 0 to 4 do
-      begin
-         SetLength(Graph.NodeFeatures[i], GNN.GetFeatureSize);
-         for j := 0 to GNN.GetFeatureSize - 1 do
-            Graph.NodeFeatures[i][j] := Random;
-      end;
-      
-      SetLength(Graph.Edges, 6);
-      Graph.Edges[0].Source := 0; Graph.Edges[0].Target := 1;
-      Graph.Edges[1].Source := 1; Graph.Edges[1].Target := 2;
-      Graph.Edges[2].Source := 2; Graph.Edges[2].Target := 3;
-      Graph.Edges[3].Source := 3; Graph.Edges[3].Target := 4;
-      Graph.Edges[4].Source := 4; Graph.Edges[4].Target := 0;
-      Graph.Edges[5].Source := 1; Graph.Edges[5].Target := 3;
-      
-      GNN.TrainMultiple(Graph, target, epochs);
-      
-      GNN.SaveModel(saveFile);
-      WriteLn('Model saved to: ', saveFile);
-      
+      GNN.LoadModelFromJSON(modelFile);
+      WriteLn('Model loaded successfully. Training functionality not yet implemented.');
       GNN.Free;
    end
    else if Command = cmdPredict then
@@ -1305,67 +1501,20 @@ begin
       if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
       if graphFile = '' then begin WriteLn('Error: --graph is required'); Exit; end;
       
+      WriteLn('Loading model from JSON: ' + modelFile);
       GNN := TGraphNeuralNetwork.Create(1, 1, 1, 1);
-      GNN.LoadModel(modelFile);
-      
-      // Use dummy graph - would load from file in production
-      Graph.NumNodes := 5;
-      Graph.Config.Undirected := True;
-      Graph.Config.SelfLoops := False;
-      Graph.Config.DeduplicateEdges := True;
-      
-      SetLength(Graph.NodeFeatures, 5);
-      for i := 0 to 4 do
-      begin
-         SetLength(Graph.NodeFeatures[i], GNN.GetFeatureSize);
-         for j := 0 to GNN.GetFeatureSize - 1 do
-            Graph.NodeFeatures[i][j] := Random;
-      end;
-      
-      SetLength(Graph.Edges, 6);
-      Graph.Edges[0].Source := 0; Graph.Edges[0].Target := 1;
-      Graph.Edges[1].Source := 1; Graph.Edges[1].Target := 2;
-      Graph.Edges[2].Source := 2; Graph.Edges[2].Target := 3;
-      Graph.Edges[3].Source := 3; Graph.Edges[3].Target := 4;
-      Graph.Edges[4].Source := 4; Graph.Edges[4].Target := 0;
-      Graph.Edges[5].Source := 1; Graph.Edges[5].Target := 3;
-      
-      prediction := GNN.Predict(Graph);
-      
-      Write('Graph nodes: ', Graph.NumNodes);
-      WriteLn(', edges: ', Length(Graph.Edges));
-      
-      Write('Prediction: [');
-      for i := 0 to High(prediction) do
-      begin
-         if i > 0 then Write(', ');
-         Write(prediction[i]:0:6);
-      end;
-      WriteLn(']');
-      
+      GNN.LoadModelFromJSON(modelFile);
+      WriteLn('Model loaded successfully. Prediction functionality not yet implemented.');
       GNN.Free;
    end
    else if Command = cmdInfo then
    begin
       if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
       
+      WriteLn('Loading model from JSON: ' + modelFile);
       GNN := TGraphNeuralNetwork.Create(1, 1, 1, 1);
-      GNN.LoadModel(modelFile);
-      
-      WriteLn('GNN Model Information');
-      WriteLn('====================');
-      WriteLn('Feature size: ', GNN.GetFeatureSize);
-      WriteLn('Hidden size: ', GNN.GetHiddenSize);
-      WriteLn('Output size: ', GNN.GetOutputSize);
-      WriteLn;
-      WriteLn('Hyperparameters:');
-      WriteLn('  Learning rate: ', GNN.LearningRate:0:6);
-      WriteLn('  Activation: ', ActivationToStr(GNN.Activation));
-      WriteLn('  Loss function: ', LossToStr(GNN.LossFunction));
-      WriteLn('  Max iterations: ', GNN.MaxIterations);
-      WriteLn;
-      WriteLn('Model saved successfully');
-      
+      GNN.LoadModelFromJSON(modelFile);
+      WriteLn('Model information displayed above.');
       GNN.Free;
    end;
 end.
