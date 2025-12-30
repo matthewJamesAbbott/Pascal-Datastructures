@@ -122,8 +122,8 @@ type
     OutPre, OutVal: DArray;
   end;
 
-  // ========== Main Advanced RNN ==========
-  TAdvancedRNN = class
+  // ========== Main RNN ==========
+  TRNN = class
   private
     FInputSize, FOutputSize: Integer;
     FHiddenSizes: array of Integer;
@@ -876,8 +876,8 @@ begin
   ZeroArray(dB, FOutputSize);
 end;
 
-// ========== TAdvancedRNN ==========
-constructor TAdvancedRNN.Create(InputSize: Integer; const HiddenSizes: array of Integer;
+// ========== TRNN ==========
+constructor TRNN.Create(InputSize: Integer; const HiddenSizes: array of Integer;
                                  OutputSize: Integer; CellType: TCellType;
                                  Activation, OutputActivation: TActivationType;
                                  LossType: TLossType; LearningRate, GradientClip: Double;
@@ -933,7 +933,7 @@ begin
   FOutputLayer := TOutputLayer.Create(PrevSize, OutputSize, OutputActivation);
 end;
 
-destructor TAdvancedRNN.Destroy;
+destructor TRNN.Destroy;
 var
   i: Integer;
 begin
@@ -949,12 +949,12 @@ begin
   inherited;
 end;
 
-function TAdvancedRNN.ClipGradient(G, MaxVal: Double): Double;
+function TRNN.ClipGradient(G, MaxVal: Double): Double;
 begin
   Result := ClipValue(G, MaxVal);
 end;
 
-function TAdvancedRNN.InitHiddenStates: TDArray3D;
+function TRNN.InitHiddenStates: TDArray3D;
 var
   i: Integer;
 begin
@@ -967,7 +967,7 @@ begin
   end;
 end;
 
-function TAdvancedRNN.ForwardSequence(const Inputs: TDArray2D; var Caches: array of TTimeStepCache;
+function TRNN.ForwardSequence(const Inputs: TDArray2D; var Caches: array of TTimeStepCache;
                                        var States: TDArray3D): TDArray2D;
 var
   t, layer: Integer;
@@ -1028,7 +1028,7 @@ begin
   end;
 end;
 
-function TAdvancedRNN.BackwardSequence(const Targets: TDArray2D; const Caches: array of TTimeStepCache;
+function TRNN.BackwardSequence(const Targets: TDArray2D; const Caches: array of TTimeStepCache;
                                         const States: TDArray3D): Double;
 var
   t, layer, k: Integer;
@@ -1115,7 +1115,7 @@ begin
   Result := TotalLoss / T_len;
 end;
 
-function TAdvancedRNN.TrainSequence(const Inputs, Targets: TDArray2D): Double;
+function TRNN.TrainSequence(const Inputs, Targets: TDArray2D): Double;
 var
   Caches: array of TTimeStepCache;
   States: TDArray3D;
@@ -1128,7 +1128,7 @@ begin
   ApplyGradients;
 end;
 
-function TAdvancedRNN.TrainBatch(const BatchInputs, BatchTargets: TDArray3D): Double;
+function TRNN.TrainBatch(const BatchInputs, BatchTargets: TDArray3D): Double;
 var
   b: Integer;
   Caches: array of TTimeStepCache;
@@ -1150,7 +1150,7 @@ begin
   Result := BatchLoss / Length(BatchInputs);
 end;
 
-function TAdvancedRNN.Predict(const Inputs: TDArray2D): TDArray2D;
+function TRNN.Predict(const Inputs: TDArray2D): TDArray2D;
 var
   Caches: array of TTimeStepCache;
   States: TDArray3D;
@@ -1160,7 +1160,7 @@ begin
   Result := ForwardSequence(Inputs, Caches, States);
 end;
 
-function TAdvancedRNN.ComputeLoss(const Inputs, Targets: TDArray2D): Double;
+function TRNN.ComputeLoss(const Inputs, Targets: TDArray2D): Double;
 var
   Outputs: TDArray2D;
   t: Integer;
@@ -1172,7 +1172,7 @@ begin
   Result := Result / Length(Outputs);
 end;
 
-procedure TAdvancedRNN.ResetGradients;
+procedure TRNN.ResetGradients;
 var
   i: Integer;
 begin
@@ -1187,7 +1187,7 @@ begin
   FOutputLayer.ResetGradients;
 end;
 
-procedure TAdvancedRNN.ApplyGradients;
+procedure TRNN.ApplyGradients;
 var
   i: Integer;
 begin
@@ -1323,7 +1323,7 @@ begin
    end;
 end;
 
-function TAdvancedRNN.Array1DToJSON(const Arr: DArray): string;
+function TRNN.Array1DToJSON(const Arr: DArray): string;
 var
   I: Integer;
 begin
@@ -1336,7 +1336,7 @@ begin
   Result := Result + ']';
 end;
 
-function TAdvancedRNN.Array2DToJSON(const Arr: TDArray2D): string;
+function TRNN.Array2DToJSON(const Arr: TDArray2D): string;
 var
   I: Integer;
 begin
@@ -1349,7 +1349,7 @@ begin
   Result := Result + ']';
 end;
 
-procedure TAdvancedRNN.SaveModelToJSON(const Filename: string);
+procedure TRNN.SaveModelToJSON(const Filename: string);
 var
   SL: TStringList;
   I, J: Integer;
@@ -1392,7 +1392,7 @@ begin
   end;
 end;
 
-procedure TAdvancedRNN.LoadModelFromJSON(const Filename: string);
+procedure TRNN.LoadModelFromJSON(const Filename: string);
 var
   SL: TStringList;
   Content: string;
@@ -1555,7 +1555,7 @@ var
    modelFile, saveFile, dataFile: string;
    verbose: Boolean;
 
-   RNN: TAdvancedRNN;
+   RNN: TRNN;
    SequenceLen, HiddenSize: Integer;
    Inputs, Targets, Predictions: TDArray2D;
    Split: TDataSplit;
@@ -1683,7 +1683,7 @@ begin
       if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
       if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
 
-      RNN := TAdvancedRNN.Create(inputSize, hiddenSizes, outputSize, cellType, 
+      RNN := TRNN.Create(inputSize, hiddenSizes, outputSize, cellType, 
                                   hiddenAct, outputAct, lossType, learningRate, 
                                   gradientClip, bpttSteps);
 
@@ -1715,7 +1715,7 @@ begin
          if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
          if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
          WriteLn('Loading model from JSON: ' + modelFile);
-         RNN := TAdvancedRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
+         RNN := TRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
          RNN.LoadModelFromJSON(modelFile);
          WriteLn('Model loaded successfully. Training functionality not yet implemented.');
          RNN.Free;
@@ -1724,7 +1724,7 @@ begin
       begin
          if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
          WriteLn('Loading model from JSON: ' + modelFile);
-         RNN := TAdvancedRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
+         RNN := TRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
          RNN.LoadModelFromJSON(modelFile);
          WriteLn('Model loaded successfully. Prediction functionality not yet implemented.');
          RNN.Free;
@@ -1733,7 +1733,7 @@ begin
       begin
          if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
          WriteLn('Loading model from JSON: ' + modelFile);
-         RNN := TAdvancedRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
+         RNN := TRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
          RNN.LoadModelFromJSON(modelFile);
          WriteLn('Model information displayed above.');
          RNN.Free;
