@@ -6,7 +6,7 @@
 {$mode objfpc}{$H+}
 {$M+}
 
-program AdvancedCNN;
+program CNN;
 
 uses Classes, Math, SysUtils, StrUtils;
 
