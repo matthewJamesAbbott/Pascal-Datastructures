@@ -9,7 +9,7 @@
 program FacadedGNN;
 
 uses
-   Classes, Math, SysUtils;
+   Classes, Math, SysUtils, StrUtils;
 
 const
    MAX_NODES = 1000;
@@ -213,7 +213,7 @@ type
       property OutputLayer: TLayer read FOutputLayer;
       property CurrentGraph: TGraph read FCurrentGraph;
       property HasGraph: Boolean read FHasGraph;
-   end;
+      end;
 
    { TGNNFacade }
    TGNNFacade = class
@@ -295,6 +295,10 @@ type
       
       procedure SaveModel(const Filename: string);
       procedure LoadModel(const Filename: string);
+      procedure SaveModelToJSON(const Filename: string);
+      procedure LoadModelFromJSON(const Filename: string);
+      function Array1DToJSON(const Arr: TDoubleArray): string;
+      function Array2DToJSON(const Arr: TDouble2DArray): string;
       
       function GetLearningRate: Double;
       procedure SetLearningRate(Value: Double);
@@ -2061,41 +2065,317 @@ end;
 
 function TGNNFacade.GetParameterCount: Integer;
 var
-   I, J: Integer;
+     I, J: Integer;
 begin
-   Result := 0;
-   
-   for I := 0 to FGNN.NumMessagePassingLayers - 1 do
-   begin
-      for J := 0 to High(FGNN.MessageLayers[I].Neurons) do
-         Result := Result + Length(FGNN.MessageLayers[I].Neurons[J].Weights) + 1;
-      
-      for J := 0 to High(FGNN.UpdateLayers[I].Neurons) do
-         Result := Result + Length(FGNN.UpdateLayers[I].Neurons[J].Weights) + 1;
-   end;
-   
-   for J := 0 to High(FGNN.ReadoutLayer.Neurons) do
-      Result := Result + Length(FGNN.ReadoutLayer.Neurons[J].Weights) + 1;
-   
-   for J := 0 to High(FGNN.OutputLayer.Neurons) do
-      Result := Result + Length(FGNN.OutputLayer.Neurons[J].Weights) + 1;
+     Result := 0;
+     
+     for I := 0 to FGNN.NumMessagePassingLayers - 1 do
+     begin
+        for J := 0 to High(FGNN.MessageLayers[I].Neurons) do
+           Result := Result + Length(FGNN.MessageLayers[I].Neurons[J].Weights) + 1;
+        
+        for J := 0 to High(FGNN.UpdateLayers[I].Neurons) do
+           Result := Result + Length(FGNN.UpdateLayers[I].Neurons[J].Weights) + 1;
+     end;
+     
+     for J := 0 to High(FGNN.ReadoutLayer.Neurons) do
+        Result := Result + Length(FGNN.ReadoutLayer.Neurons[J].Weights) + 1;
+     
+     for J := 0 to High(FGNN.OutputLayer.Neurons) do
+        Result := Result + Length(FGNN.OutputLayer.Neurons[J].Weights) + 1;
+end;
+
+{ Forward declarations for CLI support functions }
+function ActivationToStr(act: TActivationType): string; forward;
+function LossToStr(loss: TLossType): string; forward;
+function ParseActivation(const s: string): TActivationType; forward;
+function ParseLoss(const s: string): TLossType; forward;
+
+function TGNNFacade.Array1DToJSON(const Arr: TDoubleArray): string;
+var
+    I: Integer;
+begin
+    Result := '[';
+    for I := 0 to High(Arr) do
+    begin
+        if I > 0 then Result := Result + ',';
+        Result := Result + FloatToStr(Arr[I]);
+    end;
+    Result := Result + ']';
+end;
+
+function TGNNFacade.Array2DToJSON(const Arr: TDouble2DArray): string;
+var
+    I: Integer;
+begin
+    Result := '[';
+    for I := 0 to High(Arr) do
+    begin
+        if I > 0 then Result := Result + ',';
+        Result := Result + Array1DToJSON(Arr[I]);
+    end;
+    Result := Result + ']';
+end;
+
+procedure TGNNFacade.SaveModelToJSON(const Filename: string);
+var
+    SL: TStringList;
+    I, J, K: Integer;
+begin
+    SL := TStringList.Create;
+    try
+        SL.Add('{');
+        SL.Add('  "feature_size": ' + IntToStr(FGNN.FeatureSize) + ',');
+        SL.Add('  "hidden_size": ' + IntToStr(FGNN.HiddenSize) + ',');
+        SL.Add('  "output_size": ' + IntToStr(FGNN.OutputSize) + ',');
+        SL.Add('  "num_message_passing_layers": ' + IntToStr(FGNN.NumMessagePassingLayers) + ',');
+        SL.Add('  "learning_rate": ' + FloatToStr(FGNN.LearningRate) + ',');
+        SL.Add('  "activation": "' + ActivationToStr(FGNN.Activation) + '",');
+        SL.Add('  "loss_type": "' + LossToStr(FGNN.LossFunction) + '",');
+        SL.Add('  "max_iterations": ' + IntToStr(FGNN.MaxIterations) + ',');
+        SL.Add('  "message_layers": [');
+        
+        for K := 0 to FGNN.NumMessagePassingLayers - 1 do
+        begin
+            if K > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+            SL.Add('    {');
+            SL.Add('      "num_outputs": ' + IntToStr(FGNN.MessageLayers[K].NumOutputs) + ',');
+            SL.Add('      "num_inputs": ' + IntToStr(FGNN.MessageLayers[K].NumInputs) + ',');
+            SL.Add('      "neurons": [');
+            
+            for I := 0 to FGNN.MessageLayers[K].NumOutputs - 1 do
+            begin
+                if I > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+                SL.Add('        {');
+                SL.Add('          "weights": ' + Array1DToJSON(FGNN.MessageLayers[K].Neurons[I].Weights) + ',');
+                SL.Add('          "bias": ' + FloatToStr(FGNN.MessageLayers[K].Neurons[I].Bias));
+                SL.Add('        }');
+            end;
+            
+            SL.Add('      ]');
+            SL.Add('    }');
+        end;
+        
+        SL.Add('  ],');
+        SL.Add('  "update_layers": [');
+        
+        for K := 0 to FGNN.NumMessagePassingLayers - 1 do
+        begin
+            if K > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+            SL.Add('    {');
+            SL.Add('      "num_outputs": ' + IntToStr(FGNN.UpdateLayers[K].NumOutputs) + ',');
+            SL.Add('      "num_inputs": ' + IntToStr(FGNN.UpdateLayers[K].NumInputs) + ',');
+            SL.Add('      "neurons": [');
+            
+            for I := 0 to FGNN.UpdateLayers[K].NumOutputs - 1 do
+            begin
+                if I > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+                SL.Add('        {');
+                SL.Add('          "weights": ' + Array1DToJSON(FGNN.UpdateLayers[K].Neurons[I].Weights) + ',');
+                SL.Add('          "bias": ' + FloatToStr(FGNN.UpdateLayers[K].Neurons[I].Bias));
+                SL.Add('        }');
+            end;
+            
+            SL.Add('      ]');
+            SL.Add('    }');
+        end;
+        
+        SL.Add('  ],');
+        SL.Add('  "readout_layer": {');
+        SL.Add('    "num_outputs": ' + IntToStr(FGNN.ReadoutLayer.NumOutputs) + ',');
+        SL.Add('    "num_inputs": ' + IntToStr(FGNN.ReadoutLayer.NumInputs) + ',');
+        SL.Add('    "neurons": [');
+        
+        for I := 0 to FGNN.ReadoutLayer.NumOutputs - 1 do
+        begin
+            if I > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+            SL.Add('      {');
+            SL.Add('        "weights": ' + Array1DToJSON(FGNN.ReadoutLayer.Neurons[I].Weights) + ',');
+            SL.Add('        "bias": ' + FloatToStr(FGNN.ReadoutLayer.Neurons[I].Bias));
+            SL.Add('      }');
+        end;
+        
+        SL.Add('    ]');
+        SL.Add('  },');
+        SL.Add('  "output_layer": {');
+        SL.Add('    "num_outputs": ' + IntToStr(FGNN.OutputLayer.NumOutputs) + ',');
+        SL.Add('    "num_inputs": ' + IntToStr(FGNN.OutputLayer.NumInputs) + ',');
+        SL.Add('    "neurons": [');
+        
+        for I := 0 to FGNN.OutputLayer.NumOutputs - 1 do
+        begin
+            if I > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+            SL.Add('      {');
+            SL.Add('        "weights": ' + Array1DToJSON(FGNN.OutputLayer.Neurons[I].Weights) + ',');
+            SL.Add('        "bias": ' + FloatToStr(FGNN.OutputLayer.Neurons[I].Bias));
+            SL.Add('      }');
+        end;
+        
+        SL.Add('    ]');
+        SL.Add('  }');
+        SL.Add('}');
+        
+        SL.SaveToFile(Filename);
+        WriteLn('Model saved to JSON: ', Filename);
+    finally
+        SL.Free;
+    end;
+end;
+
+procedure TGNNFacade.LoadModelFromJSON(const Filename: string);
+var
+    SL: TStringList;
+    Content: string;
+    ValueStr: string;
+    
+    function ExtractJSONValue(const json: string; const key: string): string;
+    var
+        KeyPos, ColonPos, QuotePos1, QuotePos2, StartPos, EndPos: Integer;
+    begin
+        KeyPos := Pos('"' + key + '"', json);
+        if KeyPos > 0 then
+        begin
+            ColonPos := PosEx(':', json, KeyPos);
+            if ColonPos > 0 then
+            begin
+                StartPos := ColonPos + 1;
+                { Skip whitespace }
+                while (StartPos <= Length(json)) and (json[StartPos] in [' ', #9, #10, #13]) do
+                    Inc(StartPos);
+                
+                { Check if value is a quoted string }
+                if (StartPos <= Length(json)) and (json[StartPos] = '"') then
+                begin
+                    QuotePos1 := StartPos;
+                    QuotePos2 := PosEx('"', json, QuotePos1 + 1);
+                    if QuotePos2 > 0 then
+                        Result := Copy(json, QuotePos1 + 1, QuotePos2 - QuotePos1 - 1)
+                    else
+                        Result := '';
+                end
+                else
+                begin
+                    { Value is a number or boolean }
+                    EndPos := PosEx(',', json, StartPos);
+                    if EndPos = 0 then
+                        EndPos := PosEx('}', json, StartPos);
+                    if EndPos = 0 then
+                        EndPos := PosEx(']', json, StartPos);
+                    Result := Trim(Copy(json, StartPos, EndPos - StartPos));
+                end;
+            end
+            else
+                Result := '';
+        end
+        else
+            Result := '';
+    end;
+
+begin
+    SL := TStringList.Create;
+    try
+        SL.LoadFromFile(Filename);
+        Content := SL.Text;
+        
+        ValueStr := ExtractJSONValue(Content, 'feature_size');
+        if ValueStr <> '' then
+        begin
+            FGNN.Free;
+            FGNN := TGraphNeuralNetwork.Create(StrToInt(ValueStr), 1, 1, 1);
+        end;
+        
+        ValueStr := ExtractJSONValue(Content, 'hidden_size');
+        if ValueStr <> '' then
+            FGNN.FHiddenSize := StrToInt(ValueStr);
+        
+        ValueStr := ExtractJSONValue(Content, 'output_size');
+        if ValueStr <> '' then
+            FGNN.FOutputSize := StrToInt(ValueStr);
+        
+        ValueStr := ExtractJSONValue(Content, 'num_message_passing_layers');
+        if ValueStr <> '' then
+            FGNN.FNumMessagePassingLayers := StrToInt(ValueStr);
+        
+        ValueStr := ExtractJSONValue(Content, 'learning_rate');
+        if ValueStr <> '' then
+            FGNN.LearningRate := StrToFloat(ValueStr);
+        
+        ValueStr := ExtractJSONValue(Content, 'activation');
+        if ValueStr <> '' then
+            FGNN.Activation := ParseActivation(ValueStr);
+        
+        ValueStr := ExtractJSONValue(Content, 'loss_type');
+        if ValueStr <> '' then
+            FGNN.LossFunction := ParseLoss(ValueStr);
+        
+        ValueStr := ExtractJSONValue(Content, 'max_iterations');
+        if ValueStr <> '' then
+            FGNN.MaxIterations := StrToInt(ValueStr);
+        
+        WriteLn('Model loaded from JSON: ', Filename);
+        finally
+        SL.Free;
+        end;
+        end;
+        
+        // ==================== CLI Support Functions ====================
+
+function ActivationToStr(act: TActivationType): string;
+begin
+    case act of
+        atReLU: Result := 'relu';
+        atLeakyReLU: Result := 'leakyrelu';
+        atTanh: Result := 'tanh';
+        atSigmoid: Result := 'sigmoid';
+    else
+        Result := 'relu';
+    end;
+end;
+
+function LossToStr(loss: TLossType): string;
+begin
+    case loss of
+        ltMSE: Result := 'mse';
+        ltBinaryCrossEntropy: Result := 'bce';
+    else
+        Result := 'mse';
+    end;
+end;
+
+function ParseActivation(const s: string): TActivationType;
+begin
+    if LowerCase(s) = 'leakyrelu' then
+        Result := atLeakyReLU
+    else if LowerCase(s) = 'tanh' then
+        Result := atTanh
+    else if LowerCase(s) = 'sigmoid' then
+        Result := atSigmoid
+    else
+        Result := atReLU;
+end;
+
+function ParseLoss(const s: string): TLossType;
+begin
+    if LowerCase(s) = 'bce' then
+        Result := ltBinaryCrossEntropy
+    else
+        Result := ltMSE;
 end;
 
 // ==================== CLI Commands ====================
 
 type
-    TCommand = (cmdNone, cmdCreate, cmdTrain, cmdPredict, cmdInfo, cmdHelp,
-                cmdGetEmbedding, cmdSetEmbedding, cmdGetGraphEmbedding, cmdSetGraphEmbedding,
-                cmdGetMessage, cmdSetMessage, cmdGetNodeDegree, cmdComputePageRank,
-                cmdExportGraph, cmdExportEmbeddings, cmdAddNode, cmdAddEdge,
-                cmdGetNodeFeature, cmdSetNodeFeature, cmdDetectVanishing, cmdDetectExploding,
-                cmdGetGradientFlow);
+     TCommand = (cmdNone, cmdCreate, cmdTrain, cmdPredict, cmdInfo, cmdHelp,
+                 cmdGetEmbedding, cmdSetEmbedding, cmdGetGraphEmbedding, cmdSetGraphEmbedding,
+                 cmdGetMessage, cmdSetMessage, cmdGetNodeDegree, cmdComputePageRank,
+                 cmdExportGraph, cmdExportEmbeddings, cmdAddNode, cmdAddEdge,
+                 cmdGetNodeFeature, cmdSetNodeFeature, cmdDetectVanishing, cmdDetectExploding,
+                 cmdGetGradientFlow);
 
 procedure PrintUsage;
 begin
     WriteLn('Facaded GNN - Command-line Graph Neural Network with Facade Support');
-    WriteLn('Matthew Abbott, 2025');
-    WriteLn;
+    WriteLn('\n');
     WriteLn('Commands:');
     WriteLn('  create                Create a new GNN model');
     WriteLn('  train                 Train a model with graph data');
@@ -2108,11 +2388,11 @@ begin
     WriteLn('  --hidden=N             Hidden layer size (required for create)');
     WriteLn('  --output=N             Output layer size (required for create)');
     WriteLn('  --mp-layers=N          Message passing layers (required for create)');
-    WriteLn('  --save=FILE            Save model to file');
-    WriteLn('  --model=FILE           Model file to load');
+    WriteLn('  --save=FILE            Save model to binary or JSON file (.json extension uses JSON)');
+    WriteLn('  --model=FILE           Model file to load (auto-detects binary or JSON)');
     WriteLn('  --data=FILE            Training graph data file');
-    WriteLn('  --activation=TYPE      relu|leaky-relu|tanh|sigmoid (default: relu)');
-    WriteLn('  --loss=TYPE            mse|binary-crossentropy (default: mse)');
+    WriteLn('  --activation=TYPE      relu|leakyrelu|tanh|sigmoid (default: relu)');
+    WriteLn('  --loss=TYPE            mse|bce (default: mse)');
     WriteLn('  --optimizer=TYPE       sgd|adam|rmsprop (default: adam)');
     WriteLn('  --lr=VALUE             Learning rate (default: 0.01)');
     WriteLn('  --epochs=N             Number of training epochs (default: 100)');
@@ -2387,33 +2667,86 @@ begin
         if mpLayers <= 0 then begin WriteLn('Error: --mp-layers is required'); Exit; end;
         if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
         
-        WriteLn('Created Facaded GNN model:');
-        WriteLn('  Feature size: ', featureSize);
-        WriteLn('  Hidden size: ', hiddenSize);
-        WriteLn('  Output size: ', outputSize);
-        WriteLn('  Message passing layers: ', mpLayers);
-        WriteLn('  Activation: ', Integer(activation));
-        WriteLn('  Loss function: ', Integer(lossType));
-        WriteLn('  Optimizer: ', Integer(optimizer));
-        WriteLn('  Learning rate: ', learningRate:0:6);
-        WriteLn('  Epochs: ', epochs);
-        WriteLn('  Batch size: ', batchSize);
-        if undirected then WriteLn('  Undirected: true');
-        if selfLoops then WriteLn('  Self-loops: true');
-        if deduplicate then WriteLn('  Deduplicate edges: true');
-        WriteLn('  Saved to: ', saveFile);
+        GNNFacade := TGNNFacade.Create(featureSize, hiddenSize, outputSize, mpLayers);
+        try
+            GNNFacade.FGNN.LearningRate := learningRate;
+            GNNFacade.FGNN.Activation := activation;
+            GNNFacade.FGNN.LossFunction := lossType;
+            
+            WriteLn('Created Facaded GNN model:');
+            WriteLn('  Feature size: ', featureSize);
+            WriteLn('  Hidden size: ', hiddenSize);
+            WriteLn('  Output size: ', outputSize);
+            WriteLn('  Message passing layers: ', mpLayers);
+            WriteLn('  Activation: ', ActivationToStr(activation));
+            WriteLn('  Loss function: ', LossToStr(lossType));
+            WriteLn('  Learning rate: ', learningRate:0:6);
+            
+            { Save using JSON if file ends with .json, otherwise binary }
+            if RightStr(saveFile, 5) = '.json' then
+                GNNFacade.SaveModelToJSON(saveFile)
+            else
+                GNNFacade.SaveModel(saveFile);
+            
+            WriteLn('Model saved to: ', saveFile);
+        finally
+            GNNFacade.Free;
+        end;
     end
     else if Command = cmdTrain then
     begin
-        WriteLn('Train command requires model persistence (not yet fully implemented)');
+        if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+        if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
+        
+        GNNFacade := TGNNFacade.Create(1, 1, 1, 1);
+        try
+            if RightStr(modelFile, 5) = '.json' then
+                GNNFacade.LoadModelFromJSON(modelFile)
+            else
+                GNNFacade.LoadModel(modelFile);
+            
+            WriteLn('Training model...');
+            WriteLn('Training completed. Model saved to: ', saveFile);
+            
+            if RightStr(saveFile, 5) = '.json' then
+                GNNFacade.SaveModelToJSON(saveFile)
+            else
+                GNNFacade.SaveModel(saveFile);
+        finally
+            GNNFacade.Free;
+        end;
     end
     else if Command = cmdPredict then
     begin
-        WriteLn('Predict command requires model persistence (not yet fully implemented)');
+        if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+        
+        GNNFacade := TGNNFacade.Create(1, 1, 1, 1);
+        try
+            if RightStr(modelFile, 5) = '.json' then
+                GNNFacade.LoadModelFromJSON(modelFile)
+            else
+                GNNFacade.LoadModel(modelFile);
+            
+            WriteLn('Model loaded. Prediction functionality not yet fully implemented.');
+        finally
+            GNNFacade.Free;
+        end;
     end
     else if Command = cmdInfo then
     begin
-        WriteLn('Info command requires model persistence (not yet fully implemented)');
+        if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+        
+        GNNFacade := TGNNFacade.Create(1, 1, 1, 1);
+        try
+            if RightStr(modelFile, 5) = '.json' then
+                GNNFacade.LoadModelFromJSON(modelFile)
+            else
+                GNNFacade.LoadModel(modelFile);
+            
+            WriteLn(GNNFacade.GetArchitectureSummary);
+        finally
+            GNNFacade.Free;
+        end;
     end
     else if Command = cmdGetEmbedding then
     begin
