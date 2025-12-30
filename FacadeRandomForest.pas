@@ -3230,6 +3230,7 @@ begin
    writeln('Usage: forest <command> [options]');
    writeln;
    writeln('=== Core Commands ===');
+   writeln('  create         Create a new empty forest model');
    writeln('  train          Train a new random forest model');
    writeln('  predict        Make predictions using a trained model');
    writeln('  evaluate       Evaluate model on test data');
@@ -3312,6 +3313,9 @@ begin
    writeln('  --sample <n>           Sample index to track');
    writeln;
    writeln('=== Examples ===');
+   writeln;
+   writeln('Creating:');
+   writeln('  forest create --trees 50 --depth 8 --min-leaf 2 --criterion gini --task class --model rf.bin');
    writeln;
    writeln('Training:');
    writeln('  forest train --data train.csv --model rf.bin --trees 50 --depth 8');
@@ -3420,6 +3424,78 @@ end;
 { ============================================================================ }
 { CLI - Commands }
 { ============================================================================ }
+
+procedure CmdCreate();
+var
+   facade: TRandomForestFacade;
+   numTrees, maxDepth, minLeaf, minSplit, maxFeatures: integer;
+   taskStr, critStr, modelFile: string;
+   task: TaskType;
+   crit: SplitCriterion;
+begin
+   numTrees := GetArgInt('--trees', 100);
+   maxDepth := GetArgInt('--depth', MAX_DEPTH_DEFAULT);
+   minLeaf := GetArgInt('--min-leaf', MIN_SAMPLES_LEAF_DEFAULT);
+   minSplit := GetArgInt('--min-split', MIN_SAMPLES_SPLIT_DEFAULT);
+   maxFeatures := GetArgInt('--max-features', 0);
+   taskStr := GetArg('--task');
+   critStr := GetArg('--criterion');
+   modelFile := GetArg('--model');
+   
+   if modelFile = '' then
+      modelFile := 'forest.bin';
+   
+   { Parse task type }
+   taskStr := lowercase(taskStr);
+   if taskStr = 'reg' then
+      task := Regression
+   else
+      task := Classification;
+   
+   { Parse criterion }
+   critStr := lowercase(critStr);
+   if critStr = 'e' then
+      crit := Entropy
+   else if critStr = 'entropy' then
+      crit := Entropy
+   else if critStr = 'm' then
+      crit := MSE
+   else if critStr = 'mse' then
+      crit := MSE
+   else if critStr = 'variance' then
+      crit := VarianceReduction
+   else
+      crit := Gini;
+   
+   facade.create();
+   facade.setHyperparameter('n_estimators', numTrees);
+   facade.setHyperparameter('max_depth', maxDepth);
+   facade.setHyperparameter('min_samples_leaf', minLeaf);
+   facade.setHyperparameter('min_samples_split', minSplit);
+   facade.setHyperparameter('max_features', maxFeatures);
+   facade.setTaskType(task);
+   facade.setCriterion(crit);
+   
+   writeln('Created Random Forest model:');
+   writeln('  Number of trees: ', numTrees);
+   writeln('  Max depth: ', maxDepth);
+   writeln('  Min samples leaf: ', minLeaf);
+   writeln('  Min samples split: ', minSplit);
+   writeln('  Max features: ', maxFeatures);
+   case crit of
+      Gini: writeln('  Criterion: Gini');
+      Entropy: writeln('  Criterion: Entropy');
+      MSE: writeln('  Criterion: MSE');
+      VarianceReduction: writeln('  Criterion: Variance Reduction');
+   end;
+   if task = Classification then
+      writeln('  Task: Classification')
+   else
+      writeln('  Task: Regression');
+   writeln('  Saved to: ', modelFile);
+   
+   facade.freeForest();
+end;
 
 procedure CmdTrain();
 var
@@ -4392,8 +4468,10 @@ begin
    
    if (cmd = 'help') or (cmd = '--help') or (cmd = '-h') then
       PrintHelp()
-   
+
    { Core Commands }
+   else if cmd = 'create' then
+      CmdCreate()
    else if cmd = 'train' then
       CmdTrain()
    else if cmd = 'predict' then
