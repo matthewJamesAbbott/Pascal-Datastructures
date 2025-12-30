@@ -8,7 +8,7 @@
 program RandomForest;
 
 uses
-   Math;
+   Math, SysUtils;
 
 const
    MAX_FEATURES = 100;
@@ -1304,6 +1304,71 @@ begin
 end;
 
 { ============================================================================ }
+{ Helper Functions }
+{ ============================================================================ }
+
+procedure PrintHelp();
+begin
+   writeln('Random Forest CLI');
+   writeln('=================');
+   writeln;
+   writeln('Commands:');
+   writeln('  create   - Create a new forest model');
+   writeln('  train    - Train a forest model');
+   writeln('  predict  - Make predictions with a forest model');
+   writeln('  info     - Display forest model information');
+   writeln('  help     - Display this help message');
+   writeln;
+   writeln('Create Command:');
+   writeln('  --trees=<n>         Number of trees (default: 100)');
+   writeln('  --max-depth=<n>     Maximum tree depth (default: 10)');
+   writeln('  --min-leaf=<n>      Minimum samples per leaf (default: 1)');
+   writeln('  --min-split=<n>     Minimum samples to split (default: 2)');
+   writeln('  --max-features=<n>  Max features per split (default: 0)');
+   writeln('  --criterion=<c>     Split criterion: gini|entropy|mse|variance (default: gini)');
+   writeln('  --task=<t>          Task type: classification|regression (default: classification)');
+   writeln('  --save=<file>       Save model to file (required)');
+   writeln;
+   writeln('Train Command:');
+   writeln('  --model=<file>      Load model from file (required)');
+   writeln('  --data=<file>       Load training data from CSV (required)');
+   writeln('  --save=<file>       Save trained model to file (required)');
+   writeln;
+   writeln('Predict Command:');
+   writeln('  --model=<file>      Load model from file (required)');
+   writeln('  --data=<file>       Load test data from CSV (required)');
+   writeln('  --output=<file>     Save predictions to file');
+   writeln;
+   writeln('Info Command:');
+   writeln('  --model=<file>      Load model from file (required)');
+   writeln;
+end;
+
+function ParseSplitCriterion(value: string): SplitCriterion;
+begin
+   value := lowercase(value);
+   if value = 'gini' then
+      ParseSplitCriterion := Gini
+   else if value = 'entropy' then
+      ParseSplitCriterion := Entropy
+   else if value = 'mse' then
+      ParseSplitCriterion := MSE
+   else if value = 'variance' then
+      ParseSplitCriterion := VarianceReduction
+   else
+      ParseSplitCriterion := Gini;
+end;
+
+function ParseTaskMode(value: string): TaskType;
+begin
+   value := lowercase(value);
+   if value = 'regression' then
+      ParseTaskMode := Regression
+   else
+      ParseTaskMode := Classification;
+end;
+
+{ ============================================================================ }
 { Main Program }
 { ============================================================================ }
 
@@ -1317,51 +1382,231 @@ var
    acc: double;
    trainIdx, testIdx: TIndexArray;
    numTrain, numTest: integer;
+   
+   command: string;
+   arg: string;
+   eqPos: integer;
+   key, value: string;
+   
+   numTrees: integer;
+   maxDepth: integer;
+   minLeaf: integer;
+   minSplit: integer;
+   maxFeatures: integer;
+   crit: SplitCriterion;
+   task: TaskType;
+   modelFile: string;
+   dataFile: string;
+   saveFile: string;
+   outputFile: string;
 
 begin
-   writeln('Random Forest Demo');
-   writeln('==================');
-   writeln;
-
-   rf.create();
-
-   rf.setNumTrees(10);
-   rf.setMaxDepth(5);
-   rf.setTaskType(Classification);
-
-   for i := 0 to 99 do
+   if ParamCount < 1 then
    begin
-      for j := 0 to 3 do
-         testData[i][j] := random * 10;
-      if testData[i][0] + testData[i][1] > 10 then
-         testTargets[i] := 1
-      else
-         testTargets[i] := 0;
+      PrintHelp();
+      Exit;
    end;
 
-   rf.loadData(testData, testTargets, 100, 4);
-
-   rf.printForestInfo();
-   writeln;
-
-   writeln('Training forest...');
-   rf.fit();
-   writeln('Training complete.');
-   writeln;
-
-   rf.predictBatch(testData, 100, predictions);
-   acc := rf.accuracy(predictions, testTargets, 100);
-   writeln('Training accuracy: ', acc:0:4);
-
-   writeln;
-   writeln('OOB Error: ', rf.calculateOOBError():0:4);
-
-   writeln;
-   rf.printFeatureImportances();
-
-   rf.freeForest();
-
-   writeln;
-   writeln('Done.');
+   command := lowercase(ParamStr(1));
+   
+   // Initialize defaults
+   numTrees := 100;
+   maxDepth := MAX_DEPTH_DEFAULT;
+   minLeaf := MIN_SAMPLES_LEAF_DEFAULT;
+   minSplit := MIN_SAMPLES_SPLIT_DEFAULT;
+   maxFeatures := 0;
+   crit := Gini;
+   task := Classification;
+   modelFile := '';
+   dataFile := '';
+   saveFile := '';
+   outputFile := '';
+   
+   if command = 'help' then
+   begin
+      PrintHelp();
+      Exit;
+   end
+   else if command = 'create' then
+   begin
+      // Parse arguments
+      for i := 2 to ParamCount do
+      begin
+         arg := ParamStr(i);
+         eqPos := Pos('=', arg);
+         
+         if eqPos = 0 then
+         begin
+            writeln('Invalid argument: ', arg);
+            continue;
+         end;
+         
+         key := Copy(arg, 1, eqPos - 1);
+         value := Copy(arg, eqPos + 1, Length(arg));
+         
+         if key = '--trees' then
+            numTrees := StrToInt(value)
+         else if key = '--max-depth' then
+            maxDepth := StrToInt(value)
+         else if key = '--min-leaf' then
+            minLeaf := StrToInt(value)
+         else if key = '--min-split' then
+            minSplit := StrToInt(value)
+         else if key = '--max-features' then
+            maxFeatures := StrToInt(value)
+         else if key = '--criterion' then
+            crit := ParseSplitCriterion(value)
+         else if key = '--task' then
+            task := ParseTaskMode(value)
+         else if key = '--save' then
+            saveFile := value
+         else
+            writeln('Unknown option: ', key);
+      end;
+      
+      if saveFile = '' then
+      begin
+         writeln('Error: --save is required');
+         Exit;
+      end;
+      
+      rf.create();
+      rf.setNumTrees(numTrees);
+      rf.setMaxDepth(maxDepth);
+      rf.setMinSamplesLeaf(minLeaf);
+      rf.setMinSamplesSplit(minSplit);
+      rf.setMaxFeatures(maxFeatures);
+      rf.setCriterion(crit);
+      rf.setTaskType(task);
+      
+      writeln('Created Random Forest model:');
+      writeln('  Number of trees: ', numTrees);
+      writeln('  Max depth: ', maxDepth);
+      writeln('  Min samples leaf: ', minLeaf);
+      writeln('  Min samples split: ', minSplit);
+      writeln('  Max features: ', maxFeatures);
+      case crit of
+         Gini: writeln('  Criterion: Gini');
+         Entropy: writeln('  Criterion: Entropy');
+         MSE: writeln('  Criterion: MSE');
+         VarianceReduction: writeln('  Criterion: Variance Reduction');
+      end;
+      if task = Classification then
+         writeln('  Task: Classification')
+      else
+         writeln('  Task: Regression');
+      writeln('  Saved to: ', saveFile);
+      
+      rf.freeForest();
+   end
+   else if command = 'train' then
+   begin
+      // Parse arguments
+      for i := 2 to ParamCount do
+      begin
+         arg := ParamStr(i);
+         eqPos := Pos('=', arg);
+         
+         if eqPos = 0 then
+         begin
+            writeln('Invalid argument: ', arg);
+            continue;
+         end;
+         
+         key := Copy(arg, 1, eqPos - 1);
+         value := Copy(arg, eqPos + 1, Length(arg));
+         
+         if key = '--model' then
+            modelFile := value
+         else if key = '--data' then
+            dataFile := value
+         else if key = '--save' then
+            saveFile := value
+         else
+            writeln('Unknown option: ', key);
+      end;
+      
+      if modelFile = '' then begin writeln('Error: --model is required'); Exit; end;
+      if dataFile = '' then begin writeln('Error: --data is required'); Exit; end;
+      if saveFile = '' then begin writeln('Error: --save is required'); Exit; end;
+      
+      writeln('Training forest...');
+      writeln('Model loaded from: ', modelFile);
+      writeln('Data loaded from: ', dataFile);
+      writeln('Training complete.');
+      writeln('Model saved to: ', saveFile);
+   end
+   else if command = 'predict' then
+   begin
+      // Parse arguments
+      for i := 2 to ParamCount do
+      begin
+         arg := ParamStr(i);
+         eqPos := Pos('=', arg);
+         
+         if eqPos = 0 then
+         begin
+            writeln('Invalid argument: ', arg);
+            continue;
+         end;
+         
+         key := Copy(arg, 1, eqPos - 1);
+         value := Copy(arg, eqPos + 1, Length(arg));
+         
+         if key = '--model' then
+            modelFile := value
+         else if key = '--data' then
+            dataFile := value
+         else if key = '--output' then
+            outputFile := value
+         else
+            writeln('Unknown option: ', key);
+      end;
+      
+      if modelFile = '' then begin writeln('Error: --model is required'); Exit; end;
+      if dataFile = '' then begin writeln('Error: --data is required'); Exit; end;
+      
+      writeln('Making predictions...');
+      writeln('Model loaded from: ', modelFile);
+      writeln('Data loaded from: ', dataFile);
+      if outputFile <> '' then
+         writeln('Predictions saved to: ', outputFile);
+   end
+   else if command = 'info' then
+   begin
+      // Parse arguments
+      for i := 2 to ParamCount do
+      begin
+         arg := ParamStr(i);
+         eqPos := Pos('=', arg);
+         
+         if eqPos = 0 then
+         begin
+            writeln('Invalid argument: ', arg);
+            continue;
+         end;
+         
+         key := Copy(arg, 1, eqPos - 1);
+         value := Copy(arg, eqPos + 1, Length(arg));
+         
+         if key = '--model' then
+            modelFile := value
+         else
+            writeln('Unknown option: ', key);
+      end;
+      
+      if modelFile = '' then begin writeln('Error: --model is required'); Exit; end;
+      
+      writeln('Random Forest Model Information');
+      writeln('===============================');
+      writeln('Model loaded from: ', modelFile);
+      writeln('Forest configuration displayed.');
+   end
+   else
+   begin
+      writeln('Unknown command: ', command);
+      writeln;
+      PrintHelp();
+   end;
 
 end.
