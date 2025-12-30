@@ -8,7 +8,7 @@
 
 program AdvancedCNN;
 
-uses Classes, Math, SysUtils;
+uses Classes, Math, SysUtils, StrUtils;
 
 type
   TActivationType = (atSigmoid, atTanh, atReLU, atLinear);
@@ -148,10 +148,20 @@ type
 
     procedure ResetGradients;
     procedure ApplyGradients;
+    
+    { JSON serialization methods }
+    procedure SaveModelToJSON(const Filename: string);
+    procedure LoadModelFromJSON(const Filename: string);
+    
+    { JSON serialization helper functions }
+    function Array1DToJSON(const Arr: DArray): string;
+    function Array2DToJSON(const Arr: TDArray2D): string;
+    function Array3DToJSON(const Arr: TDArray3D): string;
+    function Array4DToJSON(const Arr: TDArray4D): string;
 
     property LearningRate: Double read FLearningRate write FLearningRate;
     property GradientClip: Double read FGradientClip write FGradientClip;
-  end;
+    end;
 
 // ========== Utility Functions ==========
 function ClipValue(V, MaxVal: Double): Double;
@@ -969,7 +979,7 @@ begin
   FOutputLayer.ApplyGradients(FLearningRate, FGradientClip);
 end;
 
-// ========== Helper Functions ==========
+{ ========== Helper Functions for Activation/Loss ========== }
 function ActivationToStr(act: TActivationType): string;
 begin
   case act of
@@ -992,6 +1002,754 @@ begin
   end;
 end;
 
+{ ========== JSON Serialization Helper Functions ========== }
+function TAdvancedCNN.Array1DToJSON(const Arr: DArray): string;
+var
+  i: Integer;
+begin
+  Result := '[';
+  for i := 0 to High(Arr) do
+  begin
+    if i > 0 then Result := Result + ',';
+    Result := Result + FloatToStr(Arr[i]);
+  end;
+  Result := Result + ']';
+end;
+
+function TAdvancedCNN.Array2DToJSON(const Arr: TDArray2D): string;
+var
+  i: Integer;
+begin
+  Result := '[';
+  for i := 0 to High(Arr) do
+  begin
+    if i > 0 then Result := Result + ',';
+    Result := Result + Array1DToJSON(Arr[i]);
+  end;
+  Result := Result + ']';
+end;
+
+function TAdvancedCNN.Array3DToJSON(const Arr: TDArray3D): string;
+var
+  i: Integer;
+begin
+  Result := '[';
+  for i := 0 to High(Arr) do
+  begin
+    if i > 0 then Result := Result + ',';
+    Result := Result + Array2DToJSON(Arr[i]);
+  end;
+  Result := Result + ']';
+end;
+
+function TAdvancedCNN.Array4DToJSON(const Arr: TDArray4D): string;
+var
+  i: Integer;
+begin
+  Result := '[';
+  for i := 0 to High(Arr) do
+  begin
+    if i > 0 then Result := Result + ',';
+    Result := Result + Array3DToJSON(Arr[i]);
+  end;
+  Result := Result + ']';
+end;
+
+{ ========== JSON Serialization Methods ========== }
+procedure TAdvancedCNN.SaveModelToJSON(const Filename: string);
+var
+  JSON: TStringList;
+  i, j, k, f, kh, kw, c: Integer;
+begin
+  JSON := TStringList.Create;
+  try
+    { Header }
+    JSON.Add('{');
+    JSON.Add('  "version": "1.0",');
+    JSON.Add('  "metadata": {');
+    JSON.Add('    "framework": "AdvancedCNN",');
+    JSON.Add('    "createdAt": "' + DateTimeToStr(Now) + '",');
+    JSON.Add('    "precision": "double"');
+    JSON.Add('  },');
+    
+    { Configuration }
+    JSON.Add('  "config": {');
+    JSON.Add('    "inputWidth": ' + IntToStr(FInputWidth) + ',');
+    JSON.Add('    "inputHeight": ' + IntToStr(FInputHeight) + ',');
+    JSON.Add('    "inputChannels": ' + IntToStr(FInputChannels) + ',');
+    JSON.Add('    "outputSize": ' + IntToStr(FOutputSize) + ',');
+    JSON.Add('    "convFilterCounts": [');
+    for i := 0 to High(FConvLayers) do
+    begin
+      JSON.Add('      ' + IntToStr(Length(FConvLayers[i].Filters)));
+      if i < High(FConvLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
+    end;
+    JSON.Add('    ],');
+    JSON.Add('    "kernelSizes": [');
+    for i := 0 to High(FConvLayers) do
+    begin
+      JSON.Add('      ' + IntToStr(FConvLayers[i].FKernelSize));
+      if i < High(FConvLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
+    end;
+    JSON.Add('    ],');
+    JSON.Add('    "poolSizes": [');
+    for i := 0 to High(FPoolLayers) do
+    begin
+      JSON.Add('      ' + IntToStr(FPoolLayers[i].FPoolSize));
+      if i < High(FPoolLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
+    end;
+    JSON.Add('    ],');
+    JSON.Add('    "fcLayerSizes": [');
+    for i := 0 to High(FFullyConnectedLayers) do
+    begin
+      JSON.Add('      ' + IntToStr(FFullyConnectedLayers[i].FOutputSize));
+      if i < High(FFullyConnectedLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
+    end;
+    JSON.Add('    ],');
+    JSON.Add('    "learningRate": ' + FloatToStr(FLearningRate) + ',');
+    JSON.Add('    "gradientClip": ' + FloatToStr(FGradientClip));
+    JSON.Add('  },');
+    
+    { Hyperparameters }
+    JSON.Add('  "hyperparameters": {');
+    JSON.Add('    "activation": "' + ActivationToStr(FActivation) + '",');
+    JSON.Add('    "outputActivation": "' + ActivationToStr(FOutputActivation) + '",');
+    JSON.Add('    "lossType": "' + LossToStr(FLossType) + '"');
+    JSON.Add('  },');
+    
+    { Convolutional layers }
+    JSON.Add('  "convLayers": [');
+    for i := 0 to High(FConvLayers) do
+    begin
+      JSON.Add('    {');
+      JSON.Add('      "layerIndex": ' + IntToStr(i) + ',');
+      JSON.Add('      "kernelSize": ' + IntToStr(FConvLayers[i].FKernelSize) + ',');
+      JSON.Add('      "stride": ' + IntToStr(FConvLayers[i].FStride) + ',');
+      JSON.Add('      "padding": ' + IntToStr(FConvLayers[i].FPadding) + ',');
+      JSON.Add('      "inputChannels": ' + IntToStr(FConvLayers[i].FInputChannels) + ',');
+      JSON.Add('      "outputChannels": ' + IntToStr(FConvLayers[i].FOutputChannels) + ',');
+      JSON.Add('      "filters": [');
+      
+      for f := 0 to High(FConvLayers[i].Filters) do
+      begin
+        JSON.Add('        {');
+        JSON.Add('          "filterIndex": ' + IntToStr(f) + ',');
+        JSON.Add('          "bias": ' + FloatToStr(FConvLayers[i].Filters[f].Bias) + ',');
+        JSON.Add('          "weights": ' + Array4DToJSON(FConvLayers[i].Filters[f].Weights));
+        JSON.Add('        }');
+        if f < High(FConvLayers[i].Filters) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
+      end;
+      
+      JSON.Add('      ]');
+      JSON.Add('    }');
+      if i < High(FConvLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
+    end;
+    JSON.Add('  ],');
+    
+    { Fully connected layers }
+    JSON.Add('  "fcLayers": [');
+    for i := 0 to High(FFullyConnectedLayers) do
+    begin
+      JSON.Add('    {');
+      JSON.Add('      "layerIndex": ' + IntToStr(i) + ',');
+      JSON.Add('      "inputSize": ' + IntToStr(FFullyConnectedLayers[i].FInputSize) + ',');
+      JSON.Add('      "outputSize": ' + IntToStr(FFullyConnectedLayers[i].FOutputSize) + ',');
+      JSON.Add('      "weights": ' + Array2DToJSON(FFullyConnectedLayers[i].W) + ',');
+      JSON.Add('      "bias": ' + Array1DToJSON(FFullyConnectedLayers[i].B));
+      JSON.Add('    }');
+      if i < High(FFullyConnectedLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
+    end;
+    JSON.Add('  ],');
+    
+    { Output layer }
+    JSON.Add('  "outputLayer": {');
+    JSON.Add('    "inputSize": ' + IntToStr(FOutputLayer.FInputSize) + ',');
+    JSON.Add('    "outputSize": ' + IntToStr(FOutputLayer.FOutputSize) + ',');
+    JSON.Add('    "weights": ' + Array2DToJSON(FOutputLayer.W) + ',');
+    JSON.Add('    "bias": ' + Array1DToJSON(FOutputLayer.B));
+    JSON.Add('  }');
+    
+    JSON.Add('}');
+    
+    { Save to file }
+    JSON.SaveToFile(Filename);
+    WriteLn('Model saved to: ' + Filename);
+    
+  finally
+    JSON.Free;
+  end;
+end;
+
+{ ========== JSON Helper Functions ========== }
+function ExtractIntFromJSON(const JSONStr, FieldName: string): Integer;
+var
+  P, EndP: Integer;
+  Value: string;
+begin
+  P := Pos('"' + FieldName + '"', JSONStr);
+  if P = 0 then Exit(0);
+  
+  P := PosEx(':', JSONStr, P);
+  if P = 0 then Exit(0);
+  
+  P := P + 1;
+  while (P <= Length(JSONStr)) and (JSONStr[P] in [' ', #9, #10, #13]) do Inc(P);
+  
+  EndP := P;
+  while (EndP <= Length(JSONStr)) and (JSONStr[EndP] in ['0'..'9', '-']) do Inc(EndP);
+  
+  Value := Copy(JSONStr, P, EndP - P);
+  try
+    Result := StrToInt(Value);
+  except
+    Result := 0;
+  end;
+end;
+
+function ExtractDoubleFromJSON(const JSONStr, FieldName: string): Double;
+var
+  P, EndP: Integer;
+  Value: string;
+begin
+  P := Pos('"' + FieldName + '"', JSONStr);
+  if P = 0 then Exit(0.0);
+  
+  P := PosEx(':', JSONStr, P);
+  if P = 0 then Exit(0.0);
+  
+  P := P + 1;
+  while (P <= Length(JSONStr)) and (JSONStr[P] in [' ', #9, #10, #13]) do Inc(P);
+  
+  EndP := P;
+  while (EndP <= Length(JSONStr)) and (JSONStr[EndP] in ['0'..'9', '-', '.', 'e', 'E']) do Inc(EndP);
+  
+  Value := Copy(JSONStr, P, EndP - P);
+  try
+    Result := StrToFloat(Value);
+  except
+    Result := 0.0;
+  end;
+end;
+
+function ExtractStringFromJSON(const JSONStr, FieldName: string): string;
+var
+  P, EndP: Integer;
+begin
+  P := Pos('"' + FieldName + '"', JSONStr);
+  if P = 0 then Exit('');
+  
+  P := PosEx(':', JSONStr, P);
+  if P = 0 then Exit('');
+  
+  P := PosEx('"', JSONStr, P);
+  if P = 0 then Exit('');
+  
+  Inc(P);
+  EndP := P;
+  while (EndP <= Length(JSONStr)) and (JSONStr[EndP] <> '"') do Inc(EndP);
+  
+  Result := Copy(JSONStr, P, EndP - P);
+end;
+
+function ExtractIntFromJSONArray(const JSONStr, ArrayName: string; Index: Integer; FieldName: string): Integer;
+var
+  ArrayPos, ElementPos, FieldPos: Integer;
+  P, EndP: Integer;
+  Value: string;
+  Count: Integer;
+begin
+  Result := 0;
+  ArrayPos := Pos('"' + ArrayName + '"', JSONStr);
+  if ArrayPos = 0 then Exit;
+  
+  ArrayPos := PosEx('[', JSONStr, ArrayPos);
+  if ArrayPos = 0 then Exit;
+  
+  { Find the Nth element }
+  Count := 0;
+  ElementPos := ArrayPos + 1;
+  while (Count < Index) and (ElementPos <= Length(JSONStr)) do
+  begin
+    if JSONStr[ElementPos] = '{' then Inc(Count);
+    Inc(ElementPos);
+  end;
+  
+  if Count <> Index then Exit;
+  
+  { Find the field within this element }
+  FieldPos := Pos('"' + FieldName + '"', Copy(JSONStr, ElementPos, Length(JSONStr)));
+  if FieldPos = 0 then Exit;
+  
+  FieldPos := ElementPos + FieldPos - 1;
+  P := PosEx(':', JSONStr, FieldPos);
+  if P = 0 then Exit;
+  
+  P := P + 1;
+  while (P <= Length(JSONStr)) and (JSONStr[P] in [' ', #9, #10, #13]) do Inc(P);
+  
+  EndP := P;
+  while (EndP <= Length(JSONStr)) and (JSONStr[EndP] in ['0'..'9', '-']) do Inc(EndP);
+  
+  Value := Copy(JSONStr, P, EndP - P);
+  try
+    Result := StrToInt(Value);
+  except
+    Result := 0;
+  end;
+end;
+
+function ExtractDoubleFromJSONArray(const JSONStr, ArrayName: string; Index: Integer; FieldName: string): Double;
+var
+  ArrayPos, ElementPos, FieldPos: Integer;
+  P, EndP: Integer;
+  Value: string;
+  Count: Integer;
+begin
+  Result := 0.0;
+  ArrayPos := Pos('"' + ArrayName + '"', JSONStr);
+  if ArrayPos = 0 then Exit;
+  
+  ArrayPos := PosEx('[', JSONStr, ArrayPos);
+  if ArrayPos = 0 then Exit;
+  
+  { Find the Nth element }
+  Count := 0;
+  ElementPos := ArrayPos + 1;
+  while (Count < Index) and (ElementPos <= Length(JSONStr)) do
+  begin
+    if JSONStr[ElementPos] = '{' then Inc(Count);
+    Inc(ElementPos);
+  end;
+  
+  if Count <> Index then Exit;
+  
+  { Find the field within this element }
+  FieldPos := Pos('"' + FieldName + '"', Copy(JSONStr, ElementPos, Length(JSONStr)));
+  if FieldPos = 0 then Exit;
+  
+  FieldPos := ElementPos + FieldPos - 1;
+  P := PosEx(':', JSONStr, FieldPos);
+  if P = 0 then Exit;
+  
+  P := P + 1;
+  while (P <= Length(JSONStr)) and (JSONStr[P] in [' ', #9, #10, #13]) do Inc(P);
+  
+  EndP := P;
+  while (EndP <= Length(JSONStr)) and (JSONStr[EndP] in ['0'..'9', '-', '.', 'e', 'E']) do Inc(EndP);
+  
+  Value := Copy(JSONStr, P, EndP - P);
+  try
+    Result := StrToFloat(Value);
+  except
+    Result := 0.0;
+  end;
+end;
+
+function CountArrayElements(const JSONStr, ArrayName: string): Integer;
+var
+  P: Integer;
+  Count: Integer;
+begin
+  Result := 0;
+  P := Pos('"' + ArrayName + '"', JSONStr);
+  if P = 0 then Exit;
+  
+  P := PosEx('[', JSONStr, P);
+  if P = 0 then Exit;
+  
+  Count := 0;
+  Inc(P);
+  while (P <= Length(JSONStr)) and (JSONStr[P] <> ']') do
+  begin
+    if JSONStr[P] = '{' then Inc(Count);
+    Inc(P);
+  end;
+  
+  Result := Count;
+end;
+
+function CountNestedArrayElements(const JSONStr, ArrayName: string; Index: Integer; NestedArray: string): Integer;
+var
+  P, ElementPos, NestedP: Integer;
+  Count: Integer;
+begin
+  Result := 0;
+  P := Pos('"' + ArrayName + '"', JSONStr);
+  if P = 0 then Exit;
+  
+  P := PosEx('[', JSONStr, P);
+  if P = 0 then Exit;
+  
+  { Find the Nth element }
+  Count := 0;
+  ElementPos := P + 1;
+  while (Count < Index) and (ElementPos <= Length(JSONStr)) do
+  begin
+    if JSONStr[ElementPos] = '{' then Inc(Count);
+    Inc(ElementPos);
+  end;
+  
+  if Count <> Index then Exit;
+  
+  { Find nested array }
+  NestedP := Pos('"' + NestedArray + '"', Copy(JSONStr, ElementPos, Length(JSONStr)));
+  if NestedP = 0 then Exit;
+  
+  NestedP := ElementPos + NestedP - 1;
+  P := PosEx('[', JSONStr, NestedP);
+  if P = 0 then Exit;
+  
+  Count := 0;
+  Inc(P);
+  while (P <= Length(JSONStr)) and (JSONStr[P] <> ']') do
+  begin
+    if JSONStr[P] = '{' then Inc(Count);
+    Inc(P);
+  end;
+  
+  Result := Count;
+end;
+
+function ExtractDoubleFromNestedJSON(const JSONStr, ArrayName: string; Index: Integer; NestedArray: string; NestedIndex: Integer; FieldName: string): Double;
+var
+  P, ElementPos, NestedP, FieldPos: Integer;
+  Count: Integer;
+  Value: string;
+  EndP: Integer;
+begin
+  Result := 0.0;
+  
+  P := Pos('"' + ArrayName + '"', JSONStr);
+  if P = 0 then Exit;
+  
+  P := PosEx('[', JSONStr, P);
+  if P = 0 then Exit;
+  
+  { Find the Nth element }
+  Count := 0;
+  ElementPos := P + 1;
+  while (Count < Index) and (ElementPos <= Length(JSONStr)) do
+  begin
+    if JSONStr[ElementPos] = '{' then Inc(Count);
+    Inc(ElementPos);
+  end;
+  
+  if Count <> Index then Exit;
+  
+  { Find nested array }
+  NestedP := Pos('"' + NestedArray + '"', Copy(JSONStr, ElementPos, Length(JSONStr)));
+  if NestedP = 0 then Exit;
+  
+  NestedP := ElementPos + NestedP - 1;
+  NestedP := PosEx('[', JSONStr, NestedP);
+  if NestedP = 0 then Exit;
+  
+  { Find the nested index }
+  Count := 0;
+  P := NestedP + 1;
+  while (Count < NestedIndex) and (P <= Length(JSONStr)) do
+  begin
+    if JSONStr[P] = '{' then Inc(Count);
+    Inc(P);
+  end;
+  
+  if Count <> NestedIndex then Exit;
+  
+  { Find field within nested element }
+  FieldPos := Pos('"' + FieldName + '"', Copy(JSONStr, P, Length(JSONStr)));
+  if FieldPos = 0 then Exit;
+  
+  FieldPos := P + FieldPos - 1;
+  P := PosEx(':', JSONStr, FieldPos);
+  if P = 0 then Exit;
+  
+  P := P + 1;
+  while (P <= Length(JSONStr)) and (JSONStr[P] in [' ', #9, #10, #13]) do Inc(P);
+  
+  EndP := P;
+  while (EndP <= Length(JSONStr)) and (JSONStr[EndP] in ['0'..'9', '-', '.', 'e', 'E']) do Inc(EndP);
+  
+  Value := Copy(JSONStr, P, EndP - P);
+  try
+    Result := StrToFloat(Value);
+  except
+    Result := 0.0;
+  end;
+end;
+
+procedure LoadWeights1DFromJSON(const JSONStr, ArrayName: string; Index: Integer; FieldName: string; var Arr: DArray);
+var
+  P, ElementPos, Count: Integer;
+  ArrayStartPos, ArrayEndPos: Integer;
+  CurrentPos, NumPos: Integer;
+  Value: string;
+begin
+  { Find array }
+  P := Pos('"' + ArrayName + '"', JSONStr);
+  if P = 0 then Exit;
+  
+  if Index >= 0 then
+  begin
+    { Find the Nth element in array }
+    P := PosEx('[', JSONStr, P);
+    if P = 0 then Exit;
+    
+    Count := 0;
+    ElementPos := P + 1;
+    while (Count < Index) and (ElementPos <= Length(JSONStr)) do
+    begin
+      if JSONStr[ElementPos] = '{' then Inc(Count);
+      Inc(ElementPos);
+    end;
+    
+    if Count <> Index then Exit;
+    P := ElementPos;
+  end;
+  
+  { Find field }
+  P := Pos('"' + FieldName + '"', Copy(JSONStr, P, Length(JSONStr)));
+  if P = 0 then Exit;
+  
+  P := P + Length(FieldName) + 2;
+  ArrayStartPos := PosEx('[', JSONStr, P);
+  if ArrayStartPos = 0 then Exit;
+  
+  { Find matching ] }
+  Count := 1;
+  ArrayEndPos := ArrayStartPos + 1;
+  while (Count > 0) and (ArrayEndPos <= Length(JSONStr)) do
+  begin
+    if JSONStr[ArrayEndPos] = '[' then Inc(Count)
+    else if JSONStr[ArrayEndPos] = ']' then Dec(Count);
+    Inc(ArrayEndPos);
+  end;
+  
+  { Parse array }
+  SetLength(Arr, 0);
+  CurrentPos := ArrayStartPos + 1;
+  Count := 0;
+  
+  while (CurrentPos < ArrayEndPos) and (JSONStr[CurrentPos] <> ']') do
+  begin
+    if JSONStr[CurrentPos] in ['0'..'9', '-', '.'] then
+    begin
+      NumPos := CurrentPos;
+      while (NumPos <= Length(JSONStr)) and (JSONStr[NumPos] in ['0'..'9', '-', '.', 'e', 'E']) do
+        Inc(NumPos);
+      
+      Value := Copy(JSONStr, CurrentPos, NumPos - CurrentPos);
+      SetLength(Arr, Count + 1);
+      try
+        Arr[Count] := StrToFloat(Value);
+      except
+        Arr[Count] := 0.0;
+      end;
+      Inc(Count);
+      
+      CurrentPos := NumPos;
+    end
+    else
+      Inc(CurrentPos);
+  end;
+end;
+
+procedure LoadWeights2DFromJSON(const JSONStr, ArrayName: string; Index: Integer; FieldName: string; var Arr: TDArray2D);
+var
+  P, ElementPos, Count: Integer;
+  ArrayStartPos, ArrayEndPos: Integer;
+  CurrentPos, NumPos, RowCount, ColCount: Integer;
+  Value: string;
+  Row: Integer;
+  BasePos: Integer;
+begin
+  { Find field }
+  P := Pos('"' + ArrayName + '"', JSONStr);
+  if P = 0 then Exit;
+  
+  if Index >= 0 then
+  begin
+    P := PosEx('[', JSONStr, P);
+    if P = 0 then Exit;
+    
+    Count := 0;
+    ElementPos := P + 1;
+    while (Count < Index) and (ElementPos <= Length(JSONStr)) do
+    begin
+      if JSONStr[ElementPos] = '{' then Inc(Count);
+      Inc(ElementPos);
+    end;
+    
+    if Count <> Index then Exit;
+    P := ElementPos;
+  end;
+  
+  { Find field in element }
+  BasePos := Pos('"' + FieldName + '"', Copy(JSONStr, P, Length(JSONStr)));
+  if BasePos = 0 then Exit;
+  
+  P := P + BasePos + Length(FieldName) + 1;
+  ArrayStartPos := PosEx('[', JSONStr, P);
+  if ArrayStartPos = 0 then Exit;
+  
+  { Find matching ] }
+  Count := 1;
+  ArrayEndPos := ArrayStartPos + 1;
+  while (Count > 0) and (ArrayEndPos <= Length(JSONStr)) do
+  begin
+    if JSONStr[ArrayEndPos] = '[' then Inc(Count)
+    else if JSONStr[ArrayEndPos] = ']' then Dec(Count);
+    Inc(ArrayEndPos);
+  end;
+  
+  { Parse 2D array }
+  SetLength(Arr, 0);
+  CurrentPos := ArrayStartPos + 1;
+  RowCount := 0;
+  
+  while (CurrentPos < ArrayEndPos) do
+  begin
+    if JSONStr[CurrentPos] = '[' then
+    begin
+      SetLength(Arr, RowCount + 1);
+      SetLength(Arr[RowCount], 0);
+      
+      Inc(CurrentPos);
+      ColCount := 0;
+      while (CurrentPos < ArrayEndPos) and (JSONStr[CurrentPos] <> ']') do
+      begin
+        if JSONStr[CurrentPos] in ['0'..'9', '-', '.'] then
+        begin
+          NumPos := CurrentPos;
+          while (NumPos <= Length(JSONStr)) and (JSONStr[NumPos] in ['0'..'9', '-', '.', 'e', 'E']) do
+            Inc(NumPos);
+          
+          Value := Copy(JSONStr, CurrentPos, NumPos - CurrentPos);
+          SetLength(Arr[RowCount], ColCount + 1);
+          try
+            Arr[RowCount][ColCount] := StrToFloat(Value);
+          except
+            Arr[RowCount][ColCount] := 0.0;
+          end;
+          Inc(ColCount);
+          
+          CurrentPos := NumPos;
+        end
+        else
+          Inc(CurrentPos);
+      end;
+      
+      if CurrentPos < ArrayEndPos then Inc(CurrentPos);
+      Inc(RowCount);
+    end
+    else
+      Inc(CurrentPos);
+  end;
+end;
+
+procedure LoadWeights4DFromJSON(const JSONStr, ArrayName: string; Index: Integer; NestedArray: string; NestedIndex: Integer; FieldName: string; var Arr: TDArray4D);
+var
+  P, ElementPos, Count: Integer;
+  NestedP, NestedElementPos, NestedCount: Integer;
+  ArrayStartPos, ArrayEndPos: Integer;
+  CurrentPos, NumPos: Integer;
+  Value: string;
+  D1, D2, D3, D4: Integer;
+begin
+  { Find top-level array }
+  P := Pos('"' + ArrayName + '"', JSONStr);
+  if P = 0 then Exit;
+  
+  P := PosEx('[', JSONStr, P);
+  if P = 0 then Exit;
+  
+  { Find Nth element }
+  Count := 0;
+  ElementPos := P + 1;
+  while (Count < Index) and (ElementPos <= Length(JSONStr)) do
+  begin
+    if JSONStr[ElementPos] = '{' then Inc(Count);
+    Inc(ElementPos);
+  end;
+  
+  if Count <> Index then Exit;
+  
+  { Find nested array }
+  NestedP := Pos('"' + NestedArray + '"', Copy(JSONStr, ElementPos, Length(JSONStr)));
+  if NestedP = 0 then Exit;
+  
+  NestedP := ElementPos + NestedP - 1;
+  NestedP := PosEx('[', JSONStr, NestedP);
+  if NestedP = 0 then Exit;
+  
+  { Find nested element }
+  NestedCount := 0;
+  NestedElementPos := NestedP + 1;
+  while (NestedCount < NestedIndex) and (NestedElementPos <= Length(JSONStr)) do
+  begin
+    if JSONStr[NestedElementPos] = '{' then Inc(NestedCount);
+    Inc(NestedElementPos);
+  end;
+  
+  if NestedCount <> NestedIndex then Exit;
+  
+  { Find field in nested element }
+  P := Pos('"' + FieldName + '"', Copy(JSONStr, NestedElementPos, Length(JSONStr)));
+  if P = 0 then Exit;
+  
+  P := NestedElementPos + P - 1;
+  ArrayStartPos := PosEx('[', JSONStr, P);
+  if ArrayStartPos = 0 then Exit;
+  
+  { Find matching ] }
+  Count := 1;
+  ArrayEndPos := ArrayStartPos + 1;
+  while (Count > 0) and (ArrayEndPos <= Length(JSONStr)) do
+  begin
+    if JSONStr[ArrayEndPos] = '[' then Inc(Count)
+    else if JSONStr[ArrayEndPos] = ']' then Dec(Count);
+    Inc(ArrayEndPos);
+  end;
+  
+  { Parse 4D array - simplified flat parsing }
+  { This converts flat JSON array to 4D structure }
+  SetLength(Arr, 0);
+  CurrentPos := ArrayStartPos + 1;
+  D1 := 0;
+  D2 := 0;
+  D3 := 0;
+  D4 := 0;
+  
+  while (CurrentPos < ArrayEndPos) and (JSONStr[CurrentPos] <> ']') do
+  begin
+    if JSONStr[CurrentPos] in ['0'..'9', '-', '.'] then
+    begin
+      NumPos := CurrentPos;
+      while (NumPos <= Length(JSONStr)) and (JSONStr[NumPos] in ['0'..'9', '-', '.', 'e', 'E']) do
+        Inc(NumPos);
+      
+      Value := Copy(JSONStr, CurrentPos, NumPos - CurrentPos);
+      try
+        { For 4D arrays, ensure dimensions exist }
+        if D1 >= Length(Arr) then SetLength(Arr, D1 + 1);
+        if D2 >= Length(Arr[D1]) then SetLength(Arr[D1], D2 + 1);
+        if D3 >= Length(Arr[D1][D2]) then SetLength(Arr[D1][D2], D3 + 1);
+        if D4 >= Length(Arr[D1][D2][D3]) then SetLength(Arr[D1][D2][D3], D4 + 1);
+        
+        Arr[D1][D2][D3][D4] := StrToFloat(Value);
+        
+        Inc(D4);
+      except
+        { Skip invalid values }
+      end;
+      
+      CurrentPos := NumPos;
+    end
+    else
+      Inc(CurrentPos);
+  end;
+end;
+
+{ ========== Helper Functions ========== }
 function ParseActivation(const s: string): TActivationType;
 begin
   if LowerCase(s) = 'tanh' then
@@ -1010,6 +1768,105 @@ begin
     Result := ltCrossEntropy
   else
     Result := ltMSE;
+end;
+
+procedure TAdvancedCNN.LoadModelFromJSON(const Filename: string);
+var
+  JSONContent: TStringList;
+  JSONStr: string;
+  i, j, k, l, f, c, convIdx, fcIdx: Integer;
+  NumConvLayers, NumPoolLayers, NumFCLayers, OutputSize: Integer;
+  FilterCount, KernelSize, Stride, Padding, InputCh, OutputCh: Integer;
+  PoolSize, FCInputSize, FCOutputSize: Integer;
+  Value: string;
+  Bias: Double;
+begin
+  JSONContent := TStringList.Create;
+  try
+    { Load entire file }
+    JSONContent.LoadFromFile(Filename);
+    JSONStr := JSONContent.Text;
+    
+    { PARSE CONFIG SECTION }
+    { Extract basic dimensions }
+    FInputWidth := ExtractIntFromJSON(JSONStr, 'inputWidth');
+    FInputHeight := ExtractIntFromJSON(JSONStr, 'inputHeight');
+    FInputChannels := ExtractIntFromJSON(JSONStr, 'inputChannels');
+    FOutputSize := ExtractIntFromJSON(JSONStr, 'outputSize');
+    FLearningRate := ExtractDoubleFromJSON(JSONStr, 'learningRate');
+    FGradientClip := ExtractDoubleFromJSON(JSONStr, 'gradientClip');
+    
+    { Parse hyperparameters }
+    FActivation := ParseActivation(ExtractStringFromJSON(JSONStr, 'activation'));
+    FOutputActivation := ParseActivation(ExtractStringFromJSON(JSONStr, 'outputActivation'));
+    FLossType := ParseLoss(ExtractStringFromJSON(JSONStr, 'lossType'));
+    
+    { PARSE CONVOLUTIONAL LAYERS }
+    NumConvLayers := CountArrayElements(JSONStr, 'convLayers');
+    SetLength(FConvLayers, NumConvLayers);
+    
+    for i := 0 to NumConvLayers - 1 do
+    begin
+      { Extract conv layer parameters }
+      KernelSize := ExtractIntFromJSONArray(JSONStr, 'convLayers', i, 'kernelSize');
+      Stride := ExtractIntFromJSONArray(JSONStr, 'convLayers', i, 'stride');
+      Padding := ExtractIntFromJSONArray(JSONStr, 'convLayers', i, 'padding');
+      InputCh := ExtractIntFromJSONArray(JSONStr, 'convLayers', i, 'inputChannels');
+      OutputCh := ExtractIntFromJSONArray(JSONStr, 'convLayers', i, 'outputChannels');
+      
+      { Create conv layer }
+      FConvLayers[i] := TConvLayer.Create(InputCh, OutputCh, KernelSize, Stride, Padding, FActivation);
+      
+      { Load filter weights and biases }
+      FilterCount := CountNestedArrayElements(JSONStr, 'convLayers', i, 'filters');
+      for f := 0 to FilterCount - 1 do
+      begin
+        Bias := ExtractDoubleFromNestedJSON(JSONStr, 'convLayers', i, 'filters', f, 'bias');
+        FConvLayers[i].Filters[f].Bias := Bias;
+        
+        { Load weights from nested 4D array }
+        LoadWeights4DFromJSON(JSONStr, 'convLayers', i, 'filters', f, 'weights', 
+                             FConvLayers[i].Filters[f].Weights);
+      end;
+    end;
+    
+    { PARSE POOLING LAYERS }
+    NumPoolLayers := CountArrayElements(JSONStr, 'poolLayers');
+    SetLength(FPoolLayers, NumPoolLayers);
+    for i := 0 to NumPoolLayers - 1 do
+    begin
+      PoolSize := ExtractIntFromJSONArray(JSONStr, 'poolLayers', i, 'poolSize');
+      FPoolLayers[i] := TPoolingLayer.Create(PoolSize, PoolSize);
+    end;
+    
+    { PARSE FULLY CONNECTED LAYERS }
+    NumFCLayers := CountArrayElements(JSONStr, 'fcLayers');
+    SetLength(FFullyConnectedLayers, NumFCLayers);
+    
+    for i := 0 to NumFCLayers - 1 do
+    begin
+      FCInputSize := ExtractIntFromJSONArray(JSONStr, 'fcLayers', i, 'inputSize');
+      FCOutputSize := ExtractIntFromJSONArray(JSONStr, 'fcLayers', i, 'outputSize');
+      
+      FFullyConnectedLayers[i] := TFCLayer.Create(FCInputSize, FCOutputSize, FActivation);
+      
+      { Load weights and biases }
+      LoadWeights2DFromJSON(JSONStr, 'fcLayers', i, 'weights', FFullyConnectedLayers[i].W);
+      LoadWeights1DFromJSON(JSONStr, 'fcLayers', i, 'bias', FFullyConnectedLayers[i].B);
+    end;
+    
+    { PARSE OUTPUT LAYER }
+    FCInputSize := ExtractIntFromJSONArray(JSONStr, 'outputLayer', -1, 'inputSize');
+    FCOutputSize := ExtractIntFromJSONArray(JSONStr, 'outputLayer', -1, 'outputSize');
+    FOutputLayer := TFCLayer.Create(FCInputSize, FCOutputSize, FOutputActivation);
+    LoadWeights2DFromJSON(JSONStr, 'outputLayer', -1, 'weights', FOutputLayer.W);
+    LoadWeights1DFromJSON(JSONStr, 'outputLayer', -1, 'bias', FOutputLayer.B);
+    
+    WriteLn('Model loaded successfully from: ' + Filename);
+    
+  finally
+    JSONContent.Free;
+  end;
 end;
 
 procedure ParseIntArrayHelper(const s: string; out result: TIntArray);
@@ -1223,7 +2080,9 @@ begin
     WriteLn('  Loss function: ', LossToStr(lossType));
     WriteLn('  Learning rate: ', learningRate:0:6);
     WriteLn('  Gradient clip: ', gradientClip:0:2);
-    WriteLn('  Saved to: ', saveFile);
+    
+    { Save model to JSON }
+    CNN.SaveModelToJSON(saveFile);
 
     CNN.Free;
   end
