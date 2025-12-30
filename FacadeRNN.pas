@@ -1,13 +1,12 @@
-{
-  RNN Facade - Comprehensive introspection and manipulation API
-  Matthew Abbott 2025
-}
+//
+// Facaded RNN
+// Matthew Abbott 2025
+//
 
 {$mode objfpc}{$H+}
+{$M+}
 
-unit RNNFacade;
-
-interface
+program FacadedRNN;
 
 uses Classes, Math, SysUtils;
 
