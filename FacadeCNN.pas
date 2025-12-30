@@ -1,10 +1,9 @@
-{------------------------------------------------------------------------------
-  Facaded CNN
-  Matthew Abbott, 2025
+//
+// Matthew Abbott 2025
+// Facaded CNN 
+//
 
-------------------------------------------------------------------------------}
-
-program CNNProgram;
+program FacadedCNN;
 
 {$mode objfpc}{$H+}
 
