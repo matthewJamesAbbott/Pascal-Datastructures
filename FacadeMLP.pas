@@ -1,19 +1,14 @@
 //
-// Facaded MLP - Command-line Multi-Layer Perceptron with Full Facade Support
-// CLI: Create, Train, Predict, Inspect, and Directly Modify Model Internals
-// Adds facade commands for comprehensive internal access to neurons, weights, layers
-//
 // Matthew Abbott 2025
-// Based on MLPtest with facade extensions for get-weight, set-weight, get-bias,
-// set-bias, get-output, get-error, layer-info, histogram, get-optimizer commands
+// Facaded MLP
 //
 
 {$mode objfpc}
 {$M+}
 
-program FacadedMLPTest;
+program FacadedMLP;
 
-uses Classes, Math, SysUtils;
+uses Classes, Math, SysUtils, StrUtils;
 
 const
    EPSILON = 1e-15;
@@ -98,13 +93,20 @@ type
       procedure SaveMLPModel(const Filename: string);
       procedure Save(const Filename: string);
       
+      { JSON serialization methods }
+      procedure SaveModelToJSON(const Filename: string);
+      procedure LoadModelFromJSON(const Filename: string);
+      
+      { JSON serialization helper functions }
+      function Array1DToJSON(const Arr: Darray): string;
+      
       property InputLayer: TLayer read FInputLayer;
       property OutputLayer: TLayer read FOutputLayer;
       function GetHiddenLayer(Index: Integer): TLayer;
       function GetHiddenLayerCount: Integer;
       function GetInputSize: Integer;
       function GetOutputSize: Integer;
-   end;
+      end;
 
 function Sigmoid(x: Double): Double;
 begin
@@ -847,9 +849,540 @@ begin
    end;
    
    CloseFile(F);
-end;
+   end;
 
-function LoadMLPModel(const Filename: string): TMultiLayerPerceptron;
+   // Forward declarations for JSON helper functions and conversion functions
+   function ActivationToStr(act: TActivationType): string; forward;
+   function OptimizerToStr(opt: TOptimizerType): string; forward;
+   function ParseActivation(const s: string): TActivationType; forward;
+   function ParseOptimizer(const s: string): TOptimizerType; forward;
+
+   function TMultiLayerPerceptron.Array1DToJSON(const Arr: Darray): string;
+   var
+   I: Integer;
+   begin
+   Result := '[';
+   for I := 0 to High(Arr) do
+   begin
+   if I > 0 then Result := Result + ',';
+   Result := Result + FloatToStr(Arr[I]);
+   end;
+   Result := Result + ']';
+   end;
+
+   function Array2DToJSON(const Arr: array of Darray): string;
+   var
+   I: Integer;
+   
+   function Arr1DToJSON(const A: Darray): string;
+   var
+   J: Integer;
+   begin
+   Result := '[';
+   for J := 0 to High(A) do
+   begin
+     if J > 0 then Result := Result + ',';
+     Result := Result + FloatToStr(A[J]);
+   end;
+   Result := Result + ']';
+   end;
+   
+   begin
+   Result := '[';
+   for I := 0 to High(Arr) do
+   begin
+   if I > 0 then Result := Result + ',';
+   Result := Result + Arr1DToJSON(Arr[I]);
+   end;
+   Result := Result + ']';
+   end;
+
+   procedure TMultiLayerPerceptron.SaveModelToJSON(const Filename: string);
+   var
+   SL: TStringList;
+   I, J, K: Integer;
+   WeightsArr: array of Darray;
+   BiasArr: Darray;
+   begin
+   SL := TStringList.Create;
+   try
+   SL.Add('{');
+   SL.Add('  "model_type": "MLP",');
+   SL.Add('  "input_size": ' + IntToStr(FInputSize) + ',');
+   SL.Add('  "output_size": ' + IntToStr(FOutputSize) + ',');
+   
+   { Hidden sizes array }
+   SL.Add('  "hidden_sizes": [');
+   for I := 0 to High(FHiddenSizes) do
+   begin
+     if I < High(FHiddenSizes) then
+       SL.Add('    ' + IntToStr(FHiddenSizes[I]) + ',')
+     else
+       SL.Add('    ' + IntToStr(FHiddenSizes[I]));
+   end;
+   SL.Add('  ],');
+   
+   { Configuration }
+   SL.Add('  "hidden_activation": "' + ActivationToStr(HiddenActivation) + '",');
+   SL.Add('  "output_activation": "' + ActivationToStr(OutputActivation) + '",');
+   SL.Add('  "optimizer": "' + OptimizerToStr(Optimizer) + '",');
+   SL.Add('  "learning_rate": ' + FloatToStr(LearningRate) + ',');
+   SL.Add('  "dropout_rate": ' + FloatToStr(DropoutRate) + ',');
+   SL.Add('  "l2_lambda": ' + FloatToStr(L2Lambda) + ',');
+   SL.Add('  "beta1": ' + FloatToStr(Beta1) + ',');
+   SL.Add('  "beta2": ' + FloatToStr(Beta2) + ',');
+   SL.Add('  "timestep": ' + IntToStr(Timestep) + ',');
+   SL.Add('  "max_iterations": ' + IntToStr(MaxIterations) + ',');
+   
+   { Hidden layers weights and biases }
+   SL.Add('  "hidden_layers": [');
+   for K := 0 to High(FHiddenLayers) do
+   begin
+     SL.Add('    {');
+     
+     { Collect weights for this layer }
+     SetLength(WeightsArr, Length(FHiddenLayers[K].Neurons));
+     SetLength(BiasArr, Length(FHiddenLayers[K].Neurons));
+     for I := 0 to High(FHiddenLayers[K].Neurons) do
+     begin
+       SetLength(WeightsArr[I], Length(FHiddenLayers[K].Neurons[I].Weights));
+       for J := 0 to High(FHiddenLayers[K].Neurons[I].Weights) do
+         WeightsArr[I][J] := FHiddenLayers[K].Neurons[I].Weights[J];
+       BiasArr[I] := FHiddenLayers[K].Neurons[I].Bias;
+     end;
+     
+     SL.Add('      "weights": ' + Array2DToJSON(WeightsArr) + ',');
+     SL.Add('      "biases": ' + Array1DToJSON(BiasArr));
+     
+     if K < High(FHiddenLayers) then
+       SL.Add('    },')
+     else
+       SL.Add('    }');
+   end;
+   SL.Add('  ],');
+   
+   { Output layer weights and biases }
+   SetLength(WeightsArr, Length(FOutputLayer.Neurons));
+   SetLength(BiasArr, Length(FOutputLayer.Neurons));
+   for I := 0 to High(FOutputLayer.Neurons) do
+   begin
+     SetLength(WeightsArr[I], Length(FOutputLayer.Neurons[I].Weights));
+     for J := 0 to High(FOutputLayer.Neurons[I].Weights) do
+       WeightsArr[I][J] := FOutputLayer.Neurons[I].Weights[J];
+     BiasArr[I] := FOutputLayer.Neurons[I].Bias;
+   end;
+   
+   SL.Add('  "output_layer": {');
+   SL.Add('    "weights": ' + Array2DToJSON(WeightsArr) + ',');
+   SL.Add('    "biases": ' + Array1DToJSON(BiasArr));
+   SL.Add('  }');
+   
+   SL.Add('}');
+   
+   SL.SaveToFile(Filename);
+   WriteLn('Model saved to JSON: ', Filename);
+   finally
+   SL.Free;
+   end;
+   end;
+
+   procedure TMultiLayerPerceptron.LoadModelFromJSON(const Filename: string);
+   var
+     SL: TStringList;
+     Content: string;
+     ValueStr: string;
+     TempInputSize, TempOutputSize: Integer;
+     TempHiddenSizes: array of Integer;
+     TempHiddenAct, TempOutputAct: TActivationType;
+     TempOptimizer: TOptimizerType;
+     I, J, K, NumInputs: Integer;
+     ArrayStart, ArrayEnd, BracketCount, Pos1, Pos2: Integer;
+     ArrayStr, NumStr: string;
+     tokens: TStringList;
+     LayerStart, LayerEnd, WeightsStart, WeightsEnd, BiasesStart, BiasesEnd: Integer;
+     LayerStr, WeightsStr, BiasesStr: string;
+     WeightRows: TStringList;
+     WeightRow: string;
+     RowStart, RowEnd: Integer;
+     BiasArr: Darray;
+     WeightsArr: Darray;
+   
+   function ExtractJSONValue(const json: string; const key: string): string;
+   var
+   KeyPos, ColonPos, QuotePos1, QuotePos2, StartPos, EndPos: Integer;
+   begin
+   KeyPos := Pos('"' + key + '"', json);
+   if KeyPos > 0 then
+   begin
+     ColonPos := PosEx(':', json, KeyPos);
+     if ColonPos > 0 then
+     begin
+       StartPos := ColonPos + 1;
+       while (StartPos <= Length(json)) and (json[StartPos] in [' ', #9, #10, #13]) do
+         Inc(StartPos);
+       
+       if (StartPos <= Length(json)) and (json[StartPos] = '"') then
+       begin
+         QuotePos1 := StartPos;
+         QuotePos2 := PosEx('"', json, QuotePos1 + 1);
+         if QuotePos2 > 0 then
+           Result := Copy(json, QuotePos1 + 1, QuotePos2 - QuotePos1 - 1)
+         else
+           Result := '';
+       end
+       else
+       begin
+         EndPos := PosEx(',', json, StartPos);
+         if EndPos = 0 then
+           EndPos := PosEx('}', json, StartPos);
+         if EndPos = 0 then
+           EndPos := PosEx(']', json, StartPos);
+         Result := Trim(Copy(json, StartPos, EndPos - StartPos));
+       end;
+     end
+     else
+       Result := '';
+   end
+   else
+     Result := '';
+   end;
+   
+   function ExtractJSONArray(const json: string; const key: string): string;
+   var
+   KeyPos, ArrayStart, BracketCount, I: Integer;
+   begin
+   Result := '';
+   KeyPos := Pos('"' + key + '"', json);
+   if KeyPos > 0 then
+   begin
+     ArrayStart := PosEx('[', json, KeyPos);
+     if ArrayStart > 0 then
+     begin
+       BracketCount := 1;
+       I := ArrayStart + 1;
+       while (I <= Length(json)) and (BracketCount > 0) do
+       begin
+         if json[I] = '[' then Inc(BracketCount)
+         else if json[I] = ']' then Dec(BracketCount);
+         Inc(I);
+       end;
+       Result := Copy(json, ArrayStart, I - ArrayStart);
+     end;
+   end;
+   end;
+   
+   function ParseIntArray(const arrStr: string): TIntArray;
+   var
+   tokens: TStringList;
+   cleanStr: string;
+   I: Integer;
+   begin
+   cleanStr := StringReplace(arrStr, '[', '', [rfReplaceAll]);
+   cleanStr := StringReplace(cleanStr, ']', '', [rfReplaceAll]);
+   cleanStr := StringReplace(cleanStr, #10, '', [rfReplaceAll]);
+   cleanStr := StringReplace(cleanStr, #13, '', [rfReplaceAll]);
+   
+   tokens := TStringList.Create;
+   try
+     tokens.Delimiter := ',';
+     tokens.DelimitedText := cleanStr;
+     SetLength(Result, 0);
+     for I := 0 to tokens.Count - 1 do
+     begin
+       if Trim(tokens[I]) <> '' then
+       begin
+         SetLength(Result, Length(Result) + 1);
+         Result[High(Result)] := StrToInt(Trim(tokens[I]));
+       end;
+     end;
+   finally
+     tokens.Free;
+   end;
+   end;
+   
+   function ParseDoubleArray(const arrStr: string): Darray;
+   var
+   tokens: TStringList;
+   cleanStr: string;
+   I: Integer;
+   begin
+   cleanStr := StringReplace(arrStr, '[', '', [rfReplaceAll]);
+   cleanStr := StringReplace(cleanStr, ']', '', [rfReplaceAll]);
+   cleanStr := StringReplace(cleanStr, #10, '', [rfReplaceAll]);
+   cleanStr := StringReplace(cleanStr, #13, '', [rfReplaceAll]);
+   
+   tokens := TStringList.Create;
+   try
+     tokens.Delimiter := ',';
+     tokens.DelimitedText := cleanStr;
+     SetLength(Result, 0);
+     for I := 0 to tokens.Count - 1 do
+     begin
+       if Trim(tokens[I]) <> '' then
+       begin
+         SetLength(Result, Length(Result) + 1);
+         Result[High(Result)] := StrToFloat(Trim(tokens[I]));
+       end;
+     end;
+   finally
+     tokens.Free;
+   end;
+   end;
+   
+   function ExtractJSONObject(const json: string; const key: string): string;
+   var
+   KeyPos, ObjStart, BraceCount, I: Integer;
+   begin
+   Result := '';
+   KeyPos := Pos('"' + key + '"', json);
+   if KeyPos > 0 then
+   begin
+     ObjStart := PosEx('{', json, KeyPos);
+     if ObjStart > 0 then
+     begin
+       BraceCount := 1;
+       I := ObjStart + 1;
+       while (I <= Length(json)) and (BraceCount > 0) do
+       begin
+         if json[I] = '{' then Inc(BraceCount)
+         else if json[I] = '}' then Dec(BraceCount);
+         Inc(I);
+       end;
+       Result := Copy(json, ObjStart, I - ObjStart);
+     end;
+   end;
+   end;
+
+   begin
+   SL := TStringList.Create;
+   try
+   SL.LoadFromFile(Filename);
+   Content := SL.Text;
+   
+   { Load basic configuration }
+   ValueStr := ExtractJSONValue(Content, 'input_size');
+   if ValueStr <> '' then
+     TempInputSize := StrToInt(ValueStr)
+   else
+     TempInputSize := FInputSize;
+   
+   ValueStr := ExtractJSONValue(Content, 'output_size');
+   if ValueStr <> '' then
+     TempOutputSize := StrToInt(ValueStr)
+   else
+     TempOutputSize := FOutputSize;
+   
+   { Load hidden sizes }
+   ArrayStr := ExtractJSONArray(Content, 'hidden_sizes');
+   if ArrayStr <> '' then
+     TempHiddenSizes := ParseIntArray(ArrayStr)
+   else
+     TempHiddenSizes := FHiddenSizes;
+   
+   { Load activations }
+   ValueStr := ExtractJSONValue(Content, 'hidden_activation');
+   if ValueStr <> '' then
+     TempHiddenAct := ParseActivation(ValueStr)
+   else
+     TempHiddenAct := HiddenActivation;
+   
+   ValueStr := ExtractJSONValue(Content, 'output_activation');
+   if ValueStr <> '' then
+     TempOutputAct := ParseActivation(ValueStr)
+   else
+     TempOutputAct := OutputActivation;
+   
+   { Load optimizer }
+   ValueStr := ExtractJSONValue(Content, 'optimizer');
+   if ValueStr <> '' then
+     TempOptimizer := ParseOptimizer(ValueStr)
+   else
+     TempOptimizer := Optimizer;
+   
+   { Reinitialize the model with correct architecture }
+   FInputSize := TempInputSize;
+   FOutputSize := TempOutputSize;
+   SetLength(FHiddenSizes, Length(TempHiddenSizes));
+   for I := 0 to High(TempHiddenSizes) do
+     FHiddenSizes[I] := TempHiddenSizes[I];
+   HiddenActivation := TempHiddenAct;
+   OutputActivation := TempOutputAct;
+   Optimizer := TempOptimizer;
+   
+   { Reinitialize layers with correct sizes }
+   SetLength(FHiddenLayers, Length(FHiddenSizes));
+   InitializeLayer(FInputLayer, FInputSize + 1, FInputSize, atSigmoid);
+   
+   NumInputs := FInputSize;
+   for I := 0 to High(FHiddenSizes) do
+   begin
+     InitializeLayer(FHiddenLayers[I], FHiddenSizes[I] + 1, NumInputs + 1, HiddenActivation);
+     NumInputs := FHiddenSizes[I];
+   end;
+   InitializeLayer(FOutputLayer, FOutputSize, NumInputs + 1, OutputActivation);
+   
+   { Load other parameters }
+   ValueStr := ExtractJSONValue(Content, 'learning_rate');
+   if ValueStr <> '' then
+     LearningRate := StrToFloat(ValueStr);
+   
+   ValueStr := ExtractJSONValue(Content, 'dropout_rate');
+   if ValueStr <> '' then
+     DropoutRate := StrToFloat(ValueStr);
+   
+   ValueStr := ExtractJSONValue(Content, 'l2_lambda');
+   if ValueStr <> '' then
+     L2Lambda := StrToFloat(ValueStr);
+   
+   ValueStr := ExtractJSONValue(Content, 'beta1');
+   if ValueStr <> '' then
+     Beta1 := StrToFloat(ValueStr);
+   
+   ValueStr := ExtractJSONValue(Content, 'beta2');
+   if ValueStr <> '' then
+     Beta2 := StrToFloat(ValueStr);
+   
+   ValueStr := ExtractJSONValue(Content, 'timestep');
+   if ValueStr <> '' then
+     Timestep := StrToInt(ValueStr);
+   
+   ValueStr := ExtractJSONValue(Content, 'max_iterations');
+   if ValueStr <> '' then
+     MaxIterations := StrToInt(ValueStr);
+   
+   { Load hidden layer weights }
+   ArrayStr := ExtractJSONArray(Content, 'hidden_layers');
+   if ArrayStr <> '' then
+   begin
+     for K := 0 to High(FHiddenLayers) do
+     begin
+       { Find the K-th layer object }
+       Pos1 := 1;
+       for I := 0 to K do
+       begin
+         Pos1 := PosEx('{', ArrayStr, Pos1);
+         if (I < K) and (Pos1 > 0) then
+           Pos1 := Pos1 + 1;
+       end;
+       
+       if Pos1 > 0 then
+       begin
+         BracketCount := 1;
+         Pos2 := Pos1 + 1;
+         while (Pos2 <= Length(ArrayStr)) and (BracketCount > 0) do
+         begin
+           if ArrayStr[Pos2] = '{' then Inc(BracketCount)
+           else if ArrayStr[Pos2] = '}' then Dec(BracketCount);
+           Inc(Pos2);
+         end;
+         LayerStr := Copy(ArrayStr, Pos1, Pos2 - Pos1);
+         
+         { Extract weights array }
+         WeightsStr := ExtractJSONArray(LayerStr, 'weights');
+         BiasesStr := ExtractJSONArray(LayerStr, 'biases');
+         
+         if (WeightsStr <> '') and (BiasesStr <> '') then
+         begin
+           { Parse biases }
+           BiasArr := ParseDoubleArray(BiasesStr);
+           for I := 0 to Min(High(FHiddenLayers[K].Neurons), High(BiasArr)) do
+             FHiddenLayers[K].Neurons[I].Bias := BiasArr[I];
+           
+           { Parse weights - need to parse 2D array }
+           { Find each row [....] inside the outer brackets }
+           RowStart := 2;
+           I := 0;
+           while (RowStart < Length(WeightsStr)) and (I <= High(FHiddenLayers[K].Neurons)) do
+           begin
+             RowStart := PosEx('[', WeightsStr, RowStart);
+             if RowStart = 0 then Break;
+             
+             BracketCount := 1;
+             RowEnd := RowStart + 1;
+             while (RowEnd <= Length(WeightsStr)) and (BracketCount > 0) do
+             begin
+               if WeightsStr[RowEnd] = '[' then Inc(BracketCount)
+               else if WeightsStr[RowEnd] = ']' then Dec(BracketCount);
+               Inc(RowEnd);
+             end;
+             
+             WeightRow := Copy(WeightsStr, RowStart, RowEnd - RowStart);
+             WeightsArr := ParseDoubleArray(WeightRow);
+             
+             for J := 0 to Min(High(FHiddenLayers[K].Neurons[I].Weights), High(WeightsArr)) do
+               FHiddenLayers[K].Neurons[I].Weights[J] := WeightsArr[J];
+             
+             RowStart := RowEnd;
+             Inc(I);
+           end;
+         end;
+       end;
+     end;
+   end;
+   
+   { Load output layer weights }
+   LayerStr := ExtractJSONObject(Content, 'output_layer');
+   if LayerStr <> '' then
+   begin
+     WeightsStr := ExtractJSONArray(LayerStr, 'weights');
+     BiasesStr := ExtractJSONArray(LayerStr, 'biases');
+     
+     if (WeightsStr <> '') and (BiasesStr <> '') then
+     begin
+       { Parse biases }
+       BiasArr := ParseDoubleArray(BiasesStr);
+       for I := 0 to Min(High(FOutputLayer.Neurons), High(BiasArr)) do
+         FOutputLayer.Neurons[I].Bias := BiasArr[I];
+       
+       { Parse weights }
+       RowStart := 2;
+       I := 0;
+       while (RowStart < Length(WeightsStr)) and (I <= High(FOutputLayer.Neurons)) do
+       begin
+         RowStart := PosEx('[', WeightsStr, RowStart);
+         if RowStart = 0 then Break;
+         
+         BracketCount := 1;
+         RowEnd := RowStart + 1;
+         while (RowEnd <= Length(WeightsStr)) and (BracketCount > 0) do
+         begin
+           if WeightsStr[RowEnd] = '[' then Inc(BracketCount)
+           else if WeightsStr[RowEnd] = ']' then Dec(BracketCount);
+           Inc(RowEnd);
+         end;
+         
+         WeightRow := Copy(WeightsStr, RowStart, RowEnd - RowStart);
+         WeightsArr := ParseDoubleArray(WeightRow);
+         
+         for J := 0 to Min(High(FOutputLayer.Neurons[I].Weights), High(WeightsArr)) do
+           FOutputLayer.Neurons[I].Weights[J] := WeightsArr[J];
+         
+         RowStart := RowEnd;
+         Inc(I);
+       end;
+     end;
+   end;
+   
+   WriteLn('Model loaded from JSON: ', Filename);
+   WriteLn('  Input size: ', FInputSize);
+   Write('  Hidden sizes: ');
+   for I := 0 to High(FHiddenSizes) do
+   begin
+     if I > 0 then Write(',');
+     Write(FHiddenSizes[I]);
+   end;
+   WriteLn;
+   WriteLn('  Output size: ', FOutputSize);
+   WriteLn('  Hidden activation: ', ActivationToStr(HiddenActivation));
+   WriteLn('  Output activation: ', ActivationToStr(OutputActivation));
+   WriteLn('  Optimizer: ', OptimizerToStr(Optimizer));
+   WriteLn('  Learning rate: ', LearningRate:0:6);
+   finally
+   SL.Free;
+   end;
+   end;
+
+   function LoadMLPModel(const Filename: string): TMultiLayerPerceptron;
 var
    F: File;
    HiddenLayerSize: array of Integer;
@@ -1154,8 +1687,7 @@ end;
 
 procedure PrintUsage;
 begin
-    WriteLn('Facaded MLP - Command-line Multi-Layer Perceptron (with Facade)');
-    WriteLn('Matthew Abbott 2025');
+    WriteLn('Facaded MLP - Command-line Multi-Layer Perceptron with JSON/Binary Support');
     WriteLn;
     WriteLn('Commands:');
     WriteLn('  create         Create a new MLP model');
@@ -1173,63 +1705,75 @@ begin
     WriteLn('  histogram      Display activation or error histogram (FACADE)');
     WriteLn('  get-optimizer  Get optimizer state values M, V (FACADE)');
     WriteLn('  help           Show this help message');
-   WriteLn;
-   WriteLn('Create Options:');
-   WriteLn('  --input=N              Input layer size (required)');
-   WriteLn('  --hidden=N,N,...       Hidden layer sizes (required)');
-   WriteLn('  --output=N             Output layer size (required)');
-   WriteLn('  --save=FILE            Save model to file (required)');
-   WriteLn('  --lr=VALUE             Learning rate (default: 0.1)');
-   WriteLn('  --optimizer=TYPE       sgd|adam|rmsprop (default: sgd)');
-   WriteLn('  --hidden-act=TYPE      sigmoid|tanh|relu|softmax (default: sigmoid)');
-   WriteLn('  --output-act=TYPE      sigmoid|tanh|relu|softmax (default: sigmoid)');
-   WriteLn('  --dropout=VALUE        Dropout rate 0-1 (default: 0)');
-   WriteLn('  --l2=VALUE             L2 regularization (default: 0)');
-   WriteLn('  --beta1=VALUE          Adam beta1 (default: 0.9)');
-   WriteLn('  --beta2=VALUE          Adam beta2 (default: 0.999)');
-   WriteLn;
-   WriteLn('Train Options:');
-   WriteLn('  --model=FILE           Model file to load (required)');
-   WriteLn('  --data=FILE            Training data CSV file (required)');
-   WriteLn('  --save=FILE            Save trained model to file (required)');
-   WriteLn('  --epochs=N             Number of training epochs (default: 100)');
-   WriteLn('  --batch=N              Batch size (default: 1)');
-   WriteLn('  --lr=VALUE             Override learning rate');
-   WriteLn('  --lr-decay             Enable learning rate decay');
-   WriteLn('  --lr-decay-rate=VALUE  LR decay rate (default: 0.95)');
-   WriteLn('  --lr-decay-epochs=N    Epochs between decay (default: 10)');
-   WriteLn('  --early-stop           Enable early stopping');
-   WriteLn('  --patience=N           Early stopping patience (default: 10)');
-   WriteLn('  --normalize            Normalize input data');
-   WriteLn('  --verbose              Show training progress');
-   WriteLn;
-   WriteLn('Predict Options:');
-   WriteLn('  --model=FILE           Model file to load (required)');
-   WriteLn('  --input=v1,v2,...      Input values (required)');
-   WriteLn;
-   WriteLn('Info Options:');
-   WriteLn('  --model=FILE           Model file to load (required)');
-   WriteLn;
-   WriteLn('Facade Options (for get/set commands):');
-   WriteLn('  --layer=L              Layer index (required)');
-   WriteLn('  --neuron=N             Neuron index (required)');
-   WriteLn('  --weight=W             Weight index within neuron');
-   WriteLn('  --value=V              Value to set (required for set-* commands)');
-   WriteLn('  --bins=N               Number of histogram bins (default: 20)');
-   WriteLn('  --type=TYPE            Histogram type: activation|error (default: activation)');
-   WriteLn;
-   WriteLn('Examples:');
-   WriteLn('  facaded_mlp create --input=2 --hidden=8 --output=1 --save=xor.bin');
-   WriteLn('  facaded_mlp train --model=xor.bin --data=xor.csv --epochs=1000 --save=xor_trained.bin');
-   WriteLn('  facaded_mlp predict --model=xor_trained.bin --input=1,0');
-   WriteLn('  facaded_mlp info --model=xor_trained.bin');
-   WriteLn('  facaded_mlp get-weight --model=xor.bin --layer=1 --neuron=0 --weight=0');
-   WriteLn('  facaded_mlp set-weight --model=xor.bin --layer=1 --neuron=0 --weight=0 --value=0.5 --save=xor_mod.bin');
-   WriteLn('  facaded_mlp layer-info --model=xor.bin --layer=0');
-   WriteLn('  facaded_mlp histogram --model=xor.bin --layer=1 --bins=30 --type=activation');
-   WriteLn('  facaded_mlp get-output --model=xor.bin --layer=0 --neuron=3 --input=1,0');
-   WriteLn('  facaded_mlp get-optimizer --model=xor.bin --layer=1 --neuron=0');
-   end;
+    WriteLn;
+    WriteLn('File Format Support:');
+    WriteLn('  .json          JSON format (human readable)');
+    WriteLn('  .bin           Binary format (original, recommended for storage)');
+    WriteLn('  Auto-detection based on file extension');
+    WriteLn;
+    WriteLn('Create Options:');
+    WriteLn('  --input=N              Input layer size (required)');
+    WriteLn('  --hidden=N,N,...       Hidden layer sizes (required)');
+    WriteLn('  --output=N             Output layer size (required)');
+    WriteLn('  --save=FILE            Save model to file (required, .json or .bin)');
+    WriteLn('  --format=json|bin      Force format (default: auto-detect from extension)');
+    WriteLn('  --lr=VALUE             Learning rate (default: 0.1)');
+    WriteLn('  --optimizer=TYPE       sgd|adam|rmsprop (default: sgd)');
+    WriteLn('  --hidden-act=TYPE      sigmoid|tanh|relu|softmax (default: sigmoid)');
+    WriteLn('  --output-act=TYPE      sigmoid|tanh|relu|softmax (default: sigmoid)');
+    WriteLn('  --dropout=VALUE        Dropout rate 0-1 (default: 0)');
+    WriteLn('  --l2=VALUE             L2 regularization (default: 0)');
+    WriteLn('  --beta1=VALUE          Adam beta1 (default: 0.9)');
+    WriteLn('  --beta2=VALUE          Adam beta2 (default: 0.999)');
+    WriteLn;
+    WriteLn('Train Options:');
+    WriteLn('  --model=FILE           Model file to load (required, .json or .bin)');
+    WriteLn('  --data=FILE            Training data CSV file (required)');
+    WriteLn('  --save=FILE            Save trained model to file (required, .json or .bin)');
+    WriteLn('  --format=json|bin      Force save format (default: auto-detect from extension)');
+    WriteLn('  --epochs=N             Number of training epochs (default: 100)');
+    WriteLn('  --batch=N              Batch size (default: 1)');
+    WriteLn('  --lr=VALUE             Override learning rate');
+    WriteLn('  --lr-decay             Enable learning rate decay');
+    WriteLn('  --lr-decay-rate=VALUE  LR decay rate (default: 0.95)');
+    WriteLn('  --lr-decay-epochs=N    Epochs between decay (default: 10)');
+    WriteLn('  --early-stop           Enable early stopping');
+    WriteLn('  --patience=N           Early stopping patience (default: 10)');
+    WriteLn('  --normalize            Normalize input data');
+    WriteLn('  --verbose              Show training progress');
+    WriteLn;
+    WriteLn('Predict Options:');
+    WriteLn('  --model=FILE           Model file to load (required, .json or .bin)');
+    WriteLn('  --input=v1,v2,...      Input values (required)');
+    WriteLn;
+    WriteLn('Info Options:');
+    WriteLn('  --model=FILE           Model file to load (required, .json or .bin)');
+    WriteLn;
+    WriteLn('Facade Options (for get/set commands):');
+    WriteLn('  --model=FILE           Model file (required, .json or .bin)');
+    WriteLn('  --layer=L              Layer index (required)');
+    WriteLn('  --neuron=N             Neuron index (required)');
+    WriteLn('  --weight=W             Weight index within neuron');
+    WriteLn('  --value=V              Value to set (required for set-* commands)');
+    WriteLn('  --save=FILE            Save modified model to file (required for set-* commands)');
+    WriteLn('  --format=json|bin      Force save format (default: auto-detect from extension)');
+    WriteLn('  --bins=N               Number of histogram bins (default: 20)');
+    WriteLn('  --type=TYPE            Histogram type: activation|error (default: activation)');
+    WriteLn('  --input=v1,v2,...      Input values for get-output command');
+    WriteLn;
+    WriteLn('Examples:');
+    WriteLn('  facaded_mlp create --input=2 --hidden=8 --output=1 --save=xor.json');
+    WriteLn('  facaded_mlp create --input=2 --hidden=8 --output=1 --save=xor.bin');
+    WriteLn('  facaded_mlp train --model=xor.json --data=xor.csv --epochs=1000 --save=xor_trained.json');
+    WriteLn('  facaded_mlp predict --model=xor_trained.json --input=1,0');
+    WriteLn('  facaded_mlp info --model=xor_trained.json');
+    WriteLn('  facaded_mlp get-weight --model=xor.json --layer=1 --neuron=0 --weight=0');
+    WriteLn('  facaded_mlp set-weight --model=xor.json --layer=1 --neuron=0 --weight=0 --value=0.5 --save=xor_mod.json');
+    WriteLn('  facaded_mlp layer-info --model=xor.json --layer=0');
+    WriteLn('  facaded_mlp histogram --model=xor.json --layer=1 --bins=30 --type=activation');
+    WriteLn('  facaded_mlp get-output --model=xor.json --layer=0 --neuron=3 --input=1,0');
+    WriteLn('  facaded_mlp get-optimizer --model=xor.json --layer=1 --neuron=0');
+    end;
 
 procedure ParseIntArrayHelper(const s: string; out result: TIntArray);
 var
