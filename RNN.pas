@@ -6,7 +6,7 @@
 {$mode objfpc}{$H+}
 {$M+}
 
-program AdvancedRNN;
+program RNN;
 
 uses Classes, Math, SysUtils, StrUtils;
 
