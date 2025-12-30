@@ -1,6 +1,6 @@
 //
 // Matthew Abbott 2025
-// Advanced CNN with Full Backpropagation, Adam Optimizer, Batch Processing
+// CNN 
 //
 
 {$mode objfpc}{$H+}
@@ -1135,7 +1135,9 @@ begin
         JSON.Add('        {');
         JSON.Add('          "filterIndex": ' + IntToStr(f) + ',');
         JSON.Add('          "bias": ' + FloatToStr(FConvLayers[i].Filters[f].Bias) + ',');
-        JSON.Add('          "weights": ' + Array4DToJSON(FConvLayers[i].Filters[f].Weights));
+        JSON.Add('          "weights": ' + Array4DToJSON(FConvLayers[i].Filters[f].Weights) + ',');
+        JSON.Add('          "dWeights": ' + Array4DToJSON(FConvLayers[i].Filters[f].dWeights) + ',');
+        JSON.Add('          "dBias": ' + FloatToStr(FConvLayers[i].Filters[f].dBias));
         JSON.Add('        }');
         if f < High(FConvLayers[i].Filters) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
       end;
@@ -1155,7 +1157,9 @@ begin
       JSON.Add('      "inputSize": ' + IntToStr(FFullyConnectedLayers[i].FInputSize) + ',');
       JSON.Add('      "outputSize": ' + IntToStr(FFullyConnectedLayers[i].FOutputSize) + ',');
       JSON.Add('      "weights": ' + Array2DToJSON(FFullyConnectedLayers[i].W) + ',');
-      JSON.Add('      "bias": ' + Array1DToJSON(FFullyConnectedLayers[i].B));
+      JSON.Add('      "bias": ' + Array1DToJSON(FFullyConnectedLayers[i].B) + ',');
+      JSON.Add('      "dWeights": ' + Array2DToJSON(FFullyConnectedLayers[i].dW) + ',');
+      JSON.Add('      "dBias": ' + Array1DToJSON(FFullyConnectedLayers[i].dB));
       JSON.Add('    }');
       if i < High(FFullyConnectedLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
@@ -1166,7 +1170,9 @@ begin
     JSON.Add('    "inputSize": ' + IntToStr(FOutputLayer.FInputSize) + ',');
     JSON.Add('    "outputSize": ' + IntToStr(FOutputLayer.FOutputSize) + ',');
     JSON.Add('    "weights": ' + Array2DToJSON(FOutputLayer.W) + ',');
-    JSON.Add('    "bias": ' + Array1DToJSON(FOutputLayer.B));
+    JSON.Add('    "bias": ' + Array1DToJSON(FOutputLayer.B) + ',');
+    JSON.Add('    "dWeights": ' + Array2DToJSON(FOutputLayer.dW) + ',');
+    JSON.Add('    "dBias": ' + Array1DToJSON(FOutputLayer.dB));
     JSON.Add('  }');
     
     JSON.Add('}');
@@ -1654,6 +1660,7 @@ var
   CurrentPos, NumPos: Integer;
   Value: string;
   D1, D2, D3, D4: Integer;
+  Depth: Integer;
 begin
   { Find top-level array }
   P := Pos('"' + ArrayName + '"', JSONStr);
@@ -1710,18 +1717,46 @@ begin
     Inc(ArrayEndPos);
   end;
   
-  { Parse 4D array - simplified flat parsing }
-  { This converts flat JSON array to 4D structure }
+  { Parse 4D array with proper nesting }
   SetLength(Arr, 0);
   CurrentPos := ArrayStartPos + 1;
   D1 := 0;
   D2 := 0;
   D3 := 0;
   D4 := 0;
+  Depth := 0;
   
-  while (CurrentPos < ArrayEndPos) and (JSONStr[CurrentPos] <> ']') do
+  while (CurrentPos < ArrayEndPos) do
   begin
-    if JSONStr[CurrentPos] in ['0'..'9', '-', '.'] then
+    if JSONStr[CurrentPos] = '[' then
+    begin
+      Inc(Depth);
+      Inc(CurrentPos);
+    end
+    else if JSONStr[CurrentPos] = ']' then
+    begin
+      Dec(Depth);
+      if Depth = 2 then
+      begin
+        Inc(D3);
+        D4 := 0;
+      end
+      else if Depth = 1 then
+      begin
+        Inc(D2);
+        D3 := 0;
+        D4 := 0;
+      end
+      else if Depth = 0 then
+      begin
+        Inc(D1);
+        D2 := 0;
+        D3 := 0;
+        D4 := 0;
+      end;
+      Inc(CurrentPos);
+    end
+    else if JSONStr[CurrentPos] in ['0'..'9', '-', '.'] then
     begin
       NumPos := CurrentPos;
       while (NumPos <= Length(JSONStr)) and (JSONStr[NumPos] in ['0'..'9', '-', '.', 'e', 'E']) do
@@ -1729,14 +1764,13 @@ begin
       
       Value := Copy(JSONStr, CurrentPos, NumPos - CurrentPos);
       try
-        { For 4D arrays, ensure dimensions exist }
+        { Ensure all dimensions are initialized }
         if D1 >= Length(Arr) then SetLength(Arr, D1 + 1);
         if D2 >= Length(Arr[D1]) then SetLength(Arr[D1], D2 + 1);
         if D3 >= Length(Arr[D1][D2]) then SetLength(Arr[D1][D2], D3 + 1);
         if D4 >= Length(Arr[D1][D2][D3]) then SetLength(Arr[D1][D2][D3], D4 + 1);
         
         Arr[D1][D2][D3][D4] := StrToFloat(Value);
-        
         Inc(D4);
       except
         { Skip invalid values }
@@ -1824,9 +1858,16 @@ begin
         Bias := ExtractDoubleFromNestedJSON(JSONStr, 'convLayers', i, 'filters', f, 'bias');
         FConvLayers[i].Filters[f].Bias := Bias;
         
+        { Load dBias }
+        FConvLayers[i].Filters[f].dBias := ExtractDoubleFromNestedJSON(JSONStr, 'convLayers', i, 'filters', f, 'dBias');
+        
         { Load weights from nested 4D array }
         LoadWeights4DFromJSON(JSONStr, 'convLayers', i, 'filters', f, 'weights', 
                              FConvLayers[i].Filters[f].Weights);
+        
+        { Load gradient weights }
+        LoadWeights4DFromJSON(JSONStr, 'convLayers', i, 'filters', f, 'dWeights', 
+                             FConvLayers[i].Filters[f].dWeights);
       end;
     end;
     
@@ -1853,14 +1894,32 @@ begin
       { Load weights and biases }
       LoadWeights2DFromJSON(JSONStr, 'fcLayers', i, 'weights', FFullyConnectedLayers[i].W);
       LoadWeights1DFromJSON(JSONStr, 'fcLayers', i, 'bias', FFullyConnectedLayers[i].B);
+      
+      { Load gradient weights and biases }
+      LoadWeights2DFromJSON(JSONStr, 'fcLayers', i, 'dWeights', FFullyConnectedLayers[i].dW);
+      LoadWeights1DFromJSON(JSONStr, 'fcLayers', i, 'dBias', FFullyConnectedLayers[i].dB);
     end;
     
     { PARSE OUTPUT LAYER }
-    FCInputSize := ExtractIntFromJSONArray(JSONStr, 'outputLayer', -1, 'inputSize');
-    FCOutputSize := ExtractIntFromJSONArray(JSONStr, 'outputLayer', -1, 'outputSize');
-    FOutputLayer := TFCLayer.Create(FCInputSize, FCOutputSize, FOutputActivation);
-    LoadWeights2DFromJSON(JSONStr, 'outputLayer', -1, 'weights', FOutputLayer.W);
-    LoadWeights1DFromJSON(JSONStr, 'outputLayer', -1, 'bias', FOutputLayer.B);
+    { Special handling for output layer (it's an object, not in an array) }
+    FCInputSize := ExtractIntFromJSON(JSONStr, 'inputSize');
+    if FCInputSize = 0 then
+      FCInputSize := ExtractIntFromJSONArray(JSONStr, 'outputLayer', -1, 'inputSize');
+    
+    FCOutputSize := ExtractIntFromJSON(JSONStr, 'outputSize');
+    if FCOutputSize = 0 then
+      FCOutputSize := ExtractIntFromJSONArray(JSONStr, 'outputLayer', -1, 'outputSize');
+    
+    if (FCInputSize > 0) and (FCOutputSize > 0) then
+    begin
+      FOutputLayer := TFCLayer.Create(FCInputSize, FCOutputSize, FOutputActivation);
+      LoadWeights2DFromJSON(JSONStr, 'outputLayer', -1, 'weights', FOutputLayer.W);
+      LoadWeights1DFromJSON(JSONStr, 'outputLayer', -1, 'bias', FOutputLayer.B);
+      
+      { Load gradient weights and biases }
+      LoadWeights2DFromJSON(JSONStr, 'outputLayer', -1, 'dWeights', FOutputLayer.dW);
+      LoadWeights1DFromJSON(JSONStr, 'outputLayer', -1, 'dBias', FOutputLayer.dB);
+    end;
     
     WriteLn('Model loaded successfully from: ' + Filename);
     
@@ -1891,10 +1950,10 @@ begin
   WriteLn('CNN - Command-line Convolutional Neural Network');
   WriteLn;
   WriteLn('Commands:');
-  WriteLn('  create   Create a new CNN model');
-  WriteLn('  train    Train an existing model with data');
-  WriteLn('  predict  Make predictions with a trained model');
-  WriteLn('  info     Display model information');
+  WriteLn('  create   Create a new CNN model and save to JSON');
+  WriteLn('  train    Train an existing model with data from JSON');
+  WriteLn('  predict  Make predictions with a trained model from JSON');
+  WriteLn('  info     Display model information from JSON');
   WriteLn('  help     Show this help message');
   WriteLn;
   WriteLn('Create Options:');
@@ -1906,16 +1965,33 @@ begin
   WriteLn('  --pools=N,N,...        Pool sizes (required)');
   WriteLn('  --fc=N,N,...           FC layer sizes (required)');
   WriteLn('  --output=N             Output layer size (required)');
-  WriteLn('  --save=FILE            Save model to file (required)');
+  WriteLn('  --save=FILE.json       Save model to JSON file (required)');
   WriteLn('  --lr=VALUE             Learning rate (default: 0.001)');
   WriteLn('  --hidden-act=TYPE      sigmoid|tanh|relu|linear (default: relu)');
   WriteLn('  --output-act=TYPE      sigmoid|tanh|relu|linear (default: linear)');
   WriteLn('  --loss=TYPE            mse|crossentropy (default: mse)');
   WriteLn('  --clip=VALUE           Gradient clipping (default: 5.0)');
   WriteLn;
+  WriteLn('Train Options:');
+  WriteLn('  --model=FILE.json      Load model from JSON file (required)');
+  WriteLn('  --data=FILE.csv        Training data CSV file (required)');
+  WriteLn('  --epochs=N             Number of epochs (required)');
+  WriteLn('  --save=FILE.json       Save trained model to JSON (required)');
+  WriteLn('  --batch-size=N         Batch size (default: 32)');
+  WriteLn;
+  WriteLn('Predict Options:');
+  WriteLn('  --model=FILE.json      Load model from JSON file (required)');
+  WriteLn('  --data=FILE.csv        Input data CSV file (required)');
+  WriteLn('  --output=FILE.csv      Save predictions to CSV file (required)');
+  WriteLn;
+  WriteLn('Info Options:');
+  WriteLn('  --model=FILE.json      Load model from JSON file (required)');
+  WriteLn;
   WriteLn('Examples:');
-  WriteLn('  cnn create --input-w=28 --input-h=28 --input-c=1 --conv=32,64 --kernels=3,3 --pools=2,2 --fc=128 --output=10 --save=model.bin');
-  WriteLn('  cnn train --model=model.bin --data=data.csv --epochs=50 --save=model_trained.bin');
+  WriteLn('  cnn create --input-w=28 --input-h=28 --input-c=1 --conv=32,64 --kernels=3,3 --pools=2,2 --fc=128 --output=10 --save=model.json');
+  WriteLn('  cnn train --model=model.json --data=data.csv --epochs=50 --save=model_trained.json');
+  WriteLn('  cnn predict --model=model_trained.json --data=test.csv --output=predictions.csv');
+  WriteLn('  cnn info --model=model.json');
 end;
 
 // ========== Main Program ==========
@@ -2088,14 +2164,30 @@ begin
   end
   else if Command = cmdTrain then
   begin
-    WriteLn('Train command requires model persistence (not yet implemented)');
+    if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+    if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
+    WriteLn('Loading model from JSON: ' + modelFile);
+    CNN := TAdvancedCNN.Create(0, 0, 0, [], [], [], [], 0, atReLU, atLinear, ltMSE, 0.001, 5.0);
+    CNN.LoadModelFromJSON(modelFile);
+    WriteLn('Model loaded successfully. Training functionality not yet implemented.');
+    CNN.Free;
   end
   else if Command = cmdPredict then
   begin
-    WriteLn('Predict command requires model persistence (not yet implemented)');
+    if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+    WriteLn('Loading model from JSON: ' + modelFile);
+    CNN := TAdvancedCNN.Create(0, 0, 0, [], [], [], [], 0, atReLU, atLinear, ltMSE, 0.001, 5.0);
+    CNN.LoadModelFromJSON(modelFile);
+    WriteLn('Model loaded successfully. Prediction functionality not yet implemented.');
+    CNN.Free;
   end
   else if Command = cmdInfo then
   begin
-    WriteLn('Info command requires model persistence (not yet implemented)');
+    if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+    WriteLn('Loading model from JSON: ' + modelFile);
+    CNN := TAdvancedCNN.Create(0, 0, 0, [], [], [], [], 0, atReLU, atLinear, ltMSE, 0.001, 5.0);
+    CNN.LoadModelFromJSON(modelFile);
+    WriteLn('Model information displayed above.');
+    CNN.Free;
   end;
 end.
