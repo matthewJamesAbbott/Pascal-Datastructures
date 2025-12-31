@@ -1198,7 +1198,7 @@ end;
 
 procedure PrintUsage;
 begin
-    WriteLn('RNN');
+    WriteLn('Facaded RNN');
     WriteLn;
     WriteLn('Commands:');
     WriteLn('  create   Create a new RNN model and save to JSON');
