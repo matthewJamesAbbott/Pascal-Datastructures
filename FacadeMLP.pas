@@ -1687,7 +1687,7 @@ end;
 
 procedure PrintUsage;
 begin
-    WriteLn('Facaded MLP - Command-line Multi-Layer Perceptron with JSON/Binary Support');
+    WriteLn('Facaded MLP');
     WriteLn;
     WriteLn('Commands:');
     WriteLn('  create         Create a new MLP model');
