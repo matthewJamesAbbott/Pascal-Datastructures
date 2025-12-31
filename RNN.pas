@@ -428,7 +428,7 @@ end;
 constructor TLSTMCell.Create(InputSize, HiddenSize: Integer; Activation: TActivationType);
 var
   Scale: Double;
-  ConcatSize, i: Integer;
+  ConcatSize: Integer;
 begin
   FInputSize := InputSize;
   FHiddenSize := HiddenSize;
@@ -1427,7 +1427,7 @@ end;
 procedure TRNN.SaveModelToJSON(const Filename: string);
 var
   SL: TStringList;
-  I, J: Integer;
+  I: Integer;
   CellTypeStr: string;
 begin
   SL := TStringList.Create;
@@ -1458,6 +1458,7 @@ begin
     SL.Add('  "learning_rate": ' + FloatToStr(FLearningRate) + ',');
     SL.Add('  "gradient_clip": ' + FloatToStr(FGradientClip) + ',');
     SL.Add('  "bptt_steps": ' + IntToStr(FBPTTSteps) + ',');
+    SL.Add('  "dropout_rate": 0,');
     
     { Save cell weights based on type }
     SL.Add('  "cells": [');
@@ -1522,7 +1523,6 @@ var
   SL: TStringList;
   Content: string;
   ValueStr: string;
-  I: Integer;
   
   function ExtractJSONValue(const json: string; const key: string): string;
   var
