@@ -10,7 +10,7 @@ set -o pipefail
 PASS=0
 FAIL=0
 TOTAL=0
-TEMP_DIR="/tmp/rnn_user_tests_$$"
+TEMP_DIR="./test_output"
 RNN_BIN="./RNN"
 FACADE_BIN="./FacadeRNN"
 
@@ -23,7 +23,8 @@ NC='\033[0m'
 
 # Setup/Cleanup
 cleanup() {
-    rm -rf "$TEMP_DIR"
+    # Cleanup handled manually if needed
+    :
 }
 trap cleanup EXIT
 
