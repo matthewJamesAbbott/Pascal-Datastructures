@@ -1501,8 +1501,7 @@ end;
 
 procedure PrintHelp();
 begin
-   writeln('Random Forest CLI');
-   writeln('=================');
+   writeln('Random Forest');
    writeln;
    writeln('Commands:');
    writeln('  create   - Create a new forest model');
