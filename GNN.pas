@@ -1268,7 +1268,7 @@ begin
 
 procedure PrintUsage;
 begin
-    WriteLn('GNN - Command-line Graph Neural Network');
+    WriteLn('GNN');
     WriteLn;
     WriteLn('Commands:');
     WriteLn('  create   Create a new GNN model and save to JSON');
