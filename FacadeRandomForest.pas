@@ -1,9 +1,6 @@
 //
 // Matthew Abbott 2025
-// Combined Random Forest + Facade (single-file program)
-// 
-// NOTE: This program uses large static arrays and may require increased stack:
-//   ulimit -s 65536   (or higher)
+// Facaded Random Forest
 //
 
 {$mode objfpc}
@@ -11,7 +8,7 @@
 program RandomForest;
 
 uses
-   Math, SysUtils;
+   Math, SysUtils, Classes, StrUtils;
 
 const
    MAX_FEATURES = 100;
@@ -168,6 +165,10 @@ type
       function getNumFeatures(): integer;
       function getNumSamples(): integer;
       function getMaxDepth(): integer;
+      function getMinSamplesLeaf(): integer;
+      function getMinSamplesSplit(): integer;
+      function getMaxFeatures(): integer;
+      function getRandomSeed(): integer;
       function getTree(treeId: integer): TDecisionTree;
       function getData(sampleIdx, featureIdx: integer): double;
       function getTarget(sampleIdx: integer): double;
@@ -355,8 +356,18 @@ type
       procedure saveModel(filename: string);
       function loadModel(filename: string): boolean;
       
+      { JSON serialization methods }
+      procedure saveModelToJSON(filename: string);
+      function loadModelFromJSON(filename: string): boolean;
+      
+      { JSON helper functions }
+      function taskTypeToStr(t: TaskType): string;
+      function criterionToStr(c: SplitCriterion): string;
+      function parseTaskType(const s: string): TaskType;
+      function parseCriterion(const s: string): SplitCriterion;
+      
       procedure freeForest();
-   end;
+      end;
 
 { ============================================================================ }
 { Constructor }
@@ -1435,6 +1446,26 @@ end;
 function TRandomForest.getCriterion(): SplitCriterion;
 begin
    getCriterion := criterion;
+end;
+
+function TRandomForest.getMinSamplesLeaf(): integer;
+begin
+   getMinSamplesLeaf := minSamplesLeaf;
+end;
+
+function TRandomForest.getMinSamplesSplit(): integer;
+begin
+   getMinSamplesSplit := minSamplesSplit;
+end;
+
+function TRandomForest.getMaxFeatures(): integer;
+begin
+   getMaxFeatures := maxFeatures;
+end;
+
+function TRandomForest.getRandomSeed(): integer;
+begin
+   getRandomSeed := randomSeed;
 end;
 
 { ============================================================================ }
@@ -3087,6 +3118,214 @@ begin
 end;
 
 { ============================================================================ }
+{ TRandomForestFacade - JSON Serialization }
+{ ============================================================================ }
+
+function TRandomForestFacade.taskTypeToStr(t: TaskType): string;
+begin
+   if t = Classification then
+      taskTypeToStr := 'classification'
+   else
+      taskTypeToStr := 'regression';
+end;
+
+function TRandomForestFacade.criterionToStr(c: SplitCriterion): string;
+begin
+   case c of
+      Gini: criterionToStr := 'gini';
+      Entropy: criterionToStr := 'entropy';
+      MSE: criterionToStr := 'mse';
+      VarianceReduction: criterionToStr := 'variance';
+   else
+      criterionToStr := 'gini';
+   end;
+end;
+
+function TRandomForestFacade.parseTaskType(const s: string): TaskType;
+begin
+   if lowercase(s) = 'regression' then
+      parseTaskType := Regression
+   else
+      parseTaskType := Classification;
+end;
+
+function TRandomForestFacade.parseCriterion(const s: string): SplitCriterion;
+begin
+   if lowercase(s) = 'gini' then
+      parseCriterion := Gini
+   else if lowercase(s) = 'entropy' then
+      parseCriterion := Entropy
+   else if lowercase(s) = 'mse' then
+      parseCriterion := MSE
+   else if lowercase(s) = 'variance' then
+      parseCriterion := VarianceReduction
+   else
+      parseCriterion := Gini;
+end;
+
+procedure TRandomForestFacade.saveModelToJSON(filename: string);
+var
+   SL: TStringList;
+begin
+   SL := TStringList.Create;
+   try
+      SL.Add('{');
+      SL.Add('  "metadata": {');
+      SL.Add('    "version": "1.0",');
+      SL.Add('    "model_type": "RandomForestFacade",');
+      SL.Add('    "created": "2025-12-31"');
+      SL.Add('  },');
+      SL.Add('  "hyperparameters": {');
+      SL.Add('    "num_trees": ' + IntToStr(forest.getNumTrees()) + ',');
+      SL.Add('    "max_depth": ' + IntToStr(forest.getMaxDepth()) + ',');
+      SL.Add('    "min_samples_leaf": ' + IntToStr(forest.getMinSamplesLeaf()) + ',');
+      SL.Add('    "min_samples_split": ' + IntToStr(forest.getMinSamplesSplit()) + ',');
+      SL.Add('    "max_features": ' + IntToStr(forest.getMaxFeatures()) + ',');
+      SL.Add('    "random_seed": ' + IntToStr(forest.getRandomSeed()) + ',');
+      SL.Add('    "task_type": "' + taskTypeToStr(forest.getTaskType()) + '",');
+      SL.Add('    "criterion": "' + criterionToStr(forest.getCriterion()) + '"');
+      SL.Add('  },');
+      SL.Add('  "training_data_info": {');
+      SL.Add('    "num_samples": ' + IntToStr(forest.getNumSamples()) + ',');
+      SL.Add('    "num_features": ' + IntToStr(forest.getNumFeatures()));
+      SL.Add('  }');
+      SL.Add('}');
+      
+      SL.SaveToFile(filename);
+      WriteLn('Model configuration saved to JSON: ', filename);
+   finally
+      SL.Free;
+   end;
+end;
+
+function TRandomForestFacade.loadModelFromJSON(filename: string): boolean;
+var
+   SL: TStringList;
+   ValueStr: string;
+   numT, maxD, minL, minS, maxF: integer;
+   tt: TaskType;
+   sc: SplitCriterion;
+   i: integer;
+   
+   function ExtractJSONValueFromList(const SL: TStringList; const key: string): string;
+   var
+      j: integer;
+      line: string;
+      keyStr: string;
+      colonPos, quotePos1, quotePos2: integer;
+   begin
+      Result := '';
+      keyStr := '"' + key + '"';
+      
+      for j := 0 to SL.Count - 1 do
+      begin
+         line := SL[j];
+         if Pos(keyStr, line) > 0 then
+         begin
+            { Found the key, extract the value }
+            colonPos := Pos(':', line);
+            if colonPos > 0 then
+            begin
+               { Skip past colon and whitespace }
+               colonPos := colonPos + 1;
+               while (colonPos <= Length(line)) and (line[colonPos] in [' ', #9]) do
+                  Inc(colonPos);
+               
+               { Extract value - check if quoted }
+               if (colonPos <= Length(line)) and (line[colonPos] = '"') then
+               begin
+                  quotePos1 := colonPos + 1;
+                  quotePos2 := Pos('"', Copy(line, quotePos1, Length(line)));
+                  if quotePos2 > 0 then
+                     Result := Copy(line, quotePos1, quotePos2 - 1);
+               end
+               else
+               begin
+                  { Unquoted value - extract until comma or closing bracket }
+                  quotePos2 := Pos(',', Copy(line, colonPos, Length(line)));
+                  if quotePos2 = 0 then
+                     Result := Trim(Copy(line, colonPos, Length(line)))
+                  else
+                     Result := Trim(Copy(line, colonPos, quotePos2 - 1));
+                  { Remove trailing punctuation }
+                  while (Length(Result) > 0) and (Result[Length(Result)] in [',', '}', ']']) do
+                     SetLength(Result, Length(Result) - 1);
+               end;
+               Exit;
+            end;
+         end;
+      end;
+   end;
+
+begin
+   loadModelFromJSON := false;
+   
+   SL := TStringList.Create;
+   try
+      try
+         SL.LoadFromFile(filename);
+         except
+            WriteLn('Error: Cannot open model file: ', filename);
+            exit;
+         end;
+         
+         { Initialize with defaults }
+         numT := 100;
+         maxD := MAX_DEPTH_DEFAULT;
+         minL := MIN_SAMPLES_LEAF_DEFAULT;
+         minS := MIN_SAMPLES_SPLIT_DEFAULT;
+         maxF := 0;
+         tt := Classification;
+         sc := Gini;
+         
+         { Load hyperparameters }
+         ValueStr := ExtractJSONValueFromList(SL, 'num_trees');
+         if ValueStr <> '' then
+            numT := StrToInt(ValueStr);
+         
+         ValueStr := ExtractJSONValueFromList(SL, 'max_depth');
+         if ValueStr <> '' then
+            maxD := StrToInt(ValueStr);
+         
+         ValueStr := ExtractJSONValueFromList(SL, 'min_samples_leaf');
+         if ValueStr <> '' then
+            minL := StrToInt(ValueStr);
+         
+         ValueStr := ExtractJSONValueFromList(SL, 'min_samples_split');
+         if ValueStr <> '' then
+            minS := StrToInt(ValueStr);
+         
+         ValueStr := ExtractJSONValueFromList(SL, 'max_features');
+         if ValueStr <> '' then
+            maxF := StrToInt(ValueStr);
+         
+         ValueStr := ExtractJSONValueFromList(SL, 'task_type');
+         if ValueStr <> '' then
+            tt := parseTaskType(ValueStr);
+         
+         ValueStr := ExtractJSONValueFromList(SL, 'criterion');
+         if ValueStr <> '' then
+            sc := parseCriterion(ValueStr);
+      
+      { Configure forest }
+      forest.create();
+      forest.setNumTrees(numT);
+      forest.setMaxDepth(maxD);
+      forest.setMinSamplesLeaf(minL);
+      forest.setMinSamplesSplit(minS);
+      forest.setMaxFeatures(maxF);
+      forest.setTaskType(tt);
+      forest.setCriterion(sc);
+      
+      forestInitialized := true;
+      loadModelFromJSON := true;
+      WriteLn('Model configuration loaded from JSON: ', filename);
+   finally
+      SL.Free;
+   end;
+end;
+
+{ ============================================================================ }
 { TRandomForestFacade - Cleanup }
 { ============================================================================ }
 
@@ -3230,11 +3469,11 @@ begin
    writeln('Usage: forest <command> [options]');
    writeln;
    writeln('=== Core Commands ===');
-   writeln('  create         Create a new empty forest model');
+   writeln('  create         Create a new empty forest model and save to JSON');
    writeln('  train          Train a new random forest model');
    writeln('  predict        Make predictions using a trained model');
    writeln('  evaluate       Evaluate model on test data');
-   writeln('  info           Show model information');
+   writeln('  info           Show model information from JSON');
    writeln('  inspect        Inspect tree structure');
    writeln('  help           Show this help message');
    writeln;
@@ -3274,9 +3513,7 @@ begin
    writeln;
    writeln('=== Options ===');
    writeln;
-   writeln('Training Options:');
-   writeln('  --data <file.csv>      Training data (required)');
-   writeln('  --model <file.bin>     Output model file (default: model.bin)');
+   writeln('Create Options:');
    writeln('  --trees <n>            Number of trees (default: 100)');
    writeln('  --depth <n>            Max tree depth (default: 10)');
    writeln('  --min-leaf <n>         Min samples per leaf (default: 1)');
@@ -3285,22 +3522,28 @@ begin
    writeln('  --task <class|reg>     Task type (default: class)');
    writeln('  --criterion <g|e|m>    Split criterion: gini/entropy/mse (default: gini)');
    writeln('  --seed <n>             Random seed (default: 42)');
+   writeln('  --save <file.json>     Save model config to JSON file (required)');
+   writeln;
+   writeln('Training Options:');
+   writeln('  --model <file.json>    Load model from JSON file (required)');
+   writeln('  --data <file.csv>      Training data (required)');
+   writeln('  --save <file.json>     Save trained model to JSON (required)');
    writeln('  --target-col <n>       Target column index (default: last)');
    writeln;
    writeln('Prediction Options:');
+   writeln('  --model <file.json>    Load model from JSON file (required)');
    writeln('  --data <file.csv>      Input data (required)');
-   writeln('  --model <file.bin>     Model file (required)');
    writeln('  --output <file.csv>    Output predictions file');
    writeln('  --aggregation <method> Aggregation: majority/weighted/mean/wmean');
    writeln;
    writeln('Evaluation Options:');
+   writeln('  --model <file.json>    Load model from JSON file (required)');
    writeln('  --data <file.csv>      Test data with labels (required)');
-   writeln('  --model <file.bin>     Model file (required)');
    writeln('  --target-col <n>       Target column index (default: last)');
    writeln('  --positive-class <n>   Positive class for precision/recall (default: 1)');
    writeln;
    writeln('Tree Management Options:');
-   writeln('  --model <file.bin>     Model file (required)');
+   writeln('  --model <file.json>    Model file (required)');
    writeln('  --tree <n>             Tree index');
    writeln('  --node <n>             Node index');
    writeln('  --threshold <f>        New threshold value');
@@ -3315,44 +3558,50 @@ begin
    writeln('=== Examples ===');
    writeln;
    writeln('Creating:');
-   writeln('  forest create --trees 50 --depth 8 --min-leaf 2 --criterion gini --task class --model rf.bin');
+   writeln('  forest create --trees 50 --depth 8 --min-leaf 2 --criterion gini --task class --save config.json');
    writeln;
    writeln('Training:');
-   writeln('  forest train --data train.csv --model rf.bin --trees 50 --depth 8');
+   writeln('  forest train --model config.json --data train.csv --save trained.json');
    writeln;
    writeln('Prediction:');
-   writeln('  forest predict --data test.csv --model rf.bin --output preds.csv');
-   writeln('  forest predict --data test.csv --model rf.bin --aggregation weighted');
+   writeln('  forest predict --model trained.json --data test.csv --output preds.csv');
+   writeln('  forest predict --model trained.json --data test.csv --aggregation weighted');
    writeln;
    writeln('Evaluation:');
-   writeln('  forest evaluate --data test.csv --model rf.bin');
+   writeln('  forest evaluate --model trained.json --data test.csv');
    writeln;
    writeln('Tree Management:');
-   writeln('  forest add-tree --model rf.bin --data train.csv');
-   writeln('  forest remove-tree --model rf.bin --tree 5');
-   writeln('  forest retrain-tree --model rf.bin --tree 3 --data train.csv');
-   writeln('  forest prune --model rf.bin --tree 0 --node 5');
-   writeln('  forest modify-split --model rf.bin --tree 0 --node 3 --threshold 2.5');
-   writeln('  forest modify-leaf --model rf.bin --tree 0 --node 10 --value 1.0');
-   writeln('  forest convert-leaf --model rf.bin --tree 0 --node 5 --value 0.0');
+   writeln('  forest add-tree --model trained.json --data train.csv');
+   writeln('  forest remove-tree --model trained.json --tree 5');
+   writeln('  forest retrain-tree --model trained.json --tree 3 --data train.csv');
+   writeln('  forest prune --model trained.json --tree 0 --node 5');
+   writeln('  forest modify-split --model trained.json --tree 0 --node 3 --threshold 2.5');
+   writeln('  forest modify-leaf --model trained.json --tree 0 --node 10 --value 1.0');
+   writeln('  forest convert-leaf --model trained.json --tree 0 --node 5 --value 0.0');
    writeln;
    writeln('Aggregation:');
-   writeln('  forest set-aggregation --model rf.bin --method weighted');
-   writeln('  forest set-weight --model rf.bin --tree 0 --weight 2.0');
+   writeln('  forest set-aggregation --model trained.json --method weighted');
+   writeln('  forest set-weight --model trained.json --tree 0 --weight 2.0');
    writeln;
    writeln('Analysis:');
-   writeln('  forest oob-summary --model rf.bin');
-   writeln('  forest problematic --model rf.bin --threshold 0.3');
-   writeln('  forest worst-trees --model rf.bin --top 10');
-   writeln('  forest misclassified --model rf.bin --data test.csv');
-   writeln('  forest high-residual --model rf.bin --data test.csv --threshold 1.0');
-   writeln('  forest track-sample --model rf.bin --data train.csv --sample 0');
+   writeln('  forest oob-summary --model trained.json');
+   writeln('  forest problematic --model trained.json --threshold 0.3');
+   writeln('  forest worst-trees --model trained.json --top 10');
+   writeln('  forest misclassified --model trained.json --data test.csv');
+   writeln('  forest high-residual --model trained.json --data test.csv --threshold 1.0');
+   writeln('  forest track-sample --model trained.json --data train.csv --sample 0');
    writeln;
    writeln('Visualization:');
-   writeln('  forest visualize --model rf.bin --tree 0');
-   writeln('  forest node-details --model rf.bin --tree 0 --node 5');
-   writeln('  forest feature-heatmap --model rf.bin');
-end;
+   writeln('  forest visualize --model trained.json --tree 0');
+   writeln('  forest node-details --model trained.json --tree 0 --node 5');
+   writeln('  forest feature-heatmap --model trained.json');
+   writeln;
+   writeln('JSON Format:');
+   writeln('  Models are saved to/loaded from JSON format containing:');
+   writeln('    - metadata: version, model type, creation date');
+   writeln('    - hyperparameters: trees, depth, leaf samples, split samples, features, task, criterion, seed');
+   writeln('    - training_data_info: sample count, feature count');
+   end;
 
 function GetArg(name: string): string;
 var
