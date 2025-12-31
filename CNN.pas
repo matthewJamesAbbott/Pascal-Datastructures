@@ -649,7 +649,11 @@ begin
   FInputSize := InputSize;
   FOutputSize := OutputSize;
   FActivation := Activation;
-  Scale := Sqrt(2.0 / InputSize);
+  
+  if InputSize > 0 then
+    Scale := Sqrt(2.0 / InputSize)
+  else
+    Scale := 0.1;
   
   InitMatrix(W, OutputSize, InputSize, Scale);
   ZeroArray(B, OutputSize);
@@ -935,7 +939,7 @@ begin
   end;
 
   ApplyGradients;
-  Result := BatchLoss / (Length(BatchInputs) + 1);
+  Result := BatchLoss / Length(BatchInputs);
 end;
 
 function TAdvancedCNN.Predict(const Input: TDArray3D): DArray;
@@ -954,7 +958,7 @@ begin
     Output := ForwardPass(Inputs[i]);
     Result := Result + TLoss.Compute(Output, Targets[i], FLossType);
   end;
-  Result := Result / (Length(Inputs) + 1);
+  Result := Result / Length(Inputs);
 end;
 
 procedure TAdvancedCNN.ResetGradients;
@@ -1889,15 +1893,18 @@ begin
       FCInputSize := ExtractIntFromJSONArray(JSONStr, 'fcLayers', i, 'inputSize');
       FCOutputSize := ExtractIntFromJSONArray(JSONStr, 'fcLayers', i, 'outputSize');
       
-      FFullyConnectedLayers[i] := TFCLayer.Create(FCInputSize, FCOutputSize, FActivation);
-      
-      { Load weights and biases }
-      LoadWeights2DFromJSON(JSONStr, 'fcLayers', i, 'weights', FFullyConnectedLayers[i].W);
-      LoadWeights1DFromJSON(JSONStr, 'fcLayers', i, 'bias', FFullyConnectedLayers[i].B);
-      
-      { Load gradient weights and biases }
-      LoadWeights2DFromJSON(JSONStr, 'fcLayers', i, 'dWeights', FFullyConnectedLayers[i].dW);
-      LoadWeights1DFromJSON(JSONStr, 'fcLayers', i, 'dBias', FFullyConnectedLayers[i].dB);
+      if (FCInputSize > 0) and (FCOutputSize > 0) then
+      begin
+        FFullyConnectedLayers[i] := TFCLayer.Create(FCInputSize, FCOutputSize, FActivation);
+        
+        { Load weights and biases }
+        LoadWeights2DFromJSON(JSONStr, 'fcLayers', i, 'weights', FFullyConnectedLayers[i].W);
+        LoadWeights1DFromJSON(JSONStr, 'fcLayers', i, 'bias', FFullyConnectedLayers[i].B);
+        
+        { Load gradient weights and biases }
+        LoadWeights2DFromJSON(JSONStr, 'fcLayers', i, 'dWeights', FFullyConnectedLayers[i].dW);
+        LoadWeights1DFromJSON(JSONStr, 'fcLayers', i, 'dBias', FFullyConnectedLayers[i].dB);
+      end;
     end;
     
     { PARSE OUTPUT LAYER }
@@ -2006,7 +2013,7 @@ var
   modelFile, saveFile: string;
   arg, key, value: string;
   eqPos: Integer;
-  CNN: TAdvancedCNN;
+  Model: TAdvancedCNN;
 
 begin
   Randomize;
@@ -2116,9 +2123,9 @@ begin
     if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
     if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
 
-    CNN := TAdvancedCNN.Create(inputW, inputH, inputC, convFilters, kernelSizes, 
-                              poolSizes, fcLayerSizes, outputSize,
-                              hiddenAct, outputAct, lossType, learningRate, gradientClip);
+    Model := TAdvancedCNN.Create(inputW, inputH, inputC, convFilters, kernelSizes, 
+                                  poolSizes, fcLayerSizes, outputSize,
+                                  hiddenAct, outputAct, lossType, learningRate, gradientClip);
 
     WriteLn('Created CNN model:');
     WriteLn('  Input: ', inputW, 'x', inputH, 'x', inputC);
@@ -2158,36 +2165,36 @@ begin
     WriteLn('  Gradient clip: ', gradientClip:0:2);
     
     { Save model to JSON }
-    CNN.SaveModelToJSON(saveFile);
+    Model.SaveModelToJSON(saveFile);
 
-    CNN.Free;
+    Model.Free;
   end
   else if Command = cmdTrain then
   begin
     if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
     if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
     WriteLn('Loading model from JSON: ' + modelFile);
-    CNN := TAdvancedCNN.Create(0, 0, 0, [], [], [], [], 0, atReLU, atLinear, ltMSE, 0.001, 5.0);
-    CNN.LoadModelFromJSON(modelFile);
+    Model := TAdvancedCNN.Create(0, 0, 0, [], [], [], [], 0, atReLU, atLinear, ltMSE, 0.001, 5.0);
+    Model.LoadModelFromJSON(modelFile);
     WriteLn('Model loaded successfully. Training functionality not yet implemented.');
-    CNN.Free;
+    Model.Free;
   end
   else if Command = cmdPredict then
   begin
     if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
     WriteLn('Loading model from JSON: ' + modelFile);
-    CNN := TAdvancedCNN.Create(0, 0, 0, [], [], [], [], 0, atReLU, atLinear, ltMSE, 0.001, 5.0);
-    CNN.LoadModelFromJSON(modelFile);
+    Model := TAdvancedCNN.Create(0, 0, 0, [], [], [], [], 0, atReLU, atLinear, ltMSE, 0.001, 5.0);
+    Model.LoadModelFromJSON(modelFile);
     WriteLn('Model loaded successfully. Prediction functionality not yet implemented.');
-    CNN.Free;
+    Model.Free;
   end
   else if Command = cmdInfo then
   begin
     if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
     WriteLn('Loading model from JSON: ' + modelFile);
-    CNN := TAdvancedCNN.Create(0, 0, 0, [], [], [], [], 0, atReLU, atLinear, ltMSE, 0.001, 5.0);
-    CNN.LoadModelFromJSON(modelFile);
+    Model := TAdvancedCNN.Create(0, 0, 0, [], [], [], [], 0, atReLU, atLinear, ltMSE, 0.001, 5.0);
+    Model.LoadModelFromJSON(modelFile);
     WriteLn('Model information displayed above.');
-    CNN.Free;
+    Model.Free;
   end;
 end.
