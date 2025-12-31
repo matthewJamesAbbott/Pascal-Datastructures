@@ -2227,6 +2227,7 @@ var
     SL: TStringList;
     Content: string;
     ValueStr: string;
+    I, J, K: Integer;
     
     function ExtractJSONValue(const json: string; const key: string): string;
     var
@@ -2270,6 +2271,40 @@ var
         else
             Result := '';
     end;
+    
+    function ParseDoubleArray(const jsonStr: string): TDoubleArray;
+    var
+        StartIdx, EndIdx, CommaIdx, ItemStart: Integer;
+        ItemStr: string;
+    begin
+        SetLength(Result, 0);
+        
+        StartIdx := Pos('[', jsonStr);
+        EndIdx := PosEx(']', jsonStr, StartIdx);
+        
+        if (StartIdx > 0) and (EndIdx > StartIdx) then
+        begin
+            ItemStart := StartIdx + 1;
+            repeat
+                CommaIdx := PosEx(',', jsonStr, ItemStart);
+                if CommaIdx = 0 then
+                    CommaIdx := EndIdx;
+                
+                ItemStr := Trim(Copy(jsonStr, ItemStart, CommaIdx - ItemStart));
+                if ItemStr <> '' then
+                begin
+                    SetLength(Result, Length(Result) + 1);
+                    try
+                        Result[High(Result)] := StrToFloat(ItemStr);
+                    except
+                        Result[High(Result)] := 0;
+                    end;
+                end;
+                
+                ItemStart := CommaIdx + 1;
+            until CommaIdx >= EndIdx;
+        end;
+    end;
 
 begin
     SL := TStringList.Create;
@@ -2277,10 +2312,12 @@ begin
         SL.LoadFromFile(Filename);
         Content := SL.Text;
         
+        { Load config }
         ValueStr := ExtractJSONValue(Content, 'feature_size');
         if ValueStr <> '' then
         begin
-            FGNN.Free;
+            if FGNN <> nil then
+                FGNN.Free;
             FGNN := TGraphNeuralNetwork.Create(StrToInt(ValueStr), 1, 1, 1);
         end;
         
@@ -2313,10 +2350,10 @@ begin
             FGNN.MaxIterations := StrToInt(ValueStr);
         
         WriteLn('Model loaded from JSON: ', Filename);
-        finally
+    finally
         SL.Free;
-        end;
-        end;
+    end;
+end;
         
         // ==================== CLI Support Functions ====================
 
