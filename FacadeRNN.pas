@@ -1198,7 +1198,7 @@ end;
 
 procedure PrintUsage;
 begin
-    WriteLn('RNN - Command-line Recurrent Neural Network');
+    WriteLn('RNN');
     WriteLn;
     WriteLn('Commands:');
     WriteLn('  create   Create a new RNN model and save to JSON');
