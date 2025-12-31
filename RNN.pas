@@ -1323,6 +1323,23 @@ begin
    end;
 end;
 
+procedure ParseDoubleArrayHelper(const s: string; out result: DArray);
+var
+   tokens: TStringList;
+   i: Integer;
+begin
+   tokens := TStringList.Create;
+   try
+      tokens.Delimiter := ',';
+      tokens.DelimitedText := s;
+      SetLength(result, tokens.Count);
+      for i := 0 to tokens.Count - 1 do
+         result[i] := StrToFloat(Trim(tokens[i]));
+   finally
+      tokens.Free;
+   end;
+end;
+
 function TRNN.Array1DToJSON(const Arr: DArray): string;
 var
   I: Integer;
@@ -1554,6 +1571,8 @@ var
    lossType: TLossType;
    modelFile, saveFile, dataFile: string;
    verbose: Boolean;
+   inputValues: array of Double;
+   maxIdx: Integer;
 
    RNNModel: TRNN;
    SequenceLen, HiddenSize: Integer;
@@ -1611,6 +1630,8 @@ var
    modelFile := '';
    saveFile := '';
    dataFile := '';
+   SetLength(inputValues, 0);
+   maxIdx := 0;
 
    // Parse arguments
    for i := 2 to ParamCount do
@@ -1636,7 +1657,7 @@ var
             { For create command: input is an integer size }
             { For predict command: input is a CSV string of values }
             if Command = cmdPredict then
-               { Skip for predict, will be handled separately }
+               ParseDoubleArrayHelper(value, inputValues)
             else
                inputSize := StrToInt(value)
          end
@@ -1723,10 +1744,48 @@ var
       else if Command = cmdPredict then
       begin
          if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
-         WriteLn('Loading model from JSON: ' + modelFile);
+         if Length(inputValues) = 0 then begin WriteLn('Error: --input is required'); Exit; end;
+
          RNNModel := TRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
          RNNModel.LoadModelFromJSON(modelFile);
-         WriteLn('Model loaded successfully. Prediction functionality not yet implemented.');
+         if RNNModel = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+         
+         { For RNN, we need to create a 2D sequence input (1 timestep) }
+         SetLength(Inputs, 1);
+         SetLength(Inputs[0], Length(inputValues));
+         for i := 0 to High(inputValues) do
+            Inputs[0][i] := inputValues[i];
+         
+         Predictions := RNNModel.Predict(Inputs);
+         
+         Write('Input: ');
+         for i := 0 to High(inputValues) do
+         begin
+            if i > 0 then Write(', ');
+            Write(inputValues[i]:0:4);
+         end;
+         WriteLn;
+         
+         if (Length(Predictions) > 0) and (Length(Predictions[High(Predictions)]) > 0) then
+         begin
+            Write('Output: ');
+            for i := 0 to High(Predictions[High(Predictions)]) do
+            begin
+               if i > 0 then Write(', ');
+               Write(Predictions[High(Predictions)][i]:0:6);
+            end;
+            WriteLn;
+            
+            if Length(Predictions[High(Predictions)]) > 1 then
+            begin
+               maxIdx := 0;
+               for i := 1 to High(Predictions[High(Predictions)]) do
+                  if Predictions[High(Predictions)][i] > Predictions[High(Predictions)][maxIdx] then
+                     maxIdx := i;
+               WriteLn('Max index: ', maxIdx);
+            end;
+         end;
+         
          RNNModel.Free;
       end
       else if Command = cmdInfo then
