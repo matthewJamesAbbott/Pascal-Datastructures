@@ -6,7 +6,7 @@
 {$mode objfpc}
 {$M+}
 
-program FacadedMLP;
+program FacadeMLP;
 
 uses Classes, Math, SysUtils, StrUtils;
 
@@ -2082,7 +2082,7 @@ begin
       MLP.Beta1 := beta1;
       MLP.Beta2 := beta2;
       
-      MLP.Save(saveFile);
+      MLP.SaveModelToJSON(saveFile);
       
       WriteLn('Created MLP model:');
       WriteLn('  Input size: ', inputSize);
@@ -2107,8 +2107,9 @@ begin
       if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
       if dataFile = '' then begin WriteLn('Error: --data is required'); Exit; end;
       if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
-      
-      MLP := LoadMLPModel(modelFile);
+
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
       
       if lrOverride then
@@ -2158,7 +2159,7 @@ begin
       end;
       WriteLn('Final loss: ', (loss / Length(data)):0:6);
       
-      MLP.Save(saveFile);
+      MLP.SaveModelToJSON(saveFile);
       WriteLn('Model saved to: ', saveFile);
       
       MLP.Free;
@@ -2167,8 +2168,9 @@ begin
    begin
       if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
       if Length(inputValues) = 0 then begin WriteLn('Error: --input is required'); Exit; end;
-      
-      MLP := LoadMLPModel(modelFile);
+
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
       
       if Length(inputValues) <> MLP.GetInputSize then
@@ -2211,8 +2213,8 @@ begin
    begin
       if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
       
-      MLP := LoadMLPModel(modelFile);
-      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       
       WriteLn('MLP Model Information');
       WriteLn('=====================');
@@ -2248,8 +2250,9 @@ begin
       if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
       if (layerIdx < 0) or (neuronIdx < 0) or (weightIdx < 0) then
          begin WriteLn('Error: --layer --neuron --weight required'); Exit; end;
-      
-      MLP := LoadMLPModel(modelFile);
+
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
       
       WriteLn('Weight [', layerIdx, '][', neuronIdx, '][', weightIdx, ']: ',
@@ -2263,14 +2266,15 @@ begin
       if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
       if (layerIdx < 0) or (neuronIdx < 0) or (weightIdx < 0) then
          begin WriteLn('Error: --layer --neuron --weight required'); Exit; end;
-      
-      MLP := LoadMLPModel(modelFile);
+
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
       
       MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].Weights[weightIdx] := valueSetting;
       WriteLn('Set Weight[', layerIdx, '][', neuronIdx, '][', weightIdx, '] = ', valueSetting:0:7);
       
-      MLP.Save(saveFile);
+      MLP.SaveModelToJSON(saveFile);
       WriteLn('Model saved to: ', saveFile);
       MLP.Free;
       end
@@ -2279,8 +2283,9 @@ begin
       if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
       if (layerIdx < 0) or (neuronIdx < 0) then
          begin WriteLn('Error: --layer --neuron required'); Exit; end;
-      
-      MLP := LoadMLPModel(modelFile);
+
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
       
       Write('Weights [', layerIdx, '][', neuronIdx, ']: ');
@@ -2297,8 +2302,9 @@ begin
       if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
       if (layerIdx < 0) or (neuronIdx < 0) then
          begin WriteLn('Error: --layer --neuron required'); Exit; end;
-      
-      MLP := LoadMLPModel(modelFile);
+
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
       
       WriteLn('Bias [', layerIdx, '][', neuronIdx, ']: ',
@@ -2312,14 +2318,15 @@ begin
       if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
       if (layerIdx < 0) or (neuronIdx < 0) then
          begin WriteLn('Error: --layer --neuron required'); Exit; end;
-      
-      MLP := LoadMLPModel(modelFile);
+
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
       
       MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].Bias := valueSetting;
       WriteLn('Set Bias[', layerIdx, '][', neuronIdx, '] = ', valueSetting:0:7);
       
-      MLP.Save(saveFile);
+      MLP.SaveModelToJSON(saveFile);
       WriteLn('Model saved to: ', saveFile);
       MLP.Free;
       end
@@ -2329,8 +2336,8 @@ begin
       if (layerIdx < 0) or (neuronIdx < 0) then
          begin WriteLn('Error: --layer --neuron required'); Exit; end;
       
-      MLP := LoadMLPModel(modelFile);
-      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       
       if Length(inputValues) > 0 then
       begin
@@ -2354,8 +2361,8 @@ begin
       if (layerIdx < 0) or (neuronIdx < 0) then
          begin WriteLn('Error: --layer --neuron required'); Exit; end;
       
-      MLP := LoadMLPModel(modelFile);
-      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       
       WriteLn('Error [', layerIdx, '][', neuronIdx, ']: ',
               MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].Error:0:7);
@@ -2367,8 +2374,8 @@ begin
       if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
       if layerIdx < 0 then begin WriteLn('Error: --layer is required'); Exit; end;
       
-      MLP := LoadMLPModel(modelFile);
-      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       
       WriteLn('Layer ', layerIdx, ' info:');
       WriteLn(' Size: ', Length(MLP.GetHiddenLayer(layerIdx).Neurons));
@@ -2387,8 +2394,8 @@ begin
       if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
       if layerIdx < 0 then begin WriteLn('Error: --layer is required'); Exit; end;
       
-      MLP := LoadMLPModel(modelFile);
-      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       
       WriteLn('Histogram (', histType, ') for layer ', layerIdx, ':');
       WriteLn('Note: Simple histogram display (FACADE capability enabled)');
@@ -2401,8 +2408,8 @@ begin
       if (layerIdx < 0) or (neuronIdx < 0) then
          begin WriteLn('Error: --layer --neuron required'); Exit; end;
       
-      MLP := LoadMLPModel(modelFile);
-      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
+      MLP.LoadModelFromJSON(modelFile);
       
       WriteLn('Layer ', layerIdx, ', Neuron ', neuronIdx);
       WriteLn(' MBias: ', MLP.GetHiddenLayer(layerIdx).Neurons[neuronIdx].MBias:0:8,
