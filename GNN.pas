@@ -6,7 +6,7 @@
 {$mode objfpc}{$H+}
 {$modeswitch advancedrecords}
 
-program GNNtest;
+program GNN;
 
 uses
     Classes, Math, SysUtils, StrUtils;
