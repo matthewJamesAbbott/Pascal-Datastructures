@@ -1461,9 +1461,98 @@ begin
       end
       else
          Inc(CurrentPos);
+      end;
+      end;
+
+      function CountSimpleArrayElements(const JSONStr, ArrayName: string): Integer;
+var
+   ArrayPos, CurrentPos, Count: Integer;
+begin
+   Result := 0;
+   
+   { Find the array }
+   ArrayPos := Pos('"' + ArrayName + '"', JSONStr);
+   if ArrayPos = 0 then Exit;
+   
+   ArrayPos := PosEx('[', JSONStr, ArrayPos);
+   if ArrayPos = 0 then Exit;
+   
+   { Count numeric elements }
+   CurrentPos := ArrayPos + 1;
+   Count := 0;
+   while (CurrentPos <= Length(JSONStr)) and (JSONStr[CurrentPos] <> ']') do
+   begin
+      if (JSONStr[CurrentPos] in ['0'..'9', '-']) then
+      begin
+         Inc(Count);
+         { Skip this number }
+         while (CurrentPos <= Length(JSONStr)) and (JSONStr[CurrentPos] in ['0'..'9', '-']) do
+           Inc(CurrentPos);
+      end
+      else
+         Inc(CurrentPos);
    end;
+   
+   Result := Count;
 end;
-    procedure TCNNFacade.LoadModelFromJSON(const Filename: string);
+
+function ExtractIntFromSimpleArray(const JSONStr, ArrayName: string; Index: Integer): Integer;
+      var
+      ArrayPos, CurrentPos, Count: Integer;
+      Value: string;
+      StartP, EndP: Integer;
+      begin
+      Result := 0;
+      
+      { Find the array }
+      ArrayPos := Pos('"' + ArrayName + '"', JSONStr);
+      if ArrayPos = 0 then Exit;
+      
+      ArrayPos := PosEx('[', JSONStr, ArrayPos);
+      if ArrayPos = 0 then Exit;
+      
+      { Skip past [ and whitespace }
+      CurrentPos := ArrayPos + 1;
+      while (CurrentPos <= Length(JSONStr)) and (JSONStr[CurrentPos] in [' ', #9, #10, #13]) do
+      Inc(CurrentPos);
+      
+      { Count to the desired index, extracting integers }
+      Count := 0;
+      while (CurrentPos <= Length(JSONStr)) and (JSONStr[CurrentPos] <> ']') do
+      begin
+      if (JSONStr[CurrentPos] in ['0'..'9', '-']) then
+      begin
+        if Count = Index then
+        begin
+           { Found our integer - extract it }
+           StartP := CurrentPos;
+           while (CurrentPos <= Length(JSONStr)) and (JSONStr[CurrentPos] in ['0'..'9', '-']) do
+             Inc(CurrentPos);
+           Value := Copy(JSONStr, StartP, CurrentPos - StartP);
+           try
+              Result := StrToInt(Value);
+           except
+              Result := 0;
+           end;
+           Exit;
+        end;
+        { Skip this number }
+        while (CurrentPos <= Length(JSONStr)) and (JSONStr[CurrentPos] in ['0'..'9', '-']) do
+          Inc(CurrentPos);
+        Inc(Count);
+      end
+      else if JSONStr[CurrentPos] = ',' then
+      begin
+        Inc(CurrentPos);
+        while (CurrentPos <= Length(JSONStr)) and (JSONStr[CurrentPos] in [' ', #9, #10, #13]) do
+          Inc(CurrentPos);
+      end
+      else
+        Inc(CurrentPos);
+      end;
+      end;
+
+      procedure TCNNFacade.LoadModelFromJSON(const Filename: string);
     var
     JSONContent: TStringList;
     JSONStr: string;
@@ -1471,6 +1560,7 @@ end;
     KernelSize, Stride, Padding, InputChannels, FilterCount, NumWeights: Integer;
     LR, DR: Double;
     OutputLayerPos, NeuronsPos, TempPos, BraceCount: Integer;
+    NumPoolLayers, PoolSize: Integer;
     begin
     JSONContent := TStringList.Create;
     try
@@ -1495,6 +1585,16 @@ end;
     Beta2 := ExtractDoubleFromJSON(JSONStr, 'beta2');
     AdamT := ExtractIntFromJSON(JSONStr, 'adamT');
     
+    { Parse pooling layers - extract poolSizes array from config }
+    NumPoolLayers := CountSimpleArrayElements(JSONStr, 'poolSizes');
+    SetLength(PoolLayers, NumPoolLayers);
+    
+    for i := 0 to NumPoolLayers - 1 do
+    begin
+      PoolSize := ExtractIntFromSimpleArray(JSONStr, 'poolSizes', i);
+      InitializePoolLayer(PoolLayers[i], PoolSize, PoolSize);
+    end;
+    
     { Parse convolutional layers }
     NumConvLayers := CountArrayElements(JSONStr, 'convLayers');
     SetLength(ConvLayers, NumConvLayers);
@@ -1507,11 +1607,14 @@ end;
       InputChannels := ExtractIntFromJSONArray(JSONStr, 'convLayers', i, 'inputChannels');
       
       FilterCount := CountNestedArrayElements(JSONStr, 'convLayers', i, 'filters');
+      WriteLn('  DEBUG: Layer ', i, ' counted ', FilterCount, ' filters');
       SetLength(ConvLayers[i].Filters, FilterCount);
       ConvLayers[i].KernelSize := KernelSize;
       ConvLayers[i].Stride := Stride;
       ConvLayers[i].Padding := Padding;
       ConvLayers[i].InputChannels := InputChannels;
+      
+      WriteLn('  Loading Conv Layer ', i, ': ', FilterCount, ' filters');
       
       for f := 0 to FilterCount - 1 do
       begin
@@ -2880,36 +2983,36 @@ type
                cmdModify, cmdAnalyze, cmdInfo, cmdHelp);
 
 var
-   Command: TCommand;
-   CmdStr: string;
-   i, inputW, inputH, inputC, outputSize: Integer;
-   convFilters, kernelSizes, poolSizes, fcLayerSizes: array of Integer;
-   learningRate, dropoutRate: Double;
-   modelFile, saveFile: string;
-   arg, key, value: string;
-   eqPos: Integer;
-   CNN: TCNNFacade;
-   Image: TImageData;
-   Target, Output: Darray;
-   c, h, w: Integer;
-   Loss: Double;
-   
-   { Command-specific variables }
-   layerIdx, filterIdx, channelIdx, binCount, posX, posY: Integer;
-   intrinMode, statsType, modifyAction, analyzeType: string;
-   numFiltersToAdd, kernelSizeAdd, strideAdd, paddingAdd: Integer;
-   histogram: Darray;
-   stats: TLayerStats;
-   config: TLayerConfig;
-   rf: TReceptiveField;
-   j, k, binIdx: Integer;
-   featureMap: D2array;
-   preAct: D2array;
-   kernel: D2array;
-   saliency: D2array;
-   filterParams: D3array;
-   randomInput: Boolean;
-   predMode: string;
+    Command: TCommand;
+    CmdStr: string;
+    i, inputW, inputH, inputC, outputSize, epochs: Integer;
+    convFilters, kernelSizes, poolSizes, fcLayerSizes: array of Integer;
+    learningRate, dropoutRate: Double;
+    modelFile, saveFile: string;
+    arg, key, value: string;
+    eqPos: Integer;
+    CNN: TCNNFacade;
+    Image: TImageData;
+    Target, Output: Darray;
+    c, h, w: Integer;
+    Loss: Double;
+    
+    { Command-specific variables }
+    layerIdx, filterIdx, channelIdx, binCount, posX, posY: Integer;
+    intrinMode, statsType, modifyAction, analyzeType: string;
+    numFiltersToAdd, kernelSizeAdd, strideAdd, paddingAdd: Integer;
+    histogram: Darray;
+    stats: TLayerStats;
+    config: TLayerConfig;
+    rf: TReceptiveField;
+    j, k, binIdx: Integer;
+    featureMap: D2array;
+    preAct: D2array;
+    kernel: D2array;
+    saliency: D2array;
+    filterParams: D3array;
+    randomInput: Boolean;
+    predMode: string;
 
 begin
    Randomize;
@@ -2958,6 +3061,7 @@ begin
    dropoutRate := 0.25;
    modelFile := '';
    saveFile := '';
+   epochs := 20;  { Default number of training epochs }
    
    { Command-specific defaults }
    layerIdx := 0;
@@ -3023,6 +3127,8 @@ begin
          learningRate := StrToFloat(value)
       else if key = '--dropout' then
          dropoutRate := StrToFloat(value)
+      else if key = '--epochs' then
+         epochs := StrToInt(value)
       { Introspect/Stats options }
       else if key = '--layer' then
          layerIdx := StrToInt(value)
@@ -3119,26 +3225,51 @@ begin
    end
    else if Command = cmdTrain then
    begin
-      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
-      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
-      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
-      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
-      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
-      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
-      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
-      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+      { Either load from --model OR create from parameters }
+      if modelFile = '' then
+      begin
+         { Creating from scratch requires all parameters }
+         if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+         if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+         if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+         if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+         if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+         if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+         if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+         if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+      end;
 
-      WriteLn('Training CNN Facade model for 20 steps...');
-      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
-                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      WriteLn('Training CNN Facade model for ', epochs, ' epochs...');
       
+      if modelFile <> '' then
+      begin
+         { Load model from file }
+         WriteLn('Loading model from: ', modelFile);
+         CNN := TCNNFacade.Create(0, 0, 0, [], [], [], [], 0, learningRate, dropoutRate);
+         CNN.LoadModelFromJSON(modelFile);
+         inputW := CNN.GetInputWidth;
+         inputH := CNN.GetInputHeight;
+         inputC := CNN.GetInputChannels;
+         
+         { Get output size from loaded model }
+         { We'll get it after the first predict in the training loop }
+         outputSize := 10;  { Default, will be corrected on first predict }
+      end
+      else
+      begin
+         { Create new model }
+         CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                                  poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      end;
+      
+      { Initialize image regardless of source }
       Image.Width := inputW;
       Image.Height := inputH;
       Image.Channels := inputC;
       SetLength(Image.Data, inputC, inputH, inputW);
       SetLength(Target, outputSize);
       
-      for i := 1 to 20 do
+      for i := 1 to epochs do
       begin
          { Generate random input }
          for c := 0 to inputC - 1 do
@@ -3146,12 +3277,29 @@ begin
                for w := 0 to inputW - 1 do
                   Image.Data[c][h][w] := Random;
          
+         { On first iteration, get actual output size if loading from model }
+         { Comment out for now - TrainStep will call Predict anyway }
+         {
+         if i = 1 then
+         begin
+            Output := CNN.Predict(Image);
+            if outputSize <> Length(Output) then
+               outputSize := Length(Output);
+         end;
+         }
+         
          { Generate random target }
          for k := 0 to outputSize - 1 do Target[k] := 0;
          Target[i mod outputSize] := 1.0;
          
          Loss := CNN.TrainStep(Image, Target);
-         WriteLn('Step ', i, ' Loss: ', Loss:0:6);
+         WriteLn('Epoch ', i, ' Loss: ', Loss:0:6);
+      end;
+      
+      if saveFile <> '' then
+      begin
+         WriteLn('Saving trained model to: ', saveFile);
+         CNN.SaveModelToJSON(saveFile);
       end;
       
       CNN.Free;
@@ -3159,18 +3307,33 @@ begin
    end
    else if Command = cmdPredict then
    begin
-      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
-      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
-      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
-      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
-      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
-      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
-      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
-      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
-
       WriteLn('Making predictions...');
-      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
-                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      if modelFile <> '' then
+      begin
+         { Load model from file }
+         WriteLn('Loading model from: ', modelFile);
+         CNN := TCNNFacade.Create(0, 0, 0, [], [], [], [], 0, learningRate, dropoutRate);
+         CNN.LoadModelFromJSON(modelFile);
+         inputW := CNN.GetInputWidth;
+         inputH := CNN.GetInputHeight;
+         inputC := CNN.GetInputChannels;
+      end
+      else
+      begin
+         { Creating from scratch requires all parameters }
+         if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+         if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+         if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+         if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+         if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+         if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+         if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+         if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+         
+         CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                                  poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      end;
       
       if randomInput then
       begin
@@ -3197,18 +3360,33 @@ begin
    end
    else if Command = cmdIntrospect then
    begin
-      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
-      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
-      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
-      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
-      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
-      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
-      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
-      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
-
       WriteLn('Introspecting CNN layer internals...');
-      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
-                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      if modelFile <> '' then
+      begin
+         { Load model from file }
+         WriteLn('Loading model from: ', modelFile);
+         CNN := TCNNFacade.Create(0, 0, 0, [], [], [], [], 0, learningRate, dropoutRate);
+         CNN.LoadModelFromJSON(modelFile);
+         inputW := CNN.GetInputWidth;
+         inputH := CNN.GetInputHeight;
+         inputC := CNN.GetInputChannels;
+      end
+      else
+      begin
+         { Creating from scratch requires all parameters }
+         if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+         if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+         if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+         if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+         if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+         if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+         if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+         if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+         
+         CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                                  poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      end;
       
       { Forward pass first }
       Image.Width := inputW;
@@ -3288,18 +3466,33 @@ begin
    end
    else if Command = cmdStats then
    begin
-      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
-      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
-      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
-      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
-      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
-      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
-      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
-      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
-
       WriteLn('Computing layer statistics...');
-      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
-                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      if modelFile <> '' then
+      begin
+         { Load model from file }
+         WriteLn('Loading model from: ', modelFile);
+         CNN := TCNNFacade.Create(0, 0, 0, [], [], [], [], 0, learningRate, dropoutRate);
+         CNN.LoadModelFromJSON(modelFile);
+         inputW := CNN.GetInputWidth;
+         inputH := CNN.GetInputHeight;
+         inputC := CNN.GetInputChannels;
+      end
+      else
+      begin
+         { Creating from scratch requires all parameters }
+         if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+         if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+         if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+         if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+         if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+         if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+         if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+         if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+         
+         CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                                  poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      end;
       
       { Forward pass }
       Image.Width := inputW;
@@ -3350,18 +3543,33 @@ begin
    end
    else if Command = cmdModify then
    begin
-      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
-      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
-      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
-      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
-      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
-      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
-      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
-      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
-
       WriteLn('Modifying CNN architecture...');
-      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
-                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      if modelFile <> '' then
+      begin
+         { Load model from file }
+         WriteLn('Loading model from: ', modelFile);
+         CNN := TCNNFacade.Create(0, 0, 0, [], [], [], [], 0, learningRate, dropoutRate);
+         CNN.LoadModelFromJSON(modelFile);
+         inputW := CNN.GetInputWidth;
+         inputH := CNN.GetInputHeight;
+         inputC := CNN.GetInputChannels;
+      end
+      else
+      begin
+         { Creating from scratch requires all parameters }
+         if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+         if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+         if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+         if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+         if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+         if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+         if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+         if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+         
+         CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                                  poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      end;
       
       if modifyAction = 'add_filter' then
       begin
@@ -3393,23 +3601,44 @@ begin
       WriteLn('  Conv layers: ', CNN.GetNumConvLayers);
       WriteLn('  FC layers: ', CNN.GetNumFCLayers);
       
+      if saveFile <> '' then
+      begin
+         WriteLn('Saving modified model to: ', saveFile);
+         CNN.SaveModelToJSON(saveFile);
+      end;
+      
       CNN.Free;
       WriteLn('Done.');
    end
    else if Command = cmdAnalyze then
    begin
-      if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
-      if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
-      if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
-      if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
-      if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
-      if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
-      if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
-      if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
-
       WriteLn('Analyzing CNN layer features...');
-      CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
-                               poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      
+      if modelFile <> '' then
+      begin
+         { Load model from file }
+         WriteLn('Loading model from: ', modelFile);
+         CNN := TCNNFacade.Create(0, 0, 0, [], [], [], [], 0, learningRate, dropoutRate);
+         CNN.LoadModelFromJSON(modelFile);
+         inputW := CNN.GetInputWidth;
+         inputH := CNN.GetInputHeight;
+         inputC := CNN.GetInputChannels;
+      end
+      else
+      begin
+         { Creating from scratch requires all parameters }
+         if inputW <= 0 then begin WriteLn('Error: --input-w is required'); Exit; end;
+         if inputH <= 0 then begin WriteLn('Error: --input-h is required'); Exit; end;
+         if inputC <= 0 then begin WriteLn('Error: --input-c is required'); Exit; end;
+         if Length(convFilters) = 0 then begin WriteLn('Error: --conv is required'); Exit; end;
+         if Length(kernelSizes) = 0 then begin WriteLn('Error: --kernels is required'); Exit; end;
+         if Length(poolSizes) = 0 then begin WriteLn('Error: --pools is required'); Exit; end;
+         if Length(fcLayerSizes) = 0 then begin WriteLn('Error: --fc is required'); Exit; end;
+         if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
+         
+         CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
+                                  poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
+      end;
       
       { Forward pass }
       Image.Width := inputW;
