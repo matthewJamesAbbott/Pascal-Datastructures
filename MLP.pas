@@ -1304,7 +1304,7 @@ var
   WeightRows: TStringList;
   WeightRow: string;
   RowStart, RowEnd: Integer;
-  WeightsArr: array of Darray;
+  WeightsArr: Darray;
   BiasArr: Darray;
   
   function ExtractJSONValue(const json: string; const key: string): string;
