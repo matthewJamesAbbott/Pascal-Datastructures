@@ -1682,7 +1682,7 @@ end;
 
 procedure PrintUsage;
 begin
-  WriteLn('MLP - Command-line Multi-Layer Perceptron');
+  WriteLn('MLP');
   WriteLn;
   WriteLn('Commands:');
   WriteLn('  create   Create a new MLP model and save to JSON');
