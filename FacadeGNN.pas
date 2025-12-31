@@ -2374,7 +2374,7 @@ type
 
 procedure PrintUsage;
 begin
-    WriteLn('Facaded GNN - Command-line Graph Neural Network with Facade Support');
+    WriteLn('Facaded GNN');
     WriteLn('\n');
     WriteLn('Commands:');
     WriteLn('  create                Create a new GNN model');
