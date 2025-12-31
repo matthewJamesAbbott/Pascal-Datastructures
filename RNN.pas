@@ -1457,7 +1457,57 @@ begin
     SL.Add('  "loss_type": "' + LossToStr(FLossType) + '",');
     SL.Add('  "learning_rate": ' + FloatToStr(FLearningRate) + ',');
     SL.Add('  "gradient_clip": ' + FloatToStr(FGradientClip) + ',');
-    SL.Add('  "bptt_steps": ' + IntToStr(FBPTTSteps));
+    SL.Add('  "bptt_steps": ' + IntToStr(FBPTTSteps) + ',');
+    
+    { Save cell weights based on type }
+    SL.Add('  "cells": [');
+    case FCellType of
+      ctSimpleRNN:
+        for I := 0 to High(FSimpleCells) do
+        begin
+          if I > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+          SL.Add('    {');
+          SL.Add('      "Wih": ' + Array2DToJSON(FSimpleCells[I].Wih) + ',');
+          SL.Add('      "Whh": ' + Array2DToJSON(FSimpleCells[I].Whh) + ',');
+          SL.Add('      "bh": ' + Array1DToJSON(FSimpleCells[I].Bh));
+          SL.Add('    }');
+        end;
+      ctLSTM:
+        for I := 0 to High(FLSTMCells) do
+        begin
+          if I > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+          SL.Add('    {');
+          SL.Add('      "Wf": ' + Array2DToJSON(FLSTMCells[I].Wf) + ',');
+          SL.Add('      "Wi": ' + Array2DToJSON(FLSTMCells[I].Wi) + ',');
+          SL.Add('      "Wc": ' + Array2DToJSON(FLSTMCells[I].Wc) + ',');
+          SL.Add('      "Wo": ' + Array2DToJSON(FLSTMCells[I].Wo) + ',');
+          SL.Add('      "Bf": ' + Array1DToJSON(FLSTMCells[I].Bf) + ',');
+          SL.Add('      "Bi": ' + Array1DToJSON(FLSTMCells[I].Bi) + ',');
+          SL.Add('      "Bc": ' + Array1DToJSON(FLSTMCells[I].Bc) + ',');
+          SL.Add('      "Bo": ' + Array1DToJSON(FLSTMCells[I].Bo));
+          SL.Add('    }');
+        end;
+      ctGRU:
+        for I := 0 to High(FGRUCells) do
+        begin
+          if I > 0 then SL[SL.Count - 1] := SL[SL.Count - 1] + ',';
+          SL.Add('    {');
+          SL.Add('      "Wz": ' + Array2DToJSON(FGRUCells[I].Wz) + ',');
+          SL.Add('      "Wr": ' + Array2DToJSON(FGRUCells[I].Wr) + ',');
+          SL.Add('      "Wh": ' + Array2DToJSON(FGRUCells[I].Wh) + ',');
+          SL.Add('      "Bz": ' + Array1DToJSON(FGRUCells[I].Bz) + ',');
+          SL.Add('      "Br": ' + Array1DToJSON(FGRUCells[I].Br) + ',');
+          SL.Add('      "Bh": ' + Array1DToJSON(FGRUCells[I].Bh));
+          SL.Add('    }');
+        end;
+    end;
+    SL.Add('  ],');
+    
+    { Save output layer weights }
+    SL.Add('  "output_layer": {');
+    SL.Add('    "W": ' + Array2DToJSON(FOutputLayer.W) + ',');
+    SL.Add('    "B": ' + Array1DToJSON(FOutputLayer.B));
+    SL.Add('  }');
     SL.Add('}');
     
     SL.SaveToFile(Filename);
