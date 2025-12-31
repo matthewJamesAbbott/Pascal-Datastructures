@@ -3464,9 +3464,9 @@ end;
 
 procedure PrintHelp();
 begin
-   writeln('Random Forest CLI - Matthew Abbott 2025');
+   writeln('Facaded Random Forest');
    writeln;
-   writeln('Usage: forest <command> [options]');
+   writeln('Usage: facaded_forest <command> [options]');
    writeln;
    writeln('=== Core Commands ===');
    writeln('  create         Create a new empty forest model and save to JSON');
