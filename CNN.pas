@@ -1947,7 +1947,7 @@ end;
 
 procedure PrintUsage;
 begin
-  WriteLn('CNN - Command-line Convolutional Neural Network');
+  WriteLn('CNN');
   WriteLn;
   WriteLn('Commands:');
   WriteLn('  create   Create a new CNN model and save to JSON');
