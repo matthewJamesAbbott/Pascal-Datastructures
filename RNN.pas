@@ -1555,7 +1555,7 @@ var
    modelFile, saveFile, dataFile: string;
    verbose: Boolean;
 
-   RNN: TRNN;
+   RNNModel: TRNN;
    SequenceLen, HiddenSize: Integer;
    Inputs, Targets, Predictions: TDArray2D;
    Split: TDataSplit;
@@ -1563,7 +1563,7 @@ var
    t, Epoch, b: Integer;
    CellTypeStr: string;
 
-begin
+   begin
    Randomize;
 
    if ParamCount < 1 then
@@ -1683,7 +1683,7 @@ begin
       if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
       if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
 
-      RNN := TRNN.Create(inputSize, hiddenSizes, outputSize, cellType, 
+      RNNModel := TRNN.Create(inputSize, hiddenSizes, outputSize, cellType, 
                                   hiddenAct, outputAct, lossType, learningRate, 
                                   gradientClip, bpttSteps);
 
@@ -1706,36 +1706,36 @@ begin
       WriteLn('  BPTT steps: ', bpttSteps);
       
       { Save model to JSON }
-      RNN.SaveModelToJSON(saveFile);
+      RNNModel.SaveModelToJSON(saveFile);
 
-      RNN.Free;
+      RNNModel.Free;
       end
       else if Command = cmdTrain then
       begin
          if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
          if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
          WriteLn('Loading model from JSON: ' + modelFile);
-         RNN := TRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
-         RNN.LoadModelFromJSON(modelFile);
+         RNNModel := TRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
+         RNNModel.LoadModelFromJSON(modelFile);
          WriteLn('Model loaded successfully. Training functionality not yet implemented.');
-         RNN.Free;
+         RNNModel.Free;
       end
       else if Command = cmdPredict then
       begin
          if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
          WriteLn('Loading model from JSON: ' + modelFile);
-         RNN := TRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
-         RNN.LoadModelFromJSON(modelFile);
+         RNNModel := TRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
+         RNNModel.LoadModelFromJSON(modelFile);
          WriteLn('Model loaded successfully. Prediction functionality not yet implemented.');
-         RNN.Free;
+         RNNModel.Free;
       end
       else if Command = cmdInfo then
       begin
          if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
          WriteLn('Loading model from JSON: ' + modelFile);
-         RNN := TRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
-         RNN.LoadModelFromJSON(modelFile);
+         RNNModel := TRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
+         RNNModel.LoadModelFromJSON(modelFile);
          WriteLn('Model information displayed above.');
-         RNN.Free;
+         RNNModel.Free;
       end;
 end.
