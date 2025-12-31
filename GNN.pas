@@ -6,7 +6,7 @@
 {$mode objfpc}{$H+}
 {$modeswitch advancedrecords}
 
-program GNN;
+program GNNtest;
 
 uses
     Classes, Math, SysUtils, StrUtils;
@@ -1367,6 +1367,7 @@ var
    prediction: TDoubleArray;
 
 begin
+
    Randomize;
    
    if ParamCount < 1 then
@@ -1518,3 +1519,4 @@ begin
       GNN.Free;
    end;
 end.
+
