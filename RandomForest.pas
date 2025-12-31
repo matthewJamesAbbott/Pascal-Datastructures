@@ -1,5 +1,6 @@
 //
-// Created by Matthew Abbott 2025
+// Matthew Abbott 2025
+// Random Forest
 //
 
 {$mode objfpc}
@@ -8,7 +9,7 @@
 program RandomForest;
 
 uses
-   Math, SysUtils;
+   Math, SysUtils, Classes, StrUtils;
 
 const
    MAX_FEATURES = 100;
@@ -162,6 +163,7 @@ type
       function getNumFeatures(): integer;
       function getNumSamples(): integer;
       function getMaxDepth(): integer;
+      function getMaxFeatures(): integer;
       function getTree(treeId: integer): TDecisionTree;
       function getData(sampleIdx, featureIdx: integer): double;
       function getTarget(sampleIdx: integer): double;
@@ -173,7 +175,17 @@ type
       procedure removeTreeAt(treeId: integer);
       procedure retrainTreeAt(treeId: integer);
 
-   end;
+      { JSON serialization methods }
+      procedure saveModelToJSON(const Filename: string);
+      procedure loadModelFromJSON(const Filename: string);
+
+      { JSON helper functions }
+      function taskTypeToStr(t: TaskType): string;
+      function criterionToStr(c: SplitCriterion): string;
+      function parseTaskType(const s: string): TaskType;
+      function parseCriterion(const s: string): SplitCriterion;
+
+      end;
 
 
 { ============================================================================ }
@@ -1220,6 +1232,11 @@ begin
    getMaxDepth := maxDepth;
 end;
 
+function TRandomForest.getMaxFeatures(): integer;
+begin
+   getMaxFeatures := maxFeatures;
+end;
+
 function TRandomForest.getTree(treeId: integer): TDecisionTree;
 begin
    if (treeId >= 0) and (treeId < numTrees) then
@@ -1306,6 +1323,181 @@ end;
 { ============================================================================ }
 { Helper Functions }
 { ============================================================================ }
+
+{ ============================================================================ }
+{ JSON Serialization }
+{ ============================================================================ }
+
+function TRandomForest.taskTypeToStr(t: TaskType): string;
+begin
+   if t = Classification then
+      taskTypeToStr := 'classification'
+   else
+      taskTypeToStr := 'regression';
+end;
+
+function TRandomForest.criterionToStr(c: SplitCriterion): string;
+begin
+   case c of
+      Gini: criterionToStr := 'gini';
+      Entropy: criterionToStr := 'entropy';
+      MSE: criterionToStr := 'mse';
+      VarianceReduction: criterionToStr := 'variance';
+   else
+      criterionToStr := 'gini';
+   end;
+end;
+
+function TRandomForest.parseTaskType(const s: string): TaskType;
+begin
+   if lowercase(s) = 'regression' then
+      parseTaskType := Regression
+   else
+      parseTaskType := Classification;
+end;
+
+function TRandomForest.parseCriterion(const s: string): SplitCriterion;
+begin
+   if lowercase(s) = 'gini' then
+      parseCriterion := Gini
+   else if lowercase(s) = 'entropy' then
+      parseCriterion := Entropy
+   else if lowercase(s) = 'mse' then
+      parseCriterion := MSE
+   else if lowercase(s) = 'variance' then
+      parseCriterion := VarianceReduction
+   else
+      parseCriterion := Gini;
+end;
+
+procedure TRandomForest.saveModelToJSON(const Filename: string);
+var
+   SL: TStringList;
+   i: integer;
+begin
+   SL := TStringList.Create;
+   try
+      SL.Add('{');
+      SL.Add('  "num_trees": ' + IntToStr(numTrees) + ',');
+      SL.Add('  "max_depth": ' + IntToStr(maxDepth) + ',');
+      SL.Add('  "min_samples_leaf": ' + IntToStr(minSamplesLeaf) + ',');
+      SL.Add('  "min_samples_split": ' + IntToStr(minSamplesSplit) + ',');
+      SL.Add('  "max_features": ' + IntToStr(maxFeatures) + ',');
+      SL.Add('  "num_features": ' + IntToStr(numFeatures) + ',');
+      SL.Add('  "num_samples": ' + IntToStr(numSamples) + ',');
+      SL.Add('  "task_type": "' + taskTypeToStr(taskType) + '",');
+      SL.Add('  "criterion": "' + criterionToStr(criterion) + '",');
+      SL.Add('  "random_seed": ' + IntToStr(randomSeed));
+      SL.Add('}');
+      
+      SL.SaveToFile(Filename);
+      WriteLn('Model saved to JSON: ', Filename);
+   finally
+      SL.Free;
+   end;
+end;
+
+procedure TRandomForest.loadModelFromJSON(const Filename: string);
+var
+   SL: TStringList;
+   Content: string;
+   ValueStr: string;
+   
+   function ExtractJSONValue(const json: string; const key: string): string;
+   var
+      KeyPos, ColonPos, QuotePos1, QuotePos2, StartPos, EndPos: integer;
+   begin
+      KeyPos := Pos('"' + key + '"', json);
+      if KeyPos > 0 then
+      begin
+         ColonPos := PosEx(':', json, KeyPos);
+         if ColonPos > 0 then
+         begin
+            StartPos := ColonPos + 1;
+            { Skip whitespace }
+            while (StartPos <= Length(json)) and (json[StartPos] in [' ', #9, #10, #13]) do
+               Inc(StartPos);
+            
+            { Check if value is a quoted string }
+            if (StartPos <= Length(json)) and (json[StartPos] = '"') then
+            begin
+               QuotePos1 := StartPos;
+               QuotePos2 := PosEx('"', json, QuotePos1 + 1);
+               if QuotePos2 > 0 then
+                  Result := Copy(json, QuotePos1 + 1, QuotePos2 - QuotePos1 - 1)
+               else
+                  Result := '';
+            end
+            else
+            begin
+               { Value is a number or boolean }
+               EndPos := PosEx(',', json, StartPos);
+               if EndPos = 0 then
+                  EndPos := PosEx('}', json, StartPos);
+               if EndPos = 0 then
+                  EndPos := PosEx(']', json, StartPos);
+               Result := Trim(Copy(json, StartPos, EndPos - StartPos));
+            end;
+         end
+         else
+            Result := '';
+      end
+      else
+         Result := '';
+   end;
+
+begin
+   SL := TStringList.Create;
+   try
+      SL.LoadFromFile(Filename);
+      Content := SL.Text;
+      
+      { Load configuration }
+      ValueStr := ExtractJSONValue(Content, 'num_trees');
+      if ValueStr <> '' then
+         numTrees := StrToInt(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'max_depth');
+      if ValueStr <> '' then
+         maxDepth := StrToInt(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'min_samples_leaf');
+      if ValueStr <> '' then
+         minSamplesLeaf := StrToInt(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'min_samples_split');
+      if ValueStr <> '' then
+         minSamplesSplit := StrToInt(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'max_features');
+      if ValueStr <> '' then
+         maxFeatures := StrToInt(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'num_features');
+      if ValueStr <> '' then
+         numFeatures := StrToInt(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'num_samples');
+      if ValueStr <> '' then
+         numSamples := StrToInt(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'task_type');
+      if ValueStr <> '' then
+         taskType := parseTaskType(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'criterion');
+      if ValueStr <> '' then
+         criterion := parseCriterion(ValueStr);
+      
+      ValueStr := ExtractJSONValue(Content, 'random_seed');
+      if ValueStr <> '' then
+         randomSeed := StrToInt(ValueStr);
+      
+      WriteLn('Model loaded from JSON: ', Filename);
+   finally
+      SL.Free;
+   end;
+end;
 
 procedure PrintHelp();
 begin
@@ -1495,7 +1687,9 @@ begin
          writeln('  Task: Classification')
       else
          writeln('  Task: Regression');
-      writeln('  Saved to: ', saveFile);
+      
+      { Save model to JSON }
+      rf.saveModelToJSON(saveFile);
       
       rf.freeForest();
    end
@@ -1530,11 +1724,13 @@ begin
       if dataFile = '' then begin writeln('Error: --data is required'); Exit; end;
       if saveFile = '' then begin writeln('Error: --save is required'); Exit; end;
       
+      rf.create();
+      rf.loadModelFromJSON(modelFile);
       writeln('Training forest...');
-      writeln('Model loaded from: ', modelFile);
       writeln('Data loaded from: ', dataFile);
       writeln('Training complete.');
-      writeln('Model saved to: ', saveFile);
+      rf.saveModelToJSON(saveFile);
+      rf.freeForest();
    end
    else if command = 'predict' then
    begin
@@ -1566,11 +1762,13 @@ begin
       if modelFile = '' then begin writeln('Error: --model is required'); Exit; end;
       if dataFile = '' then begin writeln('Error: --data is required'); Exit; end;
       
+      rf.create();
+      rf.loadModelFromJSON(modelFile);
       writeln('Making predictions...');
-      writeln('Model loaded from: ', modelFile);
       writeln('Data loaded from: ', dataFile);
       if outputFile <> '' then
          writeln('Predictions saved to: ', outputFile);
+      rf.freeForest();
    end
    else if command = 'info' then
    begin
@@ -1597,10 +1795,17 @@ begin
       
       if modelFile = '' then begin writeln('Error: --model is required'); Exit; end;
       
+      rf.create();
+      rf.loadModelFromJSON(modelFile);
+      
       writeln('Random Forest Model Information');
       writeln('===============================');
-      writeln('Model loaded from: ', modelFile);
-      writeln('Forest configuration displayed.');
+      writeln('Number of trees: ', rf.getNumTrees());
+      writeln('Max depth: ', rf.getMaxDepth());
+      writeln('Max features: ', rf.getMaxFeatures());
+      writeln('Task type: ', rf.taskTypeToStr(rf.getTaskType()));
+      writeln('Criterion: ', rf.criterionToStr(rf.getCriterion()));
+      rf.freeForest();
    end
    else
    begin
