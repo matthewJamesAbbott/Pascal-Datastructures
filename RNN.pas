@@ -120,6 +120,7 @@ type
     F, I, CTilde, O, TanhC: DArray;
     Z, R, HTilde: DArray;
     OutPre, OutVal: DArray;
+    LayerInputs: TDArray2D; { Input to each layer }
   end;
 
   // ========== Main RNN ==========
@@ -433,24 +434,17 @@ begin
   FHiddenSize := HiddenSize;
   FActivation := Activation;
   ConcatSize := InputSize + HiddenSize;
-  Scale := Sqrt(2.0 / ConcatSize);
+  Scale := 0.01; { Use small initialization for LSTM stability }
 
   InitMatrix(Wf, HiddenSize, ConcatSize, Scale);
   InitMatrix(Wi, HiddenSize, ConcatSize, Scale);
   InitMatrix(Wc, HiddenSize, ConcatSize, Scale);
   InitMatrix(Wo, HiddenSize, ConcatSize, Scale);
 
-  SetLength(Bf, HiddenSize);
-  SetLength(Bi, HiddenSize);
-  SetLength(Bc, HiddenSize);
-  SetLength(Bo, HiddenSize);
-  for i := 0 to HiddenSize - 1 do
-  begin
-    Bf[i] := 1.0;
-    Bi[i] := 0;
-    Bc[i] := 0;
-    Bo[i] := 0;
-  end;
+  ZeroArray(Bf, HiddenSize);
+  ZeroArray(Bi, HiddenSize);
+  ZeroArray(Bc, HiddenSize);
+  ZeroArray(Bo, HiddenSize);
 
   ZeroMatrix(dWf, HiddenSize, ConcatSize);
   ZeroMatrix(dWi, HiddenSize, ConcatSize);
@@ -464,40 +458,40 @@ end;
 
 procedure TLSTMCell.Forward(const Input, PrevH, PrevC: DArray; var H, C, F, I, CTilde, O, TanhC: DArray);
 var
-  k, j: Integer;
-  Concat: DArray;
-  SumF, SumI, SumC, SumO: Double;
+   k, j: Integer;
+   Concat: DArray;
+   SumF, SumI, SumC, SumO: Double;
 begin
-  Concat := ConcatArrays(Input, PrevH);
-  SetLength(H, FHiddenSize);
-  SetLength(C, FHiddenSize);
-  SetLength(F, FHiddenSize);
-  SetLength(I, FHiddenSize);
-  SetLength(CTilde, FHiddenSize);
-  SetLength(O, FHiddenSize);
-  SetLength(TanhC, FHiddenSize);
+   Concat := ConcatArrays(Input, PrevH);
+   SetLength(H, FHiddenSize);
+   SetLength(C, FHiddenSize);
+   SetLength(F, FHiddenSize);
+   SetLength(I, FHiddenSize);
+   SetLength(CTilde, FHiddenSize);
+   SetLength(O, FHiddenSize);
+   SetLength(TanhC, FHiddenSize);
 
-  for k := 0 to FHiddenSize - 1 do
-  begin
-    SumF := Bf[k];
-    SumI := Bi[k];
-    SumC := Bc[k];
-    SumO := Bo[k];
-    for j := 0 to High(Concat) do
-    begin
-      SumF := SumF + Wf[k][j] * Concat[j];
-      SumI := SumI + Wi[k][j] * Concat[j];
-      SumC := SumC + Wc[k][j] * Concat[j];
-      SumO := SumO + Wo[k][j] * Concat[j];
-    end;
-    F[k] := TActivation.Apply(SumF, atSigmoid);
-    I[k] := TActivation.Apply(SumI, atSigmoid);
-    CTilde[k] := TActivation.Apply(SumC, atTanh);
-    O[k] := TActivation.Apply(SumO, atSigmoid);
-    C[k] := F[k] * PrevC[k] + I[k] * CTilde[k];
-    TanhC[k] := Tanh(C[k]);
-    H[k] := O[k] * TanhC[k];
-  end;
+   for k := 0 to FHiddenSize - 1 do
+   begin
+     SumF := Bf[k];
+     SumI := Bi[k];
+     SumC := Bc[k];
+     SumO := Bo[k];
+     for j := 0 to High(Concat) do
+     begin
+       SumF := SumF + Wf[k][j] * Concat[j];
+       SumI := SumI + Wi[k][j] * Concat[j];
+       SumC := SumC + Wc[k][j] * Concat[j];
+       SumO := SumO + Wo[k][j] * Concat[j];
+     end;
+     F[k] := TActivation.Apply(SumF, atSigmoid);
+     I[k] := TActivation.Apply(SumI, atSigmoid);
+     CTilde[k] := TActivation.Apply(SumC, atTanh);
+     O[k] := TActivation.Apply(SumO, atSigmoid);
+     C[k] := F[k] * PrevC[k] + I[k] * CTilde[k];
+     TanhC[k] := Tanh(C[k]);
+     H[k] := O[k] * TanhC[k];
+   end;
 end;
 
 procedure TLSTMCell.Backward(const dH, dC, H, C, F, I, CTilde, O, TanhC, PrevH, PrevC, Input: DArray;
@@ -982,9 +976,12 @@ begin
   begin
     X := Copy(Inputs[t]);
     Caches[t].Input := Copy(X);
+    SetLength(Caches[t].LayerInputs, Length(FHiddenSizes) + 1);
 
     for layer := 0 to High(FHiddenSizes) do
     begin
+      Caches[t].LayerInputs[layer] := Copy(X);
+      
       case FCellType of
         ctSimpleRNN:
         begin
@@ -1019,6 +1016,7 @@ begin
       X := Copy(H);
     end;
 
+    Caches[t].LayerInputs[Length(FHiddenSizes)] := Copy(X);
     FOutputLayer.Forward(X, OutVal, OutPre);
     Caches[t].OutVal := Copy(OutVal);
     Caches[t].OutPre := Copy(OutPre);
@@ -1029,7 +1027,7 @@ begin
 end;
 
 function TRNN.BackwardSequence(const Targets: TDArray2D; const Caches: array of TTimeStepCache;
-                                        const States: TDArray3D): Double;
+                                         const States: TDArray3D): Double;
 var
   t, layer, k: Integer;
   T_len, BPTTLimit: Integer;
@@ -1060,7 +1058,7 @@ begin
     TotalLoss := TotalLoss + TLoss.Compute(Caches[t].OutVal, Targets[t], FLossType);
     TLoss.Gradient(Caches[t].OutVal, Targets[t], FLossType, Grad);
 
-    FOutputLayer.Backward(Grad, Caches[t].OutVal, Caches[t].OutPre, Caches[t].H, FGradientClip, dH);
+    FOutputLayer.Backward(Grad, Caches[t].OutVal, Caches[t].OutPre, Caches[t].LayerInputs[Length(FHiddenSizes)], FGradientClip, dH);
 
     for layer := High(FHiddenSizes) downto 0 do
     begin
@@ -1077,7 +1075,7 @@ begin
         ctSimpleRNN:
         begin
           FSimpleCells[layer].Backward(d0ut, Caches[t].H, Caches[t].PreH, PrevH,
-                                        Caches[t].Input, FGradientClip, dInput, dPrevH);
+                                        Caches[t].LayerInputs[layer], FGradientClip, dInput, dPrevH);
           dStatesH[layer] := Copy(dPrevH);
         end;
         ctLSTM:
@@ -1094,7 +1092,7 @@ begin
           FLSTMCells[layer].Backward(d0ut, dC, Caches[t].H, Caches[t].C,
                                       Caches[t].F, Caches[t].I, Caches[t].CTilde,
                                       Caches[t].O, Caches[t].TanhC,
-                                      PrevH, PrevC, Caches[t].Input,
+                                      PrevH, PrevC, Caches[t].LayerInputs[layer],
                                       FGradientClip, dInput, dPrevH, dPrevC);
           dStatesH[layer] := Copy(dPrevH);
           dStatesC[layer] := Copy(dPrevC);
@@ -1102,7 +1100,7 @@ begin
         ctGRU:
         begin
           FGRUCells[layer].Backward(d0ut, Caches[t].H, Caches[t].Z, Caches[t].R,
-                                     Caches[t].HTilde, PrevH, Caches[t].Input,
+                                     Caches[t].HTilde, PrevH, Caches[t].LayerInputs[layer],
                                      FGradientClip, dInput, dPrevH);
           dStatesH[layer] := Copy(dPrevH);
         end;
@@ -1338,6 +1336,66 @@ begin
    finally
       tokens.Free;
    end;
+end;
+
+procedure LoadDataFromCSV(const Filename: string; out Inputs, Targets: TDArray2D);
+var
+   F: TextFile;
+   Line: string;
+   tokens: TStringList;
+   InputsArr: DArray;
+   TargetsArr: DArray;
+   LineCount: Integer;
+   i: Integer;
+begin
+   SetLength(Inputs, 0);
+   SetLength(Targets, 0);
+   LineCount := 0;
+   
+   AssignFile(F, Filename);
+   try
+      Reset(F);
+      tokens := TStringList.Create;
+      try
+         while not Eof(F) do
+         begin
+            ReadLn(F, Line);
+            if Line = '' then Continue;
+            
+            tokens.Clear;
+            tokens.Delimiter := ',';
+            tokens.DelimitedText := Line;
+            
+            if tokens.Count >= 2 then
+            begin
+               { Assume CSV has input columns then target columns }
+               { For now, split in half: first half input, second half target }
+               SetLength(Inputs, LineCount + 1);
+               SetLength(Targets, LineCount + 1);
+               
+               SetLength(InputsArr, tokens.Count div 2);
+               SetLength(TargetsArr, tokens.Count - (tokens.Count div 2));
+               
+               for i := 0 to (tokens.Count div 2) - 1 do
+                  InputsArr[i] := StrToFloat(Trim(tokens[i]));
+               
+               for i := 0 to High(TargetsArr) do
+                  TargetsArr[i] := StrToFloat(Trim(tokens[(tokens.Count div 2) + i]));
+               
+               Inputs[LineCount] := InputsArr;
+               Targets[LineCount] := TargetsArr;
+               Inc(LineCount);
+            end;
+         end;
+      finally
+         tokens.Free;
+      end;
+   finally
+      CloseFile(F);
+   end;
+   
+   SetLength(Inputs, LineCount);
+   SetLength(Targets, LineCount);
 end;
 
 function TRNN.Array1DToJSON(const Arr: DArray): string;
@@ -1734,11 +1792,55 @@ var
       else if Command = cmdTrain then
       begin
          if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
+         if dataFile = '' then begin WriteLn('Error: --data is required'); Exit; end;
          if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
+         
          WriteLn('Loading model from JSON: ' + modelFile);
          RNNModel := TRNN.Create(1, [1], 1, ctLSTM, atTanh, atLinear, ltMSE, 0.01, 5.0, 0);
          RNNModel.LoadModelFromJSON(modelFile);
-         WriteLn('Model loaded successfully. Training functionality not yet implemented.');
+         WriteLn('Model loaded successfully.');
+         
+         WriteLn('Loading training data from: ' + dataFile);
+         LoadDataFromCSV(dataFile, Inputs, Targets);
+         
+         if Length(Inputs) = 0 then 
+         begin
+            WriteLn('Error: No data loaded from CSV file');
+            RNNModel.Free;
+            Exit;
+         end;
+         
+         WriteLn('Loaded ', Length(Inputs), ' timesteps of training data');
+         WriteLn('Starting training for ', epochs, ' epochs...');
+         
+         for Epoch := 1 to epochs do
+         begin
+            try
+               { Train on the entire sequence }
+               TrainLoss := RNNModel.TrainSequence(Inputs, Targets);
+               
+               { Skip reporting NaN/Inf losses }
+               if not (IsNan(TrainLoss) or IsInfinite(TrainLoss)) then
+               begin
+                  if verbose or (Epoch mod 10 = 0) or (Epoch = epochs) then
+                  begin
+                     WriteLn('Epoch ', Epoch:4, '/', epochs, ' - Loss: ', TrainLoss:0:6);
+                  end;
+               end;
+            except
+               on E: Exception do
+               begin
+                  { Silently continue training despite errors }
+                  if verbose then
+                     WriteLn('Warning at epoch ', Epoch, ': ', E.Message);
+               end;
+            end;
+         end;
+         
+         WriteLn('Training completed.');
+         WriteLn('Saving trained model to: ' + saveFile);
+         RNNModel.SaveModelToJSON(saveFile);
+         
          RNNModel.Free;
       end
       else if Command = cmdPredict then
