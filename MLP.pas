@@ -2039,10 +2039,46 @@ begin
    else if Command = cmdPredict then
    begin
       if modelFile = '' then begin WriteLn('Error: --model is required'); Exit; end;
-      WriteLn('Loading model from JSON: ' + modelFile);
+      if Length(inputValues) = 0 then begin WriteLn('Error: --input is required'); Exit; end;
+
       MLP := TMultiLayerPerceptron.Create(1, [1], 1, atSigmoid, atSigmoid);
       MLP.LoadModelFromJSON(modelFile);
-      WriteLn('Model loaded successfully. Prediction functionality not yet implemented.');
+      if MLP = nil then begin WriteLn('Error: Failed to load model'); Exit; end;
+      
+      if Length(inputValues) <> MLP.GetInputSize then
+      begin
+         WriteLn('Error: Expected ', MLP.GetInputSize, ' input values, got ', Length(inputValues));
+         MLP.Free;
+         Exit;
+      end;
+      
+      output := MLP.Predict(inputValues);
+      
+      Write('Input: ');
+      for i := 0 to High(inputValues) do
+      begin
+         if i > 0 then Write(', ');
+         Write(inputValues[i]:0:4);
+      end;
+      WriteLn;
+      
+      Write('Output: ');
+      for i := 0 to High(output) do
+      begin
+         if i > 0 then Write(', ');
+         Write(output[i]:0:6);
+      end;
+      WriteLn;
+      
+      if Length(output) > 1 then
+      begin
+         maxIdx := 0;
+         for i := 1 to High(output) do
+            if output[i] > output[maxIdx] then
+               maxIdx := i;
+         WriteLn('Max index: ', maxIdx);
+      end;
+      
       MLP.Free;
    end
    else if Command = cmdInfo then
