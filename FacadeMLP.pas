@@ -1,7 +1,30 @@
 //
-// Matthew Abbott 2025
 // Facaded MLP
 //
+
+(*
+ * MIT License
+ * 
+ * Copyright (c) 2025 Matthew Abbott
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software. 
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *)
 
 {$mode objfpc}
 {$M+}
@@ -899,90 +922,114 @@ begin
 
    procedure TMultiLayerPerceptron.SaveModelToJSON(const Filename: string);
    var
-   SL: TStringList;
-   I, J, K: Integer;
+   F: TextFile;
+   I, J, K, L: Integer;
    WeightsArr: array of Darray;
    BiasArr: Darray;
+   FirstRow: Boolean;
    begin
-   SL := TStringList.Create;
+   AssignFile(F, Filename);
+   Rewrite(F);
    try
-   SL.Add('{');
-   SL.Add('  "model_type": "MLP",');
-   SL.Add('  "input_size": ' + IntToStr(FInputSize) + ',');
-   SL.Add('  "output_size": ' + IntToStr(FOutputSize) + ',');
-   
-   { Hidden sizes array }
-   SL.Add('  "hidden_sizes": [');
-   for I := 0 to High(FHiddenSizes) do
-   begin
-     if I < High(FHiddenSizes) then
-       SL.Add('    ' + IntToStr(FHiddenSizes[I]) + ',')
-     else
-       SL.Add('    ' + IntToStr(FHiddenSizes[I]));
-   end;
-   SL.Add('  ],');
-   
-   { Configuration }
-   SL.Add('  "hidden_activation": "' + ActivationToStr(HiddenActivation) + '",');
-   SL.Add('  "output_activation": "' + ActivationToStr(OutputActivation) + '",');
-   SL.Add('  "optimizer": "' + OptimizerToStr(Optimizer) + '",');
-   SL.Add('  "learning_rate": ' + FloatToStr(LearningRate) + ',');
-   SL.Add('  "dropout_rate": ' + FloatToStr(DropoutRate) + ',');
-   SL.Add('  "l2_lambda": ' + FloatToStr(L2Lambda) + ',');
-   SL.Add('  "beta1": ' + FloatToStr(Beta1) + ',');
-   SL.Add('  "beta2": ' + FloatToStr(Beta2) + ',');
-   SL.Add('  "timestep": ' + IntToStr(Timestep) + ',');
-   SL.Add('  "max_iterations": ' + IntToStr(MaxIterations) + ',');
-   
-   { Hidden layers weights and biases }
-   SL.Add('  "hidden_layers": [');
-   for K := 0 to High(FHiddenLayers) do
-   begin
-     SL.Add('    {');
+     WriteLn(F, '{');
+     WriteLn(F, '  "model_type": "MLP",');
+     WriteLn(F, '  "input_size": ' + IntToStr(FInputSize) + ',');
+     WriteLn(F, '  "output_size": ' + IntToStr(FOutputSize) + ',');
      
-     { Collect weights for this layer }
-     SetLength(WeightsArr, Length(FHiddenLayers[K].Neurons));
-     SetLength(BiasArr, Length(FHiddenLayers[K].Neurons));
-     for I := 0 to High(FHiddenLayers[K].Neurons) do
+     { Hidden sizes array }
+     WriteLn(F, '  "hidden_sizes": [');
+     for I := 0 to High(FHiddenSizes) do
      begin
-       SetLength(WeightsArr[I], Length(FHiddenLayers[K].Neurons[I].Weights));
-       for J := 0 to High(FHiddenLayers[K].Neurons[I].Weights) do
-         WeightsArr[I][J] := FHiddenLayers[K].Neurons[I].Weights[J];
-       BiasArr[I] := FHiddenLayers[K].Neurons[I].Bias;
+       if I < High(FHiddenSizes) then
+         WriteLn(F, '    ' + IntToStr(FHiddenSizes[I]) + ',')
+       else
+         WriteLn(F, '    ' + IntToStr(FHiddenSizes[I]));
+     end;
+     WriteLn(F, '  ],');
+     
+     { Configuration }
+     WriteLn(F, '  "hidden_activation": "' + ActivationToStr(HiddenActivation) + '",');
+     WriteLn(F, '  "output_activation": "' + ActivationToStr(OutputActivation) + '",');
+     WriteLn(F, '  "optimizer": "' + OptimizerToStr(Optimizer) + '",');
+     WriteLn(F, '  "learning_rate": ' + FloatToStr(LearningRate) + ',');
+     WriteLn(F, '  "dropout_rate": ' + FloatToStr(DropoutRate) + ',');
+     WriteLn(F, '  "l2_lambda": ' + FloatToStr(L2Lambda) + ',');
+     WriteLn(F, '  "beta1": ' + FloatToStr(Beta1) + ',');
+     WriteLn(F, '  "beta2": ' + FloatToStr(Beta2) + ',');
+     WriteLn(F, '  "timestep": ' + IntToStr(Timestep) + ',');
+     WriteLn(F, '  "max_iterations": ' + IntToStr(MaxIterations) + ',');
+     
+     { Hidden layers weights and biases }
+     WriteLn(F, '  "hidden_layers": [');
+     for K := 0 to High(FHiddenLayers) do
+     begin
+       WriteLn(F, '    {');
+       
+       { Collect weights for this layer }
+       SetLength(WeightsArr, Length(FHiddenLayers[K].Neurons));
+       SetLength(BiasArr, Length(FHiddenLayers[K].Neurons));
+       for I := 0 to High(FHiddenLayers[K].Neurons) do
+       begin
+         SetLength(WeightsArr[I], Length(FHiddenLayers[K].Neurons[I].Weights));
+         for J := 0 to High(FHiddenLayers[K].Neurons[I].Weights) do
+           WeightsArr[I][J] := FHiddenLayers[K].Neurons[I].Weights[J];
+         BiasArr[I] := FHiddenLayers[K].Neurons[I].Bias;
+       end;
+       
+       { Write weights }
+       WriteLn(F, '      "weights": [');
+       for I := 0 to High(WeightsArr) do
+       begin
+         Write(F, '        ');
+         Write(F, Array1DToJSON(WeightsArr[I]));
+         if I < High(WeightsArr) then
+           WriteLn(F, ',')
+         else
+           WriteLn(F, '');
+       end;
+       WriteLn(F, '      ],');
+       
+       { Write biases }
+       WriteLn(F, '      "biases": ' + Array1DToJSON(BiasArr));
+       
+       if K < High(FHiddenLayers) then
+         WriteLn(F, '    },')
+       else
+         WriteLn(F, '    }');
+     end;
+     WriteLn(F, '  ],');
+     
+     { Output layer weights and biases }
+     SetLength(WeightsArr, Length(FOutputLayer.Neurons));
+     SetLength(BiasArr, Length(FOutputLayer.Neurons));
+     for I := 0 to High(FOutputLayer.Neurons) do
+     begin
+       SetLength(WeightsArr[I], Length(FOutputLayer.Neurons[I].Weights));
+       for J := 0 to High(FOutputLayer.Neurons[I].Weights) do
+         WeightsArr[I][J] := FOutputLayer.Neurons[I].Weights[J];
+       BiasArr[I] := FOutputLayer.Neurons[I].Bias;
      end;
      
-     SL.Add('      "weights": ' + Array2DToJSON(WeightsArr) + ',');
-     SL.Add('      "biases": ' + Array1DToJSON(BiasArr));
+     WriteLn(F, '  "output_layer": {');
+     WriteLn(F, '    "weights": [');
+     for I := 0 to High(WeightsArr) do
+     begin
+       Write(F, '      ');
+       Write(F, Array1DToJSON(WeightsArr[I]));
+       if I < High(WeightsArr) then
+         WriteLn(F, ',')
+       else
+         WriteLn(F, '');
+     end;
+     WriteLn(F, '    ],');
+     WriteLn(F, '    "biases": ' + Array1DToJSON(BiasArr));
+     WriteLn(F, '  }');
      
-     if K < High(FHiddenLayers) then
-       SL.Add('    },')
-     else
-       SL.Add('    }');
-   end;
-   SL.Add('  ],');
-   
-   { Output layer weights and biases }
-   SetLength(WeightsArr, Length(FOutputLayer.Neurons));
-   SetLength(BiasArr, Length(FOutputLayer.Neurons));
-   for I := 0 to High(FOutputLayer.Neurons) do
-   begin
-     SetLength(WeightsArr[I], Length(FOutputLayer.Neurons[I].Weights));
-     for J := 0 to High(FOutputLayer.Neurons[I].Weights) do
-       WeightsArr[I][J] := FOutputLayer.Neurons[I].Weights[J];
-     BiasArr[I] := FOutputLayer.Neurons[I].Bias;
-   end;
-   
-   SL.Add('  "output_layer": {');
-   SL.Add('    "weights": ' + Array2DToJSON(WeightsArr) + ',');
-   SL.Add('    "biases": ' + Array1DToJSON(BiasArr));
-   SL.Add('  }');
-   
-   SL.Add('}');
-   
-   SL.SaveToFile(Filename);
-   WriteLn('Model saved to JSON: ', Filename);
+     WriteLn(F, '}');
+     
+     WriteLn('Model saved to JSON: ', Filename);
    finally
-   SL.Free;
+     CloseFile(F);
    end;
    end;
 
