@@ -1,7 +1,26 @@
-//
-// Matthew Abbott
-// FacadeGNN
-//
+(*
+ * MIT License
+ * 
+ * Copyright (c) 2025 Matthew Abbott
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software. 
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *)
 
 {$mode objfpc}{$H+}
 {$modeswitch advancedrecords}
@@ -2228,6 +2247,11 @@ var
     Content: string;
     ValueStr: string;
     I, J, K: Integer;
+    FeatureSize, HiddenSize, OutputSize, NumMPLayers: Integer;
+    LR: Double;
+    Act: TActivationType;
+    Loss: TLossType;
+    MaxIter: Integer;
     
     function ExtractJSONValue(const json: string; const key: string): string;
     var
@@ -2312,42 +2336,60 @@ begin
         SL.LoadFromFile(Filename);
         Content := SL.Text;
         
-        { Load config }
+        { Extract all config values first }
+        FeatureSize := 1;
+        HiddenSize := 1;
+        OutputSize := 1;
+        NumMPLayers := 1;
+        LR := 0.01;
+        Act := atReLU;
+        Loss := ltMSE;
+        MaxIter := 100;
+        
         ValueStr := ExtractJSONValue(Content, 'feature_size');
         if ValueStr <> '' then
-        begin
-            if FGNN <> nil then
-                FGNN.Free;
-            FGNN := TGraphNeuralNetwork.Create(StrToInt(ValueStr), 1, 1, 1);
-        end;
+            FeatureSize := StrToInt(ValueStr);
         
         ValueStr := ExtractJSONValue(Content, 'hidden_size');
         if ValueStr <> '' then
-            FGNN.FHiddenSize := StrToInt(ValueStr);
+            HiddenSize := StrToInt(ValueStr);
         
         ValueStr := ExtractJSONValue(Content, 'output_size');
         if ValueStr <> '' then
-            FGNN.FOutputSize := StrToInt(ValueStr);
+            OutputSize := StrToInt(ValueStr);
         
         ValueStr := ExtractJSONValue(Content, 'num_message_passing_layers');
         if ValueStr <> '' then
-            FGNN.FNumMessagePassingLayers := StrToInt(ValueStr);
+            NumMPLayers := StrToInt(ValueStr);
         
         ValueStr := ExtractJSONValue(Content, 'learning_rate');
         if ValueStr <> '' then
-            FGNN.LearningRate := StrToFloat(ValueStr);
+            LR := StrToFloat(ValueStr);
         
         ValueStr := ExtractJSONValue(Content, 'activation');
         if ValueStr <> '' then
-            FGNN.Activation := ParseActivation(ValueStr);
+            Act := ParseActivation(ValueStr);
         
         ValueStr := ExtractJSONValue(Content, 'loss_type');
         if ValueStr <> '' then
-            FGNN.LossFunction := ParseLoss(ValueStr);
+            Loss := ParseLoss(ValueStr);
         
         ValueStr := ExtractJSONValue(Content, 'max_iterations');
         if ValueStr <> '' then
-            FGNN.MaxIterations := StrToInt(ValueStr);
+            MaxIter := StrToInt(ValueStr);
+        
+        { Now recreate GNN with correct dimensions }
+        if FGNN <> nil then
+            FGNN.Free;
+        FGNN := TGraphNeuralNetwork.Create(FeatureSize, HiddenSize, OutputSize, NumMPLayers);
+        FGNN.LearningRate := LR;
+        FGNN.Activation := Act;
+        FGNN.LossFunction := Loss;
+        FGNN.MaxIterations := MaxIter;
+        
+        { Reinitialize facade state }
+        InitializeMasks;
+        InitializeOptimizerStates;
         
         WriteLn('Model loaded from JSON: ', Filename);
     finally
