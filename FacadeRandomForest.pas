@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  *)
-
+ 
 {$mode objfpc}
 {$H+}
 
@@ -32,7 +32,7 @@ uses
 
 const
    MAX_FEATURES = 100;
-   MAX_SAMPLES = 10000;
+   MAX_SAMPLES = 2000;
    MAX_TREES = 500;
    MAX_DEPTH_DEFAULT = 10;
    MIN_SAMPLES_LEAF_DEFAULT = 1;
@@ -2304,9 +2304,12 @@ begin
          
          for i := 0 to getNumTrees() - 1 do
          begin
-            classLabel := round(forest.predictTree(forest.getTree(i)^.root, sample));
-            if (classLabel >= 0) and (classLabel <= 99) then
-               votes[classLabel] := votes[classLabel] + 1;
+            if (forest.getTree(i) <> nil) and (forest.getTree(i)^.root <> nil) then
+            begin
+               classLabel := round(forest.predictTree(forest.getTree(i)^.root, sample));
+               if (classLabel >= 0) and (classLabel <= 99) then
+                  votes[classLabel] := votes[classLabel] + 1;
+            end;
          end;
          
          maxVotes := 0;
@@ -2329,9 +2332,12 @@ begin
          
          for i := 0 to getNumTrees() - 1 do
          begin
-            classLabel := round(forest.predictTree(forest.getTree(i)^.root, sample));
-            if (classLabel >= 0) and (classLabel <= 99) then
-               votes[classLabel] := votes[classLabel] + treeWeights[i];
+            if (forest.getTree(i) <> nil) and (forest.getTree(i)^.root <> nil) then
+            begin
+               classLabel := round(forest.predictTree(forest.getTree(i)^.root, sample));
+               if (classLabel >= 0) and (classLabel <= 99) then
+                  votes[classLabel] := votes[classLabel] + treeWeights[i];
+            end;
          end;
          
          maxVotes := 0;
@@ -2351,8 +2357,14 @@ begin
       begin
          sum := 0;
          for i := 0 to getNumTrees() - 1 do
-            sum := sum + forest.predictTree(forest.getTree(i)^.root, sample);
-         aggregatePredictions := sum / getNumTrees();
+         begin
+            if (forest.getTree(i) <> nil) and (forest.getTree(i)^.root <> nil) then
+               sum := sum + forest.predictTree(forest.getTree(i)^.root, sample);
+         end;
+         if getNumTrees() > 0 then
+            aggregatePredictions := sum / getNumTrees()
+         else
+            aggregatePredictions := 0;
       end;
       
       WeightedMean:
@@ -2361,9 +2373,12 @@ begin
          weightSum := 0;
          for i := 0 to getNumTrees() - 1 do
          begin
-            pred := forest.predictTree(forest.getTree(i)^.root, sample);
-            sum := sum + pred * treeWeights[i];
-            weightSum := weightSum + treeWeights[i];
+            if (forest.getTree(i) <> nil) and (forest.getTree(i)^.root <> nil) then
+            begin
+               pred := forest.predictTree(forest.getTree(i)^.root, sample);
+               sum := sum + pred * treeWeights[i];
+               weightSum := weightSum + treeWeights[i];
+            end;
          end;
          if weightSum > 0 then
             aggregatePredictions := sum / weightSum
@@ -3048,7 +3063,16 @@ var
    sc: SplitCriterion;
    tree: TDecisionTree;
    magic: longint;
+   ext: string;
 begin
+   { Check if filename ends with .json - use JSON format }
+   ext := LowerCase(ExtractFileExt(filename));
+   if ext = '.json' then
+   begin
+      saveModelToJSON(filename);
+      exit;
+   end;
+   
    assign(f, filename);
    rewrite(f, 1);
    
@@ -3719,11 +3743,6 @@ begin
       exit;
    end;
    
-   if not eof(f) then
-   begin
-      readln(f, line);
-   end;
-   
    while not eof(f) and (nSamples < MAX_SAMPLES) do
    begin
       readln(f, line);
@@ -4072,7 +4091,7 @@ begin
    
    { Parse task type }
    taskStr := lowercase(taskStr);
-   if taskStr = 'reg' then
+   if (taskStr = 'reg') or (taskStr = 'regression') then
       task := Regression
    else
       task := Classification;
@@ -4367,11 +4386,12 @@ var
    data: TDataMatrix;
    targets: TTargetArray;
    nSamples, nFeatures: integer;
-   dataFile, modelFile: string;
+   dataFile, modelFile, saveFile: string;
    targetCol: integer;
 begin
    modelFile := GetArg('--model');
    dataFile := GetArg('--data');
+   saveFile := GetArg('--save');
    targetCol := GetArgInt('--target-col', -1);
    
    if modelFile = '' then
@@ -4384,6 +4404,8 @@ begin
       writeln('Error: --data is required (for bootstrap sampling)');
       exit;
    end;
+   if saveFile = '' then
+      saveFile := modelFile;
    
    facade.create();
    if not facade.loadModel(modelFile) then
@@ -4394,17 +4416,19 @@ begin
    
    facade.loadData(data, targets, nSamples, nFeatures);
    facade.addTree();
-   facade.saveModel(modelFile);
+   writeln('Added new tree. Total trees: ', facade.getNumTrees());
+   facade.saveModel(saveFile);
    facade.freeForest();
 end;
 
 procedure CmdRemoveTree();
 var
    facade: TRandomForestFacade;
-   modelFile: string;
+   modelFile, saveFile: string;
    treeId: integer;
 begin
    modelFile := GetArg('--model');
+   saveFile := GetArg('--save');
    treeId := GetArgInt('--tree', -1);
    
    if modelFile = '' then
@@ -4417,13 +4441,16 @@ begin
       writeln('Error: --tree is required');
       exit;
    end;
+   if saveFile = '' then
+      saveFile := modelFile;
    
    facade.create();
    if not facade.loadModel(modelFile) then
       exit;
    
    facade.removeTree(treeId);
-   facade.saveModel(modelFile);
+   writeln('Removed tree ', treeId, '. Total trees: ', facade.getNumTrees());
+   facade.saveModel(saveFile);
    facade.freeForest();
 end;
 
@@ -4433,11 +4460,12 @@ var
    data: TDataMatrix;
    targets: TTargetArray;
    nSamples, nFeatures: integer;
-   dataFile, modelFile: string;
+   dataFile, modelFile, saveFile: string;
    treeId, targetCol: integer;
 begin
    modelFile := GetArg('--model');
    dataFile := GetArg('--data');
+   saveFile := GetArg('--save');
    treeId := GetArgInt('--tree', -1);
    targetCol := GetArgInt('--target-col', -1);
    
@@ -4456,6 +4484,8 @@ begin
       writeln('Error: --tree is required');
       exit;
    end;
+   if saveFile = '' then
+      saveFile := modelFile;
    
    facade.create();
    if not facade.loadModel(modelFile) then
@@ -4466,17 +4496,19 @@ begin
    
    facade.loadData(data, targets, nSamples, nFeatures);
    facade.retrainTree(treeId);
-   facade.saveModel(modelFile);
+   writeln('Retrained tree ', treeId);
+   facade.saveModel(saveFile);
    facade.freeForest();
 end;
 
 procedure CmdPrune();
 var
    facade: TRandomForestFacade;
-   modelFile: string;
+   modelFile, saveFile: string;
    treeId, nodeId: integer;
 begin
    modelFile := GetArg('--model');
+   saveFile := GetArg('--save');
    treeId := GetArgInt('--tree', -1);
    nodeId := GetArgInt('--node', -1);
    
@@ -4495,13 +4527,16 @@ begin
       writeln('Error: --node is required');
       exit;
    end;
+   if saveFile = '' then
+      saveFile := modelFile;
    
    facade.create();
    if not facade.loadModel(modelFile) then
       exit;
    
    facade.pruneTree(treeId, nodeId);
-   facade.saveModel(modelFile);
+   writeln('Pruned tree ', treeId, ' at node ', nodeId);
+   facade.saveModel(saveFile);
    facade.freeForest();
 end;
 
