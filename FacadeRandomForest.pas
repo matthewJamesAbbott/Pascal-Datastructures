@@ -4,6 +4,7 @@
 //
 
 {$mode objfpc}
+{$H+}
 
 program RandomForest;
 
@@ -365,6 +366,8 @@ type
       function criterionToStr(c: SplitCriterion): string;
       function parseTaskType(const s: string): TaskType;
       function parseCriterion(const s: string): SplitCriterion;
+      function treeNodeToJSON(node: TreeNode): string;
+      function JSONToTreeNode(const json: string): TreeNode;
       
       procedure freeForest();
       end;
@@ -3070,6 +3073,14 @@ var
 begin
    loadModel := false;
    
+   { Try JSON first }
+   if loadModelFromJSON(filename) then
+   begin
+      loadModel := true;
+      exit;
+   end;
+   
+   { Fall back to binary format }
    assign(f, filename);
    {$I-}
    reset(f, 1);
@@ -3151,178 +3162,504 @@ end;
 
 function TRandomForestFacade.parseCriterion(const s: string): SplitCriterion;
 begin
-   if lowercase(s) = 'gini' then
-      parseCriterion := Gini
-   else if lowercase(s) = 'entropy' then
-      parseCriterion := Entropy
-   else if lowercase(s) = 'mse' then
-      parseCriterion := MSE
-   else if lowercase(s) = 'variance' then
-      parseCriterion := VarianceReduction
-   else
-      parseCriterion := Gini;
+    if lowercase(s) = 'gini' then
+       parseCriterion := Gini
+    else if lowercase(s) = 'entropy' then
+       parseCriterion := Entropy
+    else if lowercase(s) = 'mse' then
+       parseCriterion := MSE
+    else if lowercase(s) = 'variance' then
+       parseCriterion := VarianceReduction
+    else
+       parseCriterion := Gini;
+end;
+
+function TRandomForestFacade.treeNodeToJSON(node: TreeNode): string;
+var
+    leftJSON, rightJSON, impurity_str, threshold_str: string;
+begin
+    if node = nil then
+    begin
+        Result := 'null';
+        Exit;
+    end;
+    
+    Result := '{';
+    Result := Result + '"isLeaf":' + BoolToStr(node^.isLeaf, 'true', 'false');
+    
+    if node^.isLeaf then
+    begin
+        Result := Result + ',"prediction":' + FloatToStr(node^.prediction);
+        Result := Result + ',"classLabel":' + IntToStr(node^.classLabel);
+    end
+    else
+    begin
+        Result := Result + ',"featureIndex":' + IntToStr(node^.featureIndex);
+        
+        threshold_str := FloatToStr(node^.threshold);
+        Result := Result + ',"threshold":' + threshold_str;
+        
+        impurity_str := FloatToStr(node^.impurity);
+        Result := Result + ',"impurity":' + impurity_str;
+        
+        Result := Result + ',"numSamples":' + IntToStr(node^.numSamples);
+        
+        leftJSON := treeNodeToJSON(node^.left);
+        Result := Result + ',"left":' + leftJSON;
+        
+        rightJSON := treeNodeToJSON(node^.right);
+        Result := Result + ',"right":' + rightJSON;
+    end;
+    
+    Result := Result + '}';
+end;
+
+function TRandomForestFacade.JSONToTreeNode(const json: string): TreeNode;
+var
+    node: TreeNode;
+    isLeaf: boolean;
+    s: string;
+    
+    function ExtractJSONValue(const json: string; const key: string): string;
+    var
+       KeyPos, ColonPos, QuotePos1, QuotePos2, StartPos, EndPos: integer;
+    begin
+       KeyPos := Pos('"' + key + '"', json);
+       if KeyPos > 0 then
+       begin
+          ColonPos := PosEx(':', json, KeyPos);
+          if ColonPos > 0 then
+          begin
+             StartPos := ColonPos + 1;
+             { Skip whitespace }
+             while (StartPos <= Length(json)) and (json[StartPos] in [' ', #9, #10, #13]) do
+                Inc(StartPos);
+             
+             { Check if value is a quoted string }
+             if (StartPos <= Length(json)) and (json[StartPos] = '"') then
+             begin
+                QuotePos1 := StartPos;
+                QuotePos2 := PosEx('"', json, QuotePos1 + 1);
+                if QuotePos2 > 0 then
+                   Result := Copy(json, QuotePos1 + 1, QuotePos2 - QuotePos1 - 1)
+                else
+                   Result := '';
+             end
+             else
+             begin
+                { Value is a number or boolean }
+                EndPos := PosEx(',', json, StartPos);
+                if EndPos = 0 then
+                   EndPos := PosEx('}', json, StartPos);
+                if EndPos = 0 then
+                   EndPos := PosEx(']', json, StartPos);
+                Result := Trim(Copy(json, StartPos, EndPos - StartPos));
+             end;
+          end
+          else
+             Result := '';
+       end
+       else
+          Result := '';
+    end;
+    
+    function ExtractJSONSubObject(const json: string; const key: string): string;
+    var
+        KeyPos, ColonPos, StartPos, BraceCount, i: integer;
+    begin
+        KeyPos := Pos('"' + key + '"', json);
+        if KeyPos = 0 then
+        begin
+            Result := '';
+            Exit;
+        end;
+        
+        ColonPos := PosEx(':', json, KeyPos);
+        if ColonPos = 0 then
+        begin
+            Result := '';
+            Exit;
+        end;
+        
+        StartPos := ColonPos + 1;
+        while (StartPos <= Length(json)) and (json[StartPos] in [' ', #9, #10, #13]) do
+            Inc(StartPos);
+        
+        if (StartPos > Length(json)) or (json[StartPos] <> '{') then
+        begin
+            Result := '';
+            Exit;
+        end;
+        
+        BraceCount := 0;
+        i := StartPos;
+        while i <= Length(json) do
+        begin
+            if json[i] = '{' then
+                Inc(BraceCount)
+            else if json[i] = '}' then
+            begin
+                Dec(BraceCount);
+                if BraceCount = 0 then
+                begin
+                    Result := Copy(json, StartPos, i - StartPos + 1);
+                    Exit;
+                end;
+            end;
+            Inc(i);
+        end;
+        Result := '';
+    end;
+
+begin
+    if Trim(json) = 'null' then
+    begin
+        Result := nil;
+        Exit;
+    end;
+    
+    New(node);
+    
+    s := ExtractJSONValue(json, 'isLeaf');
+    isLeaf := (s = 'true');
+    node^.isLeaf := isLeaf;
+    
+    if isLeaf then
+    begin
+        s := ExtractJSONValue(json, 'prediction');
+        if s <> '' then
+            node^.prediction := StrToFloat(s);
+        
+        s := ExtractJSONValue(json, 'classLabel');
+        if s <> '' then
+            node^.classLabel := StrToInt(s);
+        
+        node^.left := nil;
+        node^.right := nil;
+    end
+    else
+    begin
+        s := ExtractJSONValue(json, 'featureIndex');
+        if s <> '' then
+            node^.featureIndex := StrToInt(s);
+        
+        s := ExtractJSONValue(json, 'threshold');
+        if s <> '' then
+            node^.threshold := StrToFloat(s);
+        
+        s := ExtractJSONValue(json, 'impurity');
+        if s <> '' then
+            node^.impurity := StrToFloat(s);
+        
+        s := ExtractJSONValue(json, 'numSamples');
+        if s <> '' then
+            node^.numSamples := StrToInt(s);
+        
+        s := ExtractJSONSubObject(json, 'left');
+        if s <> '' then
+            node^.left := JSONToTreeNode(s)
+        else
+            node^.left := nil;
+        
+        s := ExtractJSONSubObject(json, 'right');
+        if s <> '' then
+            node^.right := JSONToTreeNode(s)
+        else
+            node^.right := nil;
+    end;
+    
+    Result := node;
 end;
 
 procedure TRandomForestFacade.saveModelToJSON(filename: string);
 var
-   SL: TStringList;
+     SL: TStringList;
+     i: integer;
+     tree: TDecisionTree;
+     treeJSON: string;
 begin
-   SL := TStringList.Create;
-   try
-      SL.Add('{');
-      SL.Add('  "metadata": {');
-      SL.Add('    "version": "1.0",');
-      SL.Add('    "model_type": "RandomForestFacade",');
-      SL.Add('    "created": "2025-12-31"');
-      SL.Add('  },');
-      SL.Add('  "hyperparameters": {');
-      SL.Add('    "num_trees": ' + IntToStr(forest.getNumTrees()) + ',');
-      SL.Add('    "max_depth": ' + IntToStr(forest.getMaxDepth()) + ',');
-      SL.Add('    "min_samples_leaf": ' + IntToStr(forest.getMinSamplesLeaf()) + ',');
-      SL.Add('    "min_samples_split": ' + IntToStr(forest.getMinSamplesSplit()) + ',');
-      SL.Add('    "max_features": ' + IntToStr(forest.getMaxFeatures()) + ',');
-      SL.Add('    "random_seed": ' + IntToStr(forest.getRandomSeed()) + ',');
-      SL.Add('    "task_type": "' + taskTypeToStr(forest.getTaskType()) + '",');
-      SL.Add('    "criterion": "' + criterionToStr(forest.getCriterion()) + '"');
-      SL.Add('  },');
-      SL.Add('  "training_data_info": {');
-      SL.Add('    "num_samples": ' + IntToStr(forest.getNumSamples()) + ',');
-      SL.Add('    "num_features": ' + IntToStr(forest.getNumFeatures()));
-      SL.Add('  }');
-      SL.Add('}');
-      
-      SL.SaveToFile(filename);
-      WriteLn('Model configuration saved to JSON: ', filename);
-   finally
-      SL.Free;
-   end;
+     SL := TStringList.Create;
+     try
+        SL.Add('{');
+        SL.Add('  "num_trees": ' + IntToStr(forest.getNumTrees()) + ',');
+        SL.Add('  "max_depth": ' + IntToStr(forest.getMaxDepth()) + ',');
+        SL.Add('  "min_samples_leaf": ' + IntToStr(forest.getMinSamplesLeaf()) + ',');
+        SL.Add('  "min_samples_split": ' + IntToStr(forest.getMinSamplesSplit()) + ',');
+        SL.Add('  "max_features": ' + IntToStr(forest.getMaxFeatures()) + ',');
+        SL.Add('  "num_features": ' + IntToStr(forest.getNumFeatures()) + ',');
+        SL.Add('  "num_samples": ' + IntToStr(forest.getNumSamples()) + ',');
+        SL.Add('  "task_type": "' + taskTypeToStr(forest.getTaskType()) + '",');
+        SL.Add('  "criterion": "' + criterionToStr(forest.getCriterion()) + '",');
+        SL.Add('  "random_seed": ' + IntToStr(forest.getRandomSeed()) + ',');
+        
+        { Serialize trees }
+        SL.Add('  "trees": [');
+        for i := 0 to forest.getNumTrees() - 1 do
+        begin
+            tree := forest.getTree(i);
+            if tree <> nil then
+            begin
+                treeJSON := treeNodeToJSON(tree^.root);
+                if i < forest.getNumTrees() - 1 then
+                    SL.Add('    ' + treeJSON + ',')
+                else
+                    SL.Add('    ' + treeJSON);
+            end
+            else
+            begin
+                if i < forest.getNumTrees() - 1 then
+                    SL.Add('    null,')
+                else
+                    SL.Add('    null');
+            end;
+        end;
+        SL.Add('  ]');
+        SL.Add('}');
+        
+        SL.SaveToFile(filename);
+        WriteLn('Model saved to JSON: ', filename);
+     finally
+        SL.Free;
+     end;
 end;
 
 function TRandomForestFacade.loadModelFromJSON(filename: string): boolean;
 var
-   SL: TStringList;
-   ValueStr: string;
-   numT, maxD, minL, minS, maxF: integer;
-   tt: TaskType;
-   sc: SplitCriterion;
-   i: integer;
-   
-   function ExtractJSONValueFromList(const SL: TStringList; const key: string): string;
-   var
-      j: integer;
-      line: string;
-      keyStr: string;
-      colonPos, quotePos1, quotePos2: integer;
-   begin
-      Result := '';
-      keyStr := '"' + key + '"';
-      
-      for j := 0 to SL.Count - 1 do
-      begin
-         line := SL[j];
-         if Pos(keyStr, line) > 0 then
-         begin
-            { Found the key, extract the value }
-            colonPos := Pos(':', line);
-            if colonPos > 0 then
+    SL: TStringList;
+    Content: string;
+    ValueStr: string;
+    numT, maxD, minL, minS, maxF: integer;
+    tt: TaskType;
+    sc: SplitCriterion;
+    i, numTrees: integer;
+    treeJSON: string;
+    tree: TDecisionTree;
+    
+    function ExtractJSONValueFromContent(const content: string; const key: string): string;
+    var
+       KeyPos, ColonPos, QuotePos1, QuotePos2, StartPos, EndPos: integer;
+    begin
+       KeyPos := Pos('"' + key + '"', content);
+       if KeyPos > 0 then
+       begin
+          ColonPos := PosEx(':', content, KeyPos);
+          if ColonPos > 0 then
+          begin
+             StartPos := ColonPos + 1;
+             { Skip whitespace }
+             while (StartPos <= Length(content)) and (content[StartPos] in [' ', #9, #10, #13]) do
+                Inc(StartPos);
+             
+             { Check if value is a quoted string }
+             if (StartPos <= Length(content)) and (content[StartPos] = '"') then
+             begin
+                QuotePos1 := StartPos;
+                QuotePos2 := PosEx('"', content, QuotePos1 + 1);
+                if QuotePos2 > 0 then
+                   Result := Copy(content, QuotePos1 + 1, QuotePos2 - QuotePos1 - 1)
+                else
+                   Result := '';
+             end
+             else
+             begin
+                { Value is a number or boolean }
+                EndPos := PosEx(',', content, StartPos);
+                if EndPos = 0 then
+                   EndPos := PosEx('}', content, StartPos);
+                if EndPos = 0 then
+                   EndPos := PosEx(']', content, StartPos);
+                Result := Trim(Copy(content, StartPos, EndPos - StartPos));
+             end;
+          end
+          else
+             Result := '';
+       end
+       else
+          Result := '';
+    end;
+    
+    function ExtractJSONArray(const content: string; const key: string): string;
+    var
+        KeyPos, BracketPos, StartPos, BracketCount, j: integer;
+    begin
+        KeyPos := Pos('"' + key + '"', content);
+        if KeyPos = 0 then
+        begin
+            Result := '';
+            Exit;
+        end;
+        
+        BracketPos := PosEx('[', content, KeyPos);
+        if BracketPos = 0 then
+        begin
+            Result := '';
+            Exit;
+        end;
+        
+        StartPos := BracketPos;
+        BracketCount := 0;
+        j := StartPos;
+        
+        while j <= Length(content) do
+        begin
+            if content[j] = '[' then
+                Inc(BracketCount)
+            else if content[j] = ']' then
             begin
-               { Skip past colon and whitespace }
-               colonPos := colonPos + 1;
-               while (colonPos <= Length(line)) and (line[colonPos] in [' ', #9]) do
-                  Inc(colonPos);
-               
-               { Extract value - check if quoted }
-               if (colonPos <= Length(line)) and (line[colonPos] = '"') then
-               begin
-                  quotePos1 := colonPos + 1;
-                  quotePos2 := Pos('"', Copy(line, quotePos1, Length(line)));
-                  if quotePos2 > 0 then
-                     Result := Copy(line, quotePos1, quotePos2 - 1);
-               end
-               else
-               begin
-                  { Unquoted value - extract until comma or closing bracket }
-                  quotePos2 := Pos(',', Copy(line, colonPos, Length(line)));
-                  if quotePos2 = 0 then
-                     Result := Trim(Copy(line, colonPos, Length(line)))
-                  else
-                     Result := Trim(Copy(line, colonPos, quotePos2 - 1));
-                  { Remove trailing punctuation }
-                  while (Length(Result) > 0) and (Result[Length(Result)] in [',', '}', ']']) do
-                     SetLength(Result, Length(Result) - 1);
-               end;
-               Exit;
+                Dec(BracketCount);
+                if BracketCount = 0 then
+                begin
+                    Result := Copy(content, StartPos, j - StartPos + 1);
+                    Exit;
+                end;
             end;
-         end;
-      end;
-   end;
+            Inc(j);
+        end;
+        Result := '';
+    end;
+    
+    function ExtractArrayElement(const arrayJSON: string; index: integer): string;
+    var
+        StartPos, BraceCount, ElementCount, j: integer;
+        inString: boolean;
+    begin
+        StartPos := Pos('[', arrayJSON);
+        if StartPos = 0 then
+        begin
+            Result := '';
+            Exit;
+        end;
+        
+        StartPos := StartPos + 1;
+        ElementCount := 0;
+        BraceCount := 0;
+        inString := false;
+        j := StartPos;
+        
+        while j <= Length(arrayJSON) do
+        begin
+            if (arrayJSON[j] = '"') and ((j = 1) or (arrayJSON[j-1] <> '\')) then
+                inString := not inString;
+            
+            if not inString then
+            begin
+                if arrayJSON[j] = '{' then
+                begin
+                    if ElementCount = index then
+                        StartPos := j;
+                    Inc(BraceCount);
+                end
+                else if arrayJSON[j] = '}' then
+                begin
+                    Dec(BraceCount);
+                    if (BraceCount = 0) and (ElementCount = index) then
+                    begin
+                        Result := Copy(arrayJSON, StartPos, j - StartPos + 1);
+                        Exit;
+                    end;
+                end
+                else if (arrayJSON[j] = ',') and (BraceCount = 0) then
+                begin
+                    if ElementCount = index then
+                        Exit;
+                    Inc(ElementCount);
+                end;
+            end;
+            Inc(j);
+        end;
+        Result := '';
+    end;
 
 begin
-   loadModelFromJSON := false;
-   
-   SL := TStringList.Create;
-   try
-      try
-         SL.LoadFromFile(filename);
-         except
-            WriteLn('Error: Cannot open model file: ', filename);
-            exit;
-         end;
-         
-         { Initialize with defaults }
-         numT := 100;
-         maxD := MAX_DEPTH_DEFAULT;
-         minL := MIN_SAMPLES_LEAF_DEFAULT;
-         minS := MIN_SAMPLES_SPLIT_DEFAULT;
-         maxF := 0;
-         tt := Classification;
-         sc := Gini;
-         
-         { Load hyperparameters }
-         ValueStr := ExtractJSONValueFromList(SL, 'num_trees');
-         if ValueStr <> '' then
-            numT := StrToInt(ValueStr);
-         
-         ValueStr := ExtractJSONValueFromList(SL, 'max_depth');
-         if ValueStr <> '' then
-            maxD := StrToInt(ValueStr);
-         
-         ValueStr := ExtractJSONValueFromList(SL, 'min_samples_leaf');
-         if ValueStr <> '' then
-            minL := StrToInt(ValueStr);
-         
-         ValueStr := ExtractJSONValueFromList(SL, 'min_samples_split');
-         if ValueStr <> '' then
-            minS := StrToInt(ValueStr);
-         
-         ValueStr := ExtractJSONValueFromList(SL, 'max_features');
-         if ValueStr <> '' then
-            maxF := StrToInt(ValueStr);
-         
-         ValueStr := ExtractJSONValueFromList(SL, 'task_type');
-         if ValueStr <> '' then
-            tt := parseTaskType(ValueStr);
-         
-         ValueStr := ExtractJSONValueFromList(SL, 'criterion');
-         if ValueStr <> '' then
-            sc := parseCriterion(ValueStr);
-      
-      { Configure forest }
-      forest.create();
-      forest.setNumTrees(numT);
-      forest.setMaxDepth(maxD);
-      forest.setMinSamplesLeaf(minL);
-      forest.setMinSamplesSplit(minS);
-      forest.setMaxFeatures(maxF);
-      forest.setTaskType(tt);
-      forest.setCriterion(sc);
-      
-      forestInitialized := true;
-      loadModelFromJSON := true;
-      WriteLn('Model configuration loaded from JSON: ', filename);
-   finally
-      SL.Free;
-   end;
+    loadModelFromJSON := false;
+    
+    SL := TStringList.Create;
+    try
+       try
+          SL.LoadFromFile(filename);
+          except
+             WriteLn('Error: Cannot open model file: ', filename);
+             exit;
+          end;
+          
+          Content := SL.Text;
+          
+          { Initialize with defaults }
+          numT := 100;
+          maxD := MAX_DEPTH_DEFAULT;
+          minL := MIN_SAMPLES_LEAF_DEFAULT;
+          minS := MIN_SAMPLES_SPLIT_DEFAULT;
+          maxF := 0;
+          tt := Classification;
+          sc := Gini;
+          
+          { Load hyperparameters }
+          ValueStr := ExtractJSONValueFromContent(Content, 'num_trees');
+          if ValueStr <> '' then
+             numT := StrToInt(ValueStr);
+          
+          ValueStr := ExtractJSONValueFromContent(Content, 'max_depth');
+          if ValueStr <> '' then
+             maxD := StrToInt(ValueStr);
+          
+          ValueStr := ExtractJSONValueFromContent(Content, 'min_samples_leaf');
+          if ValueStr <> '' then
+             minL := StrToInt(ValueStr);
+          
+          ValueStr := ExtractJSONValueFromContent(Content, 'min_samples_split');
+          if ValueStr <> '' then
+             minS := StrToInt(ValueStr);
+          
+          ValueStr := ExtractJSONValueFromContent(Content, 'max_features');
+          if ValueStr <> '' then
+             maxF := StrToInt(ValueStr);
+          
+          ValueStr := ExtractJSONValueFromContent(Content, 'task_type');
+          if ValueStr <> '' then
+             tt := parseTaskType(ValueStr);
+          
+          ValueStr := ExtractJSONValueFromContent(Content, 'criterion');
+          if ValueStr <> '' then
+             sc := parseCriterion(ValueStr);
+       
+       { Configure forest }
+       forest.create();
+       forest.setNumTrees(numT);
+       forest.setMaxDepth(maxD);
+       forest.setMinSamplesLeaf(minL);
+       forest.setMinSamplesSplit(minS);
+       forest.setMaxFeatures(maxF);
+       forest.setTaskType(tt);
+       forest.setCriterion(sc);
+       
+       { Load trees if present }
+       ValueStr := ExtractJSONArray(Content, 'trees');
+       if ValueStr <> '' then
+       begin
+           for i := 0 to numT - 1 do
+           begin
+               treeJSON := ExtractArrayElement(ValueStr, i);
+               if (treeJSON <> '') and (treeJSON <> 'null') then
+               begin
+                   New(tree);
+                   tree^.root := JSONToTreeNode(treeJSON);
+                   tree^.maxDepth := maxD;
+                   tree^.minSamplesLeaf := minL;
+                   tree^.minSamplesSplit := minS;
+                   tree^.maxFeatures := maxF;
+                   tree^.taskType := tt;
+                   tree^.criterion := sc;
+                   forest.setTree(i, tree);
+               end;
+           end;
+       end;
+       
+       forestInitialized := true;
+       loadModelFromJSON := true;
+       WriteLn('Model configuration and trees loaded from JSON: ', filename);
+    finally
+       SL.Free;
+    end;
 end;
 
 { ============================================================================ }
@@ -3606,14 +3943,34 @@ begin
 function GetArg(name: string): string;
 var
    i: integer;
+   arg: string;
+   eqPos: integer;
+   key, value: string;
 begin
    GetArg := '';
-   for i := 1 to ParamCount - 1 do
+   for i := 1 to ParamCount do
    begin
-      if ParamStr(i) = name then
+      arg := ParamStr(i);
+      
+      { Try --key=value format first }
+      eqPos := Pos('=', arg);
+      if eqPos > 0 then
       begin
-         GetArg := ParamStr(i + 1);
-         exit;
+         key := Copy(arg, 1, eqPos - 1);
+         if key = name then
+         begin
+            GetArg := Copy(arg, eqPos + 1, Length(arg));
+            exit;
+         end;
+      end
+      else if arg = name then
+      begin
+         { Try --key value format }
+         if i < ParamCount then
+         begin
+            GetArg := ParamStr(i + 1);
+            exit;
+         end;
       end;
    end;
 end;
@@ -3689,10 +4046,10 @@ begin
    maxFeatures := GetArgInt('--max-features', 0);
    taskStr := GetArg('--task');
    critStr := GetArg('--criterion');
-   modelFile := GetArg('--model');
+   modelFile := GetArg('--save');
    
    if modelFile = '' then
-      modelFile := 'forest.bin';
+      modelFile := 'forest.json';
    
    { Parse task type }
    taskStr := lowercase(taskStr);
@@ -3741,7 +4098,8 @@ begin
       writeln('  Task: Classification')
    else
       writeln('  Task: Regression');
-   writeln('  Saved to: ', modelFile);
+   
+   facade.saveModelToJSON(modelFile);
    
    facade.freeForest();
 end;
