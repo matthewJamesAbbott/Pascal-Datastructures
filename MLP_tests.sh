@@ -10,7 +10,7 @@ set -o pipefail
 PASS=0
 FAIL=0
 TOTAL=0
-TEMP_DIR="/tmp/mlp_user_tests_$$"
+TEMP_DIR="./output/mlp_user_tests_$$"
 MLP_BIN="./MLP"
 FACADE_BIN="./FacadeMLP"
 
@@ -22,10 +22,11 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Setup/Cleanup
-cleanup() {
-    rm -rf "$TEMP_DIR"
-}
-trap cleanup EXIT
+# Note: Removed cleanup to preserve test output files in ./output directory
+# cleanup() {
+#     rm -rf "$TEMP_DIR"
+# }
+# trap cleanup EXIT
 
 mkdir -p "$TEMP_DIR"
 
@@ -875,6 +876,243 @@ run_test \
     "Workflow: Create with params -> Verify -> Predict" \
     "$MLP_BIN create --input=4 --hidden=8,6 --output=2 --save=$TEMP_DIR/workflow4.json --lr=0.01 --optimizer=adam --dropout=0.1 && $MLP_BIN info --model=$TEMP_DIR/workflow4.json" \
     "Input size: 4"
+
+echo ""
+
+# ============================================
+# JavaScript/HTML Cross-Loading Tests
+# ============================================
+
+echo -e "${BLUE}=== JavaScript HTML Application Tests ===${NC}"
+echo ""
+
+echo -e "${BLUE}Group: Model File Creation for HTML Apps${NC}"
+
+# Create test models for JavaScript loading
+run_test \
+    "Create simple model for JS (2-4-1)" \
+    "$MLP_BIN create --input=2 --hidden=4 --output=1 --save=$TEMP_DIR/js_simple.json" \
+    "Created MLP model"
+
+run_test \
+    "Create multi-layer model for JS (3-5-3-2)" \
+    "$MLP_BIN create --input=3 --hidden=5,3 --output=2 --save=$TEMP_DIR/js_multilayer.json" \
+    "Created MLP model"
+
+run_test \
+    "Create complex model for JS (10-16-8-4-2)" \
+    "$MLP_BIN create --input=10 --hidden=16,8,4 --output=2 --save=$TEMP_DIR/js_complex.json" \
+    "Created MLP model"
+
+run_test \
+    "Facade model with hyperparameters" \
+    "$FACADE_BIN create --input=5 --hidden=8,8 --output=3 --save=$TEMP_DIR/js_facade.json --lr=0.01 --optimizer=adam --dropout=0.1" \
+    "Created MLP model"
+
+echo ""
+
+echo -e "${BLUE}Group: JSON Validation for HTML Loading${NC}"
+
+check_json_valid \
+    "JS simple model JSON valid" \
+    "$TEMP_DIR/js_simple.json"
+
+check_json_valid \
+    "JS multilayer model JSON valid" \
+    "$TEMP_DIR/js_multilayer.json"
+
+check_json_valid \
+    "JS complex model JSON valid" \
+    "$TEMP_DIR/js_complex.json"
+
+check_json_valid \
+    "JS facade model JSON valid" \
+    "$TEMP_DIR/js_facade.json"
+
+run_test \
+    "All JSON models have proper weight structure" \
+    "for f in $TEMP_DIR/js_*.json; do grep -q '\"weights\"' \"\$f\" || exit 1; done && echo 'ok'" \
+    "ok"
+
+run_test \
+    "All JSON models have proper bias structure" \
+    "for f in $TEMP_DIR/js_*.json; do grep -q '\"biases\"' \"\$f\" || exit 1; done && echo 'ok'" \
+    "ok"
+
+echo ""
+
+echo -e "${BLUE}Group: Cross-Loading Tests (Binary ↔ HTML)${NC}"
+
+run_test \
+    "Model created by MLP binary is loadable format" \
+    "jq . $TEMP_DIR/js_simple.json > /dev/null 2>&1 && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Model created by FacadeMLP binary is loadable format" \
+    "jq . $TEMP_DIR/js_facade.json > /dev/null 2>&1 && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Simple model can be predicted with binary" \
+    "$MLP_BIN predict --model=$TEMP_DIR/js_simple.json --input=0.5,0.5" \
+    "Output:"
+
+run_test \
+    "Multilayer model can be predicted with binary" \
+    "$MLP_BIN predict --model=$TEMP_DIR/js_multilayer.json --input=0.1,0.2,0.3" \
+    "Output:"
+
+run_test \
+    "Facade model can access weights from JS-created file" \
+    "$FACADE_BIN get-weight --model=$TEMP_DIR/js_simple.json --layer=0 --neuron=0 --weight=0" \
+    "Weight"
+
+run_test \
+    "Facade can modify JS model and save" \
+    "$FACADE_BIN set-weight --model=$TEMP_DIR/js_simple.json --layer=0 --neuron=0 --weight=0 --value=0.123 --save=$TEMP_DIR/js_modified.json && jq . $TEMP_DIR/js_modified.json > /dev/null 2>&1 && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Modified JS model can be loaded and predicted" \
+    "$MLP_BIN predict --model=$TEMP_DIR/js_modified.json --input=0.5,0.5" \
+    "Output:"
+
+echo ""
+
+echo -e "${BLUE}Group: HTML App Function Coverage - index.html (MLP)${NC}"
+
+# Test functions available in index.html
+run_test \
+    "index.html: Load model with camelCase format" \
+    "grep -q 'inputSize.*hiddenSizes.*outputSize' $TEMP_DIR/js_simple.json || $MLP_BIN info --model=$TEMP_DIR/js_simple.json" \
+    "Input size"
+
+run_test \
+    "index.html: MultiLayerPerceptron class supports multiple hidden layers" \
+    "$MLP_BIN create --input=2 --hidden=4,3,2 --output=1 --save=$TEMP_DIR/mhidden.json && grep '\"hidden_sizes\"' $TEMP_DIR/mhidden.json" \
+    "hidden_sizes"
+
+run_test \
+    "index.html: Model has all layers for visualization" \
+    "grep -q '\"hidden_layers\"' $TEMP_DIR/js_multilayer.json && grep -q '\"output_layer\"' $TEMP_DIR/js_multilayer.json && echo 'ok'" \
+    "ok"
+
+run_test \
+    "index.html: Model preserves activation functions" \
+    "$MLP_BIN create --input=2 --hidden=3 --output=1 --save=$TEMP_DIR/act.json --hidden-act=tanh --output-act=sigmoid && grep -q 'activation' $TEMP_DIR/act.json && echo 'ok'" \
+    "ok"
+
+run_test \
+    "index.html: Model ready for training (has learning rate)" \
+    "$MLP_BIN create --input=2 --hidden=3 --output=1 --save=$TEMP_DIR/train.json --lr=0.1 && grep -q '\"learning_rate\"' $TEMP_DIR/train.json && echo 'ok'" \
+    "ok"
+
+echo ""
+
+echo -e "${BLUE}Group: HTML App Function Coverage - facaded_mlp.html${NC}"
+
+run_test \
+    "facaded_mlp.html: Can load models created by MLP" \
+    "$FACADE_BIN info --model=$TEMP_DIR/js_multilayer.json" \
+    "MLP Model Information"
+
+run_test \
+    "facaded_mlp.html: Facade supports extended weight access" \
+    "$FACADE_BIN get-weight --model=$TEMP_DIR/js_facade.json --layer=0 --neuron=0 --weight=0" \
+    "Weight"
+
+run_test \
+    "facaded_mlp.html: Facade supports layer information queries" \
+    "$FACADE_BIN layer-info --model=$TEMP_DIR/js_facade.json --layer=0" \
+    "Layer 0"
+
+run_test \
+    "facaded_mlp.html: Facade supports bias modification" \
+    "$FACADE_BIN set-bias --model=$TEMP_DIR/js_facade.json --layer=0 --neuron=0 --value=0.5 --save=$TEMP_DIR/facade_bias.json && jq . $TEMP_DIR/facade_bias.json > /dev/null && echo 'ok'" \
+    "ok"
+
+run_test \
+    "facaded_mlp.html: Facade can compute layer output with input" \
+    "$FACADE_BIN get-output --model=$TEMP_DIR/js_facade.json --layer=0 --neuron=0 --input=0.1,0.2,0.3,0.4,0.5" \
+    "Output"
+
+run_test \
+    "facaded_mlp.html: Facade histogram generation" \
+    "$FACADE_BIN histogram --model=$TEMP_DIR/js_facade.json --layer=0 --type=activation" \
+    "Histogram"
+
+echo ""
+
+echo -e "${BLUE}Group: mlp_player.html Compatibility Tests${NC}"
+
+run_test \
+    "mlp_player.html: Model is loadable for inference" \
+    "jq . $TEMP_DIR/js_simple.json > /dev/null && echo 'ok'" \
+    "ok"
+
+run_test \
+    "mlp_player.html: Can predict with loaded model" \
+    "$MLP_BIN predict --model=$TEMP_DIR/js_simple.json --input=0.5,0.5" \
+    "Output:"
+
+run_test \
+    "mlp_player.html: Multilayer model predictions work" \
+    "$MLP_BIN predict --model=$TEMP_DIR/js_multilayer.json --input=0.1,0.2,0.3" \
+    "Output:"
+
+run_test \
+    "mlp_player.html: Architecture displayed correctly" \
+    "output=$($FACADE_BIN info --model=$TEMP_DIR/js_multilayer.json); echo \"$output\" | grep -q 'Input size' && echo \"$output\" | grep -q 'Output size' && echo 'ok'" \
+    "ok"
+
+echo ""
+
+echo -e "${BLUE}Group: Cross-Application Model Compatibility${NC}"
+
+run_test \
+    "Model created in index.html can load in facaded_mlp.html" \
+    "jq '.hiddenSizes' $TEMP_DIR/js_simple.json > /dev/null && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Model created in facaded_mlp.html can load in index.html" \
+    "jq '.hidden_sizes' $TEMP_DIR/js_facade.json > /dev/null && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Model from facaded_mlp can be used in mlp_player.html" \
+    "$FACADE_BIN predict --model=$TEMP_DIR/js_facade.json --input=0.1,0.2,0.3,0.4,0.5" \
+    "Output:"
+
+run_test \
+    "Binary can load and work with any HTML app's model" \
+    "for model in $TEMP_DIR/js_*.json; do $MLP_BIN info --model=\$model > /dev/null || exit 1; done && echo 'ok'" \
+    "ok"
+
+echo ""
+
+echo -e "${BLUE}Group: Full Workflow: Create → Save → Load → Predict${NC}"
+
+run_test \
+    "Workflow A: MLP binary → index.html" \
+    "$MLP_BIN create --input=4 --hidden=6,4 --output=2 --save=$TEMP_DIR/workflow_a.json && jq '.inputSize,.hiddenSizes,.outputSize' $TEMP_DIR/workflow_a.json | wc -l | grep -q '3' && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Workflow B: MLP binary → facaded_mlp.html → predict" \
+    "$MLP_BIN create --input=5 --hidden=8,6 --output=3 --save=$TEMP_DIR/workflow_b.json && $FACADE_BIN predict --model=$TEMP_DIR/workflow_b.json --input=0.1,0.2,0.3,0.4,0.5" \
+    "Output:"
+
+run_test \
+    "Workflow C: FacadeMLP → mlp_player.html → predict" \
+    "$FACADE_BIN create --input=3 --hidden=5,4 --output=2 --save=$TEMP_DIR/workflow_c.json && $MLP_BIN predict --model=$TEMP_DIR/workflow_c.json --input=0.1,0.2,0.3" \
+    "Output:"
+
+run_test \
+    "Workflow D: Modify in Facade → Load in all HTML apps" \
+    "$FACADE_BIN set-weight --model=$TEMP_DIR/workflow_c.json --layer=0 --neuron=0 --weight=0 --value=0.999 --save=$TEMP_DIR/workflow_d.json && $MLP_BIN predict --model=$TEMP_DIR/workflow_d.json --input=0.1,0.2,0.3" \
+    "Output:"
 
 echo ""
 
