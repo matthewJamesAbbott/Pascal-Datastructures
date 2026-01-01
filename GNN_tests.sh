@@ -2,7 +2,8 @@
 
 #
 # Matthew Abbott 2025
-# Test for both GNN.pas and FacadeGNN.pas
+# Comprehensive Test Suite for GNN.pas and FacadeGNN.pas
+# Tests all functions, facade functions, and cross-loading/saving
 #
 
 set -o pipefail
@@ -10,7 +11,8 @@ set -o pipefail
 PASS=0
 FAIL=0
 TOTAL=0
-TEMP_DIR="/tmp/gnn_user_tests_$$"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OUTPUT_DIR="$SCRIPT_DIR/output"
 GNN_BIN="./GNN"
 FACADE_BIN="./FacadeGNN"
 
@@ -19,17 +21,15 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
-# Setup/Cleanup
-cleanup() {
-    rm -rf "$TEMP_DIR"
-}
-trap cleanup EXIT
+# Setup
+mkdir -p "$OUTPUT_DIR"
 
-mkdir -p "$TEMP_DIR"
-
+echo -e "${CYAN}Compiling GNN.pas...${NC}"
 fpc GNN.pas >/dev/null 2>&1
+echo -e "${CYAN}Compiling FacadeGNN.pas...${NC}"
 fpc FacadeGNN.pas >/dev/null 2>&1
 
 # Test function
@@ -53,6 +53,28 @@ run_test() {
         echo "  Expected pattern: $expected_pattern"
         echo "  Output:"
         echo "$output" | head -5
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+run_test_exit_code() {
+    local test_name="$1"
+    local command="$2"
+    local expected_exit="$3"
+
+    TOTAL=$((TOTAL + 1))
+    echo -n "Test $TOTAL: $test_name... "
+
+    output=$(eval "$command" 2>&1)
+    exit_code=$?
+
+    if [ "$exit_code" -eq "$expected_exit" ]; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC}"
+        echo "  Command: $command"
+        echo "  Expected exit code: $expected_exit, got: $exit_code"
         FAIL=$((FAIL + 1))
     fi
 }
@@ -123,13 +145,30 @@ check_json_field() {
     fi
 }
 
+check_not_empty() {
+    local test_name="$1"
+    local file="$2"
+
+    TOTAL=$((TOTAL + 1))
+    echo -n "Test $TOTAL: $test_name... "
+
+    if [ -s "$file" ]; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC}"
+        echo "  File is empty or missing: $file"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 # ============================================
 # Start Tests
 # ============================================
 
 echo ""
 echo "========================================="
-echo "GNN User Workflow Test Suite (Extended)"
+echo "GNN & FacadeGNN Comprehensive Test Suite"
 echo "========================================="
 echo ""
 
@@ -144,14 +183,12 @@ if [ ! -f "$FACADE_BIN" ]; then
     exit 1
 fi
 
-echo -e "${BLUE}=== GNN Binary Tests ===${NC}"
+# ============================================
+# SECTION 1: GNN Binary - Help & Usage
+# ============================================
+
+echo -e "${BLUE}=== SECTION 1: GNN Binary - Help & Usage ===${NC}"
 echo ""
-
-# ============================================
-# Basic Help/Usage
-# ============================================
-
-echo -e "${BLUE}Group: Help & Usage${NC}"
 
 run_test \
     "GNN help command" \
@@ -164,777 +201,1129 @@ run_test \
     "Commands:"
 
 run_test \
-    "FacadeGNN help command" \
-    "$FACADE_BIN help" \
-    "GNN"
+    "GNN -h flag" \
+    "$GNN_BIN -h" \
+    "Commands:"
 
 run_test \
-    "FacadeGNN --help flag" \
-    "$FACADE_BIN --help" \
-    "GNN"
+    "GNN help shows create options" \
+    "$GNN_BIN help" \
+    "feature"
+
+run_test \
+    "GNN help shows train options" \
+    "$GNN_BIN help" \
+    "epochs"
+
+run_test \
+    "GNN help shows predict options" \
+    "$GNN_BIN help" \
+    "graph"
+
+run_test \
+    "GNN help shows info options" \
+    "$GNN_BIN help" \
+    "model"
 
 echo ""
 
 # ============================================
-# Model Creation - Basic
+# SECTION 2: GNN Binary - Model Creation
 # ============================================
 
-echo -e "${BLUE}Group: Model Creation - Basic${NC}"
+echo -e "${BLUE}=== SECTION 2: GNN Binary - Model Creation ===${NC}"
+echo ""
 
 run_test \
     "Create basic GNN (3 features, 16 hidden, 2 output, 2 MP layers)" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/basic.json" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/gnn_basic.json" \
     "Created GNN model"
 
 check_file_exists \
-    "JSON file created" \
-    "$TEMP_DIR/basic.json"
+    "Basic GNN JSON file created" \
+    "$OUTPUT_DIR/gnn_basic.json"
 
 check_json_valid \
-    "JSON contains valid GNN structure" \
-    "$TEMP_DIR/basic.json"
+    "Basic GNN JSON is valid structure" \
+    "$OUTPUT_DIR/gnn_basic.json"
 
 run_test \
-    "Output shows correct feature size" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/basic2.json" \
-    "Feature size: 3"
+    "Create GNN shows correct feature size" \
+    "$GNN_BIN create --feature=5 --hidden=32 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/gnn_feat5.json" \
+    "Feature size: 5"
 
 run_test \
-    "Output shows hidden size" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/basic3.json" \
-    "Hidden size: 16"
+    "Create GNN shows correct hidden size" \
+    "$GNN_BIN create --feature=5 --hidden=64 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/gnn_hid64.json" \
+    "Hidden size: 64"
 
 run_test \
-    "Output shows output size" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/basic4.json" \
-    "Output size: 2"
+    "Create GNN shows correct output size" \
+    "$GNN_BIN create --feature=5 --hidden=32 --output=10 --mp-layers=2 --save=$OUTPUT_DIR/gnn_out10.json" \
+    "Output size: 10"
 
 run_test \
-    "Output shows message passing layers" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/basic5.json" \
-    "Message passing layers: 2"
+    "Create GNN shows message passing layers" \
+    "$GNN_BIN create --feature=5 --hidden=32 --output=3 --mp-layers=4 --save=$OUTPUT_DIR/gnn_mp4.json" \
+    "Message passing layers: 4"
 
 echo ""
 
 # ============================================
-# Model Creation - Various Configurations
+# SECTION 3: GNN - Various MP Layer Configurations
 # ============================================
 
-echo -e "${BLUE}Group: Model Creation - Various Configurations${NC}"
+echo -e "${BLUE}=== SECTION 3: GNN - Various MP Layer Configurations ===${NC}"
+echo ""
 
 run_test \
     "Create GNN with 1 MP layer" \
-    "$GNN_BIN create --feature=5 --hidden=32 --output=3 --mp-layers=1 --save=$TEMP_DIR/mp1.json" \
+    "$GNN_BIN create --feature=5 --hidden=32 --output=3 --mp-layers=1 --save=$OUTPUT_DIR/gnn_mp1.json" \
+    "Created GNN model"
+
+run_test \
+    "Create GNN with 2 MP layers" \
+    "$GNN_BIN create --feature=5 --hidden=32 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/gnn_mp2.json" \
     "Created GNN model"
 
 run_test \
     "Create GNN with 3 MP layers" \
-    "$GNN_BIN create --feature=5 --hidden=32 --output=3 --mp-layers=3 --save=$TEMP_DIR/mp3.json" \
-    "Created GNN model"
-
-run_test \
-    "Create GNN with 4 MP layers" \
-    "$GNN_BIN create --feature=5 --hidden=32 --output=3 --mp-layers=4 --save=$TEMP_DIR/mp4.json" \
+    "$GNN_BIN create --feature=5 --hidden=32 --output=3 --mp-layers=3 --save=$OUTPUT_DIR/gnn_mp3.json" \
     "Created GNN model"
 
 run_test \
     "Create GNN with 5 MP layers" \
-    "$GNN_BIN create --feature=5 --hidden=32 --output=3 --mp-layers=5 --save=$TEMP_DIR/mp5.json" \
+    "$GNN_BIN create --feature=5 --hidden=32 --output=3 --mp-layers=5 --save=$OUTPUT_DIR/gnn_mp5.json" \
     "Created GNN model"
 
-run_test \
-    "Create GNN with large feature dimension" \
-    "$GNN_BIN create --feature=256 --hidden=128 --output=10 --mp-layers=2 --save=$TEMP_DIR/large_features.json" \
-    "Created GNN model"
-
-run_test \
-    "Create GNN with large hidden dimension" \
-    "$GNN_BIN create --feature=10 --hidden=512 --output=5 --mp-layers=2 --save=$TEMP_DIR/large_hidden.json" \
-    "Created GNN model"
-
-run_test \
-    "Create GNN with small dimensions" \
-    "$GNN_BIN create --feature=1 --hidden=2 --output=1 --mp-layers=1 --save=$TEMP_DIR/tiny.json" \
-    "Created GNN model"
-
-run_test \
-    "Create GNN with many output dimensions" \
-    "$GNN_BIN create --feature=10 --hidden=64 --output=1000 --mp-layers=2 --save=$TEMP_DIR/many_outputs.json" \
-    "Created GNN model"
-
-check_file_exists \
-    "Tiny model file exists" \
-    "$TEMP_DIR/tiny.json"
-
-check_file_exists \
-    "Large hidden model file exists" \
-    "$TEMP_DIR/large_hidden.json"
-
-echo ""
-
-# ============================================
-# Hyperparameters
-# ============================================
-
-echo -e "${BLUE}Group: Hyperparameters${NC}"
-
-run_test \
-    "Create with learning rate 0.001" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/lr001.json --lr=0.001" \
-    "Created GNN model"
-
-run_test \
-    "Create with learning rate 0.1" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/lr01.json --lr=0.1" \
-    "Created GNN model"
-
-run_test \
-    "Create with learning rate 0.5" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/lr05.json --lr=0.5" \
-    "Created GNN model"
-
-run_test \
-    "Custom learning rate shows in output" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/lr_check.json --lr=0.005" \
-    "Learning rate: 0"
-
 check_json_field \
-    "Learning rate saved in JSON" \
-    "$TEMP_DIR/lr001.json" \
-    "learning_rate"
-
-check_json_field \
-    "Max iterations saved in JSON" \
-    "$TEMP_DIR/basic.json" \
-    "max_iterations"
-
-echo ""
-
-# ============================================
-# Activation Functions
-# ============================================
-
-echo -e "${BLUE}Group: Activation Functions${NC}"
-
-run_test \
-    "Create with ReLU activation" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/relu.json --activation=relu" \
-    "Activation: relu"
-
-run_test \
-    "Create with Tanh activation" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/tanh.json --activation=tanh" \
-    "Activation: tanh"
-
-run_test \
-    "Create with Sigmoid activation" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/sigmoid.json --activation=sigmoid" \
-    "Activation: sigmoid"
-
-run_test \
-    "Create with LeakyReLU activation" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/leakyrelu.json --activation=leakyrelu" \
-    "Activation: leakyrelu"
-
-check_json_field \
-    "ReLU activation saved in JSON" \
-    "$TEMP_DIR/relu.json" \
-    "activation"
-
-check_json_field \
-    "Tanh activation saved in JSON" \
-    "$TEMP_DIR/tanh.json" \
-    "activation"
-
-echo ""
-
-# ============================================
-# Loss Functions
-# ============================================
-
-echo -e "${BLUE}Group: Loss Functions${NC}"
-
-run_test \
-    "Create with MSE loss" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/mse.json --loss=mse" \
-    "Loss function: mse"
-
-run_test \
-    "Create with Binary Cross Entropy loss" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/bce.json --loss=bce" \
-    "Loss function: bce"
-
-check_json_field \
-    "MSE loss saved in JSON" \
-    "$TEMP_DIR/mse.json" \
-    "loss_type"
-
-check_json_field \
-    "BCE loss saved in JSON" \
-    "$TEMP_DIR/bce.json" \
-    "loss_type"
-
-echo ""
-
-# ============================================
-# Info Command
-# ============================================
-
-echo -e "${BLUE}Group: Info Command${NC}"
-
-run_test \
-    "Info displays model information" \
-    "$GNN_BIN info --model=$TEMP_DIR/basic.json" \
-    "Loading model from JSON"
-
-run_test \
-    "Info for different activation" \
-    "$GNN_BIN info --model=$TEMP_DIR/tanh.json" \
-    "Loading model from JSON"
-
-run_test \
-    "Info for deep model (5 layers)" \
-    "$GNN_BIN info --model=$TEMP_DIR/mp5.json" \
-    "Loading model from JSON"
-
-run_test \
-    "Info for large feature model" \
-    "$GNN_BIN info --model=$TEMP_DIR/large_features.json" \
-    "Loading model from JSON"
-
-echo ""
-
-# ============================================
-# JSON Structure Validation
-# ============================================
-
-echo -e "${BLUE}Group: JSON File Validation${NC}"
-
-for i in {1..3}; do
-    run_test \
-        "Model $i JSON has feature_size field" \
-        "$GNN_BIN create --feature=$((i+1)) --hidden=$((i*8)) --output=2 --mp-layers=2 --save=$TEMP_DIR/json_test_$i.json && grep -q '\"feature_size\"' $TEMP_DIR/json_test_$i.json && echo 'ok'" \
-        "ok"
-done
-
-check_json_field \
-    "JSON contains hidden_size" \
-    "$TEMP_DIR/basic.json" \
-    "hidden_size"
-
-check_json_field \
-    "JSON contains output_size" \
-    "$TEMP_DIR/basic.json" \
-    "output_size"
-
-check_json_field \
-    "JSON contains num_message_passing_layers" \
-    "$TEMP_DIR/basic.json" \
+    "MP1 JSON has num_message_passing_layers" \
+    "$OUTPUT_DIR/gnn_mp1.json" \
     "num_message_passing_layers"
 
 check_json_field \
-    "JSON contains activation field" \
-    "$TEMP_DIR/relu.json" \
+    "MP5 JSON has message_layers array" \
+    "$OUTPUT_DIR/gnn_mp5.json" \
+    "message_layers"
+
+echo ""
+
+# ============================================
+# SECTION 4: GNN - Activation Functions
+# ============================================
+
+echo -e "${BLUE}=== SECTION 4: GNN - Activation Functions ===${NC}"
+echo ""
+
+run_test \
+    "Create GNN with ReLU activation (default)" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/gnn_relu.json --activation=relu" \
+    "Activation: relu"
+
+run_test \
+    "Create GNN with LeakyReLU activation" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/gnn_leakyrelu.json --activation=leakyrelu" \
+    "Activation: leakyrelu"
+
+run_test \
+    "Create GNN with Tanh activation" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/gnn_tanh.json --activation=tanh" \
+    "Activation: tanh"
+
+run_test \
+    "Create GNN with Sigmoid activation" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/gnn_sigmoid.json --activation=sigmoid" \
+    "Activation: sigmoid"
+
+check_json_field \
+    "ReLU model JSON has activation field" \
+    "$OUTPUT_DIR/gnn_relu.json" \
     "activation"
 
 check_json_field \
-    "JSON contains message_layers array" \
-    "$TEMP_DIR/basic.json" \
-    "message_layers"
-
-check_json_field \
-    "JSON contains update_layers array" \
-    "$TEMP_DIR/basic.json" \
-    "update_layers"
-
-check_json_field \
-    "JSON contains readout_layer" \
-    "$TEMP_DIR/basic.json" \
-    "readout_layer"
-
-check_json_field \
-    "JSON contains output_layer" \
-    "$TEMP_DIR/basic.json" \
-    "output_layer"
-
-run_test \
-    "JSON structure is valid JSON (starts with {)" \
-    "head -1 $TEMP_DIR/basic.json | grep -q '{' && echo 'ok'" \
-    "ok"
-
-run_test \
-    "JSON structure ends with }" \
-    "tail -1 $TEMP_DIR/basic.json | grep -q '}' && echo 'ok'" \
-    "ok"
+    "Tanh model JSON has activation field" \
+    "$OUTPUT_DIR/gnn_tanh.json" \
+    "activation"
 
 echo ""
 
 # ============================================
-# Error Cases
+# SECTION 5: GNN - Loss Functions
 # ============================================
 
-echo -e "${BLUE}Group: Error Handling${NC}"
+echo -e "${BLUE}=== SECTION 5: GNN - Loss Functions ===${NC}"
+echo ""
 
 run_test \
-    "Missing --feature argument" \
-    "$GNN_BIN create --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/err1.json 2>&1" \
-    "Error"
+    "Create GNN with MSE loss (default)" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/gnn_mse.json --loss=mse" \
+    "Loss function: mse"
 
 run_test \
-    "Missing --hidden argument" \
-    "$GNN_BIN create --feature=3 --output=2 --mp-layers=2 --save=$TEMP_DIR/err2.json 2>&1" \
-    "Error"
+    "Create GNN with BCE loss" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/gnn_bce.json --loss=bce" \
+    "Loss function: bce"
 
-run_test \
-    "Missing --output argument" \
-    "$GNN_BIN create --feature=3 --hidden=16 --mp-layers=2 --save=$TEMP_DIR/err3.json 2>&1" \
-    "Error"
+check_json_field \
+    "MSE model JSON has loss_type field" \
+    "$OUTPUT_DIR/gnn_mse.json" \
+    "loss_type"
 
-run_test \
-    "Missing --mp-layers argument" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --save=$TEMP_DIR/err4.json 2>&1" \
-    "Error"
-
-run_test \
-    "Missing --save argument" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 2>&1" \
-    "Error"
-
-run_test \
-    "Loading non-existent model" \
-    "$GNN_BIN info --model=$TEMP_DIR/nonexistent.json 2>&1" \
-    ""
-
-run_test \
-    "Invalid activation type" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/bad_act.json --activation=invalidactivation 2>&1" \
-    ""
-
-run_test \
-    "Invalid loss type" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/bad_loss.json --loss=invalidloss 2>&1" \
-    ""
+check_json_field \
+    "BCE model JSON has loss_type field" \
+    "$OUTPUT_DIR/gnn_bce.json" \
+    "loss_type"
 
 echo ""
 
 # ============================================
-# Facade Features - Basic
+# SECTION 6: GNN - Learning Rate
 # ============================================
 
-echo -e "${BLUE}Group: FacadeGNN - Basic Features${NC}"
+echo -e "${BLUE}=== SECTION 6: GNN - Learning Rate ===${NC}"
+echo ""
 
 run_test \
-    "FacadeGNN displays help" \
+    "Create GNN with default learning rate" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/gnn_lr_default.json" \
+    "Learning rate: 0.01"
+
+run_test \
+    "Create GNN with custom learning rate 0.001" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/gnn_lr_001.json --lr=0.001" \
+    "Learning rate: 0.001"
+
+run_test \
+    "Create GNN with learning rate 0.1" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/gnn_lr_01.json --lr=0.1" \
+    "Learning rate: 0.1"
+
+run_test \
+    "Create GNN with very small learning rate" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/gnn_lr_tiny.json --lr=0.0001" \
+    "Learning rate: 0.0001"
+
+check_json_field \
+    "Learning rate persists in JSON" \
+    "$OUTPUT_DIR/gnn_lr_001.json" \
+    "learning_rate"
+
+echo ""
+
+# ============================================
+# SECTION 7: GNN - Info Command
+# ============================================
+
+echo -e "${BLUE}=== SECTION 7: GNN - Info Command ===${NC}"
+echo ""
+
+run_test \
+    "GNN info loads JSON model" \
+    "$GNN_BIN info --model=$OUTPUT_DIR/gnn_basic.json" \
+    "Loading model from JSON"
+
+run_test \
+    "GNN info on ReLU model" \
+    "$GNN_BIN info --model=$OUTPUT_DIR/gnn_relu.json" \
+    "Loading model from JSON"
+
+run_test \
+    "GNN info on multi-layer model" \
+    "$GNN_BIN info --model=$OUTPUT_DIR/gnn_mp5.json" \
+    "Loading model from JSON"
+
+echo ""
+
+# ============================================
+# SECTION 8: FacadeGNN - Help & Usage
+# ============================================
+
+echo -e "${BLUE}=== SECTION 8: FacadeGNN - Help & Usage ===${NC}"
+echo ""
+
+run_test \
+    "FacadeGNN help command" \
     "$FACADE_BIN help" \
-    "GNN"
+    "Commands:"
 
 run_test \
     "FacadeGNN --help flag" \
     "$FACADE_BIN --help" \
-    "GNN"
+    "Commands:"
 
 run_test \
-    "FacadeGNN creates model" \
-    "$FACADE_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/facade_basic.json" \
-    ""
+    "FacadeGNN help shows introspection commands" \
+    "$FACADE_BIN help" \
+    "get-embedding"
 
 run_test \
-    "FacadeGNN info command exists" \
-    "$FACADE_BIN info --model=$TEMP_DIR/facade_basic.json" \
-    ""
+    "FacadeGNN help shows facade options" \
+    "$FACADE_BIN help" \
+    "layer"
+
+run_test \
+    "FacadeGNN help shows PageRank" \
+    "$FACADE_BIN help" \
+    "compute-pagerank"
+
+run_test \
+    "FacadeGNN help shows gradient detection" \
+    "$FACADE_BIN help" \
+    "detect-vanishing"
 
 echo ""
 
 # ============================================
-# Facade Features - Extended Commands
+# SECTION 9: FacadeGNN - Model Creation
 # ============================================
 
-echo -e "${BLUE}Group: FacadeGNN - Extended Features${NC}"
-
-# First create a facade model for testing extended features
-$FACADE_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/facade_extended.json 2>/dev/null
+echo -e "${BLUE}=== SECTION 9: FacadeGNN - Model Creation ===${NC}"
+echo ""
 
 run_test \
-    "FacadeGNN architecture-summary command" \
-    "$FACADE_BIN architecture-summary --model=$TEMP_DIR/facade_extended.json" \
-    ""
+    "Create Facade GNN model" \
+    "$FACADE_BIN create --feature=4 --hidden=24 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/facade_basic.json" \
+    "Created Facaded GNN model"
+
+check_file_exists \
+    "Facade GNN JSON file created" \
+    "$OUTPUT_DIR/facade_basic.json"
+
+check_json_valid \
+    "Facade GNN JSON is valid structure" \
+    "$OUTPUT_DIR/facade_basic.json"
 
 run_test \
-    "FacadeGNN parameter-count command" \
-    "$FACADE_BIN parameter-count --model=$TEMP_DIR/facade_extended.json" \
-    ""
+    "Facade shows correct feature size" \
+    "$FACADE_BIN create --feature=8 --hidden=32 --output=4 --mp-layers=2 --save=$OUTPUT_DIR/facade_feat8.json" \
+    "Feature size: 8"
 
 run_test \
-    "FacadeGNN layer-count command" \
-    "$FACADE_BIN layer-count --model=$TEMP_DIR/facade_extended.json" \
-    ""
+    "Facade shows correct hidden size" \
+    "$FACADE_BIN create --feature=4 --hidden=48 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/facade_hid48.json" \
+    "Hidden size: 48"
 
 run_test \
-    "FacadeGNN get-layer-config command" \
-    "$FACADE_BIN get-layer-config --model=$TEMP_DIR/facade_extended.json --layer=0" \
-    ""
+    "Facade shows correct output size" \
+    "$FACADE_BIN create --feature=4 --hidden=24 --output=6 --mp-layers=2 --save=$OUTPUT_DIR/facade_out6.json" \
+    "Output size: 6"
+
+run_test \
+    "Facade shows message passing layers" \
+    "$FACADE_BIN create --feature=4 --hidden=24 --output=3 --mp-layers=3 --save=$OUTPUT_DIR/facade_mp3.json" \
+    "Message passing layers: 3"
 
 echo ""
 
 # ============================================
-# Facade Features - Query Functions
+# SECTION 10: FacadeGNN - Various Configurations
 # ============================================
 
-echo -e "${BLUE}Group: FacadeGNN - Query Functions${NC}"
+echo -e "${BLUE}=== SECTION 10: FacadeGNN - Various Configurations ===${NC}"
+echo ""
 
 run_test \
-    "FacadeGNN get-feature-size command" \
-    "$FACADE_BIN get-feature-size --model=$TEMP_DIR/facade_extended.json" \
-    ""
+    "Facade with 1 MP layer" \
+    "$FACADE_BIN create --feature=4 --hidden=24 --output=3 --mp-layers=1 --save=$OUTPUT_DIR/facade_mp1.json" \
+    "Created Facaded GNN model"
 
 run_test \
-    "FacadeGNN get-hidden-size command" \
-    "$FACADE_BIN get-hidden-size --model=$TEMP_DIR/facade_extended.json" \
-    ""
+    "Facade with 4 MP layers" \
+    "$FACADE_BIN create --feature=4 --hidden=24 --output=3 --mp-layers=4 --save=$OUTPUT_DIR/facade_mp4.json" \
+    "Created Facaded GNN model"
 
 run_test \
-    "FacadeGNN get-output-size command" \
-    "$FACADE_BIN get-output-size --model=$TEMP_DIR/facade_extended.json" \
-    ""
+    "Facade with 5 MP layers" \
+    "$FACADE_BIN create --feature=4 --hidden=24 --output=3 --mp-layers=5 --save=$OUTPUT_DIR/facade_mp5.json" \
+    "Created Facaded GNN model"
 
 run_test \
-    "FacadeGNN get-mp-layers command" \
-    "$FACADE_BIN get-mp-layers --model=$TEMP_DIR/facade_extended.json" \
-    ""
+    "Facade with large hidden size" \
+    "$FACADE_BIN create --feature=4 --hidden=128 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/facade_large.json" \
+    "Created Facaded GNN model"
 
 run_test \
-    "FacadeGNN get-message-layer-neuron-count command" \
-    "$FACADE_BIN get-message-layer-neuron-count --model=$TEMP_DIR/facade_extended.json --layer=0" \
-    ""
-
-run_test \
-    "FacadeGNN get-update-layer-neuron-count command" \
-    "$FACADE_BIN get-update-layer-neuron-count --model=$TEMP_DIR/facade_extended.json --layer=0" \
-    ""
-
-run_test \
-    "FacadeGNN get-readout-layer-neuron-count command" \
-    "$FACADE_BIN get-readout-layer-neuron-count --model=$TEMP_DIR/facade_extended.json" \
-    ""
-
-run_test \
-    "FacadeGNN get-output-layer-neuron-count command" \
-    "$FACADE_BIN get-output-layer-neuron-count --model=$TEMP_DIR/facade_extended.json" \
-    ""
+    "Facade with custom learning rate" \
+    "$FACADE_BIN create --feature=4 --hidden=24 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/facade_lr.json --lr=0.005" \
+    "Learning rate: 0.005"
 
 echo ""
 
 # ============================================
-# Cross-binary Compatibility
+# SECTION 11: FacadeGNN - Info Command
 # ============================================
 
-echo -e "${BLUE}Group: Cross-binary Compatibility${NC}"
+echo -e "${BLUE}=== SECTION 11: FacadeGNN - Info Command ===${NC}"
+echo ""
 
 run_test \
-    "Model created by GNN loads in FacadeGNN" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/cross_gnn.json && $FACADE_BIN info --model=$TEMP_DIR/cross_gnn.json" \
-    ""
+    "Facade info shows architecture summary" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/facade_basic.json" \
+    "GNN Architecture Summary"
 
 run_test \
-    "Model created by FacadeGNN loads in GNN" \
-    "$FACADE_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/cross_facade.json && $GNN_BIN info --model=$TEMP_DIR/cross_facade.json" \
-    "Loading model from JSON"
+    "Facade info shows feature size" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/facade_basic.json" \
+    "Feature Size"
 
 run_test \
-    "GNN info command works on Facade model" \
-    "$GNN_BIN info --model=$TEMP_DIR/cross_facade.json" \
-    "Loading model from JSON"
+    "Facade info shows hidden size" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/facade_basic.json" \
+    "Hidden Size"
 
 run_test \
-    "Facade info command works on GNN model" \
-    "$FACADE_BIN info --model=$TEMP_DIR/cross_gnn.json" \
-    ""
+    "Facade info shows output size" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/facade_basic.json" \
+    "Output Size"
+
+run_test \
+    "Facade info shows total parameters" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/facade_basic.json" \
+    "Total Parameters"
 
 echo ""
 
 # ============================================
-# Model Variants - Comprehensive
+# SECTION 12: FacadeGNN - Introspection Commands
 # ============================================
 
-echo -e "${BLUE}Group: Comprehensive Model Variants${NC}"
-
-# Create various model types and test persistence
-run_test \
-    "All activation types compile correctly (ReLU)" \
-    "$GNN_BIN create --feature=4 --hidden=8 --output=2 --mp-layers=2 --save=$TEMP_DIR/var_relu.json --activation=relu && [ -f $TEMP_DIR/var_relu.json ]" \
-    ""
+echo -e "${BLUE}=== SECTION 12: FacadeGNN - Introspection Commands ===${NC}"
+echo ""
 
 run_test \
-    "All activation types compile correctly (Tanh)" \
-    "$GNN_BIN create --feature=4 --hidden=8 --output=2 --mp-layers=2 --save=$TEMP_DIR/var_tanh.json --activation=tanh && [ -f $TEMP_DIR/var_tanh.json ]" \
-    ""
+    "get-embedding command parses" \
+    "$FACADE_BIN get-embedding --model=$OUTPUT_DIR/facade_basic.json --layer=0 --node=0" \
+    "Layer:"
 
 run_test \
-    "All activation types compile correctly (Sigmoid)" \
-    "$GNN_BIN create --feature=4 --hidden=8 --output=2 --mp-layers=2 --save=$TEMP_DIR/var_sigmoid.json --activation=sigmoid && [ -f $TEMP_DIR/var_sigmoid.json ]" \
-    ""
+    "set-embedding command parses" \
+    "$FACADE_BIN set-embedding --model=$OUTPUT_DIR/facade_basic.json --layer=0 --node=0 --value=0.5" \
+    "Layer:"
 
 run_test \
-    "All activation types compile correctly (LeakyReLU)" \
-    "$GNN_BIN create --feature=4 --hidden=8 --output=2 --mp-layers=2 --save=$TEMP_DIR/var_leaky.json --activation=leakyrelu && [ -f $TEMP_DIR/var_leaky.json ]" \
-    ""
+    "get-graph-embedding command parses" \
+    "$FACADE_BIN get-graph-embedding --model=$OUTPUT_DIR/facade_basic.json --layer=0" \
+    "Layer:"
 
 run_test \
-    "All loss types compile correctly (MSE)" \
-    "$GNN_BIN create --feature=4 --hidden=8 --output=2 --mp-layers=2 --save=$TEMP_DIR/var_mse.json --loss=mse && [ -f $TEMP_DIR/var_mse.json ]" \
-    ""
+    "set-graph-embedding command parses" \
+    "$FACADE_BIN set-graph-embedding --model=$OUTPUT_DIR/facade_basic.json" \
+    "Set graph embedding"
 
 run_test \
-    "All loss types compile correctly (BCE)" \
-    "$GNN_BIN create --feature=4 --hidden=8 --output=2 --mp-layers=2 --save=$TEMP_DIR/var_bce.json --loss=bce && [ -f $TEMP_DIR/var_bce.json ]" \
-    ""
+    "get-message command parses" \
+    "$FACADE_BIN get-message --model=$OUTPUT_DIR/facade_basic.json --layer=0 --node=0 --neighbor=1" \
+    "Layer:"
+
+run_test \
+    "set-message command parses" \
+    "$FACADE_BIN set-message --model=$OUTPUT_DIR/facade_basic.json --layer=0 --node=0 --neighbor=1" \
+    "Layer:"
+
+run_test \
+    "get-node-degree command parses" \
+    "$FACADE_BIN get-node-degree --model=$OUTPUT_DIR/facade_basic.json --node=0" \
+    "Node:"
+
+run_test \
+    "compute-pagerank command parses" \
+    "$FACADE_BIN compute-pagerank --model=$OUTPUT_DIR/facade_basic.json --damping=0.85 --pr-iter=100" \
+    "Damping:"
+
+run_test \
+    "export-graph command parses" \
+    "$FACADE_BIN export-graph --model=$OUTPUT_DIR/facade_basic.json" \
+    "Export graph"
+
+run_test \
+    "export-embeddings command parses" \
+    "$FACADE_BIN export-embeddings --model=$OUTPUT_DIR/facade_basic.json --layer=0" \
+    "Layer:"
 
 echo ""
 
 # ============================================
-# Sequential Operations
+# SECTION 13: FacadeGNN - Graph Modification Commands
 # ============================================
 
-echo -e "${BLUE}Group: Sequential Operations Workflow${NC}"
+echo -e "${BLUE}=== SECTION 13: FacadeGNN - Graph Modification Commands ===${NC}"
+echo ""
 
 run_test \
-    "Workflow: Create GNN -> Load -> Info" \
-    "$GNN_BIN create --feature=5 --hidden=32 --output=3 --mp-layers=3 --save=$TEMP_DIR/wf1.json && $GNN_BIN info --model=$TEMP_DIR/wf1.json" \
-    "Loading model from JSON"
+    "add-node command parses" \
+    "$FACADE_BIN add-node --model=$OUTPUT_DIR/facade_basic.json" \
+    "Add node"
 
 run_test \
-    "Workflow: Create with params -> Verify in Facade" \
-    "$GNN_BIN create --feature=4 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/wf2.json --lr=0.005 --activation=tanh && $FACADE_BIN info --model=$TEMP_DIR/wf2.json" \
-    ""
+    "add-edge command parses" \
+    "$FACADE_BIN add-edge --model=$OUTPUT_DIR/facade_basic.json --node=0 --neighbor=1" \
+    "Source:"
 
 run_test \
-    "Workflow: Create Facade -> Load in GNN" \
-    "$FACADE_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/wf3.json && $GNN_BIN info --model=$TEMP_DIR/wf3.json" \
-    "Loading model from JSON"
+    "get-node-feature command parses" \
+    "$FACADE_BIN get-node-feature --model=$OUTPUT_DIR/facade_basic.json --node=0 --feature-idx=0" \
+    "Node:"
 
 run_test \
-    "Workflow: Create with all custom params" \
-    "$GNN_BIN create --feature=6 --hidden=32 --output=4 --mp-layers=3 --save=$TEMP_DIR/wf4.json --lr=0.01 --activation=sigmoid --loss=bce && $FACADE_BIN info --model=$TEMP_DIR/wf4.json" \
-    ""
-
-run_test \
-    "Workflow: Multi-layer GNN creation and verification" \
-    "$GNN_BIN create --feature=10 --hidden=64 --output=5 --mp-layers=4 --save=$TEMP_DIR/wf5.json && $FACADE_BIN get-mp-layers --model=$TEMP_DIR/wf5.json" \
-    ""
+    "set-node-feature command parses" \
+    "$FACADE_BIN set-node-feature --model=$OUTPUT_DIR/facade_basic.json --node=0 --feature-idx=0 --value=1.0" \
+    "Node:"
 
 echo ""
 
 # ============================================
-# File Persistence and Format
+# SECTION 14: FacadeGNN - Gradient Detection Commands
 # ============================================
 
-echo -e "${BLUE}Group: File Persistence & Format${NC}"
+echo -e "${BLUE}=== SECTION 14: FacadeGNN - Gradient Detection Commands ===${NC}"
+echo ""
 
 run_test \
-    "Created model file is not empty" \
-    "[ -s $TEMP_DIR/basic.json ] && echo 'ok'" \
+    "detect-vanishing command parses" \
+    "$FACADE_BIN detect-vanishing --model=$OUTPUT_DIR/facade_basic.json --threshold=1e-6" \
+    "Threshold:"
+
+run_test \
+    "detect-exploding command parses" \
+    "$FACADE_BIN detect-exploding --model=$OUTPUT_DIR/facade_basic.json --threshold=1e6" \
+    "Threshold:"
+
+run_test \
+    "get-gradient-flow command parses" \
+    "$FACADE_BIN get-gradient-flow --model=$OUTPUT_DIR/facade_basic.json --layer=0" \
+    "Layer:"
+
+echo ""
+
+# ============================================
+# SECTION 15: Cross-Loading - GNN creates, Facade loads
+# ============================================
+
+echo -e "${BLUE}=== SECTION 15: Cross-Loading - GNN creates, Facade loads ===${NC}"
+echo ""
+
+# Create model with GNN
+$GNN_BIN create --feature=6 --hidden=32 --output=4 --mp-layers=3 --save=$OUTPUT_DIR/cross_gnn_to_facade.json >/dev/null 2>&1
+
+run_test \
+    "GNN creates model for cross-loading" \
+    "[ -f $OUTPUT_DIR/cross_gnn_to_facade.json ] && echo 'ok'" \
     "ok"
 
 run_test \
-    "Model JSON is readable text" \
-    "file $TEMP_DIR/basic.json | grep -q 'JSON' && echo 'ok'" \
+    "Facade loads GNN-created model" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/cross_gnn_to_facade.json" \
+    "GNN Architecture Summary"
+
+run_test \
+    "Facade shows correct feature size from GNN model" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/cross_gnn_to_facade.json" \
+    "Feature Size: 6"
+
+run_test \
+    "Facade shows correct hidden size from GNN model" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/cross_gnn_to_facade.json" \
+    "Hidden Size: 32"
+
+run_test \
+    "Facade shows correct output size from GNN model" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/cross_gnn_to_facade.json" \
+    "Output Size: 4"
+
+run_test \
+    "Facade shows correct MP layers from GNN model" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/cross_gnn_to_facade.json" \
+    "Message Passing Layers: 3"
+
+echo ""
+
+# ============================================
+# SECTION 16: Cross-Loading - Facade creates, GNN loads
+# ============================================
+
+echo -e "${BLUE}=== SECTION 16: Cross-Loading - Facade creates, GNN loads ===${NC}"
+echo ""
+
+# Create model with Facade
+$FACADE_BIN create --feature=8 --hidden=48 --output=5 --mp-layers=4 --save=$OUTPUT_DIR/cross_facade_to_gnn.json >/dev/null 2>&1
+
+run_test \
+    "Facade creates model for cross-loading" \
+    "[ -f $OUTPUT_DIR/cross_facade_to_gnn.json ] && echo 'ok'" \
+    "ok"
+
+run_test \
+    "GNN loads Facade-created model" \
+    "$GNN_BIN info --model=$OUTPUT_DIR/cross_facade_to_gnn.json" \
+    "Loading model from JSON"
+
+run_test \
+    "Cross-load: model file is readable JSON" \
+    "file $OUTPUT_DIR/cross_facade_to_gnn.json | grep -i 'text\\|json\\|ascii'" \
+    ""
+
+echo ""
+
+# ============================================
+# SECTION 17: Cross-Loading - Round Trip
+# ============================================
+
+echo -e "${BLUE}=== SECTION 17: Cross-Loading - Round Trip ===${NC}"
+echo ""
+
+# Create with GNN, load with Facade, check info matches
+$GNN_BIN create --feature=10 --hidden=64 --output=8 --mp-layers=2 --save=$OUTPUT_DIR/roundtrip1.json --activation=tanh --loss=bce --lr=0.005 >/dev/null 2>&1
+
+run_test \
+    "Round trip: GNN creates with all params" \
+    "[ -f $OUTPUT_DIR/roundtrip1.json ] && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Round trip: Facade loads and shows activation" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/roundtrip1.json" \
+    "Activation: Tanh"
+
+run_test \
+    "Round trip: Facade loads and shows learning rate" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/roundtrip1.json" \
+    "Learning Rate:"
+
+# Create with Facade, verify GNN can load
+$FACADE_BIN create --feature=12 --hidden=72 --output=6 --mp-layers=3 --save=$OUTPUT_DIR/roundtrip2.json >/dev/null 2>&1
+
+run_test \
+    "Round trip: Facade creates model" \
+    "[ -f $OUTPUT_DIR/roundtrip2.json ] && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Round trip: GNN info succeeds on Facade model" \
+    "$GNN_BIN info --model=$OUTPUT_DIR/roundtrip2.json" \
+    "Loading model from JSON"
+
+echo ""
+
+# ============================================
+# SECTION 18: JSON Format Validation
+# ============================================
+
+echo -e "${BLUE}=== SECTION 18: JSON Format Validation ===${NC}"
+echo ""
+
+# Create a reference model
+$GNN_BIN create --feature=4 --hidden=20 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/json_test.json >/dev/null 2>&1
+
+check_json_field \
+    "JSON has feature_size field" \
+    "$OUTPUT_DIR/json_test.json" \
+    "feature_size"
+
+check_json_field \
+    "JSON has hidden_size field" \
+    "$OUTPUT_DIR/json_test.json" \
+    "hidden_size"
+
+check_json_field \
+    "JSON has output_size field" \
+    "$OUTPUT_DIR/json_test.json" \
+    "output_size"
+
+check_json_field \
+    "JSON has num_message_passing_layers field" \
+    "$OUTPUT_DIR/json_test.json" \
+    "num_message_passing_layers"
+
+check_json_field \
+    "JSON has learning_rate field" \
+    "$OUTPUT_DIR/json_test.json" \
+    "learning_rate"
+
+check_json_field \
+    "JSON has activation field" \
+    "$OUTPUT_DIR/json_test.json" \
+    "activation"
+
+check_json_field \
+    "JSON has loss_type field" \
+    "$OUTPUT_DIR/json_test.json" \
+    "loss_type"
+
+check_json_field \
+    "JSON has max_iterations field" \
+    "$OUTPUT_DIR/json_test.json" \
+    "max_iterations"
+
+check_json_field \
+    "JSON has message_layers array" \
+    "$OUTPUT_DIR/json_test.json" \
+    "message_layers"
+
+check_json_field \
+    "JSON has update_layers array" \
+    "$OUTPUT_DIR/json_test.json" \
+    "update_layers"
+
+check_json_field \
+    "JSON has readout_layer object" \
+    "$OUTPUT_DIR/json_test.json" \
+    "readout_layer"
+
+check_json_field \
+    "JSON has output_layer object" \
+    "$OUTPUT_DIR/json_test.json" \
+    "output_layer"
+
+echo ""
+
+# ============================================
+# SECTION 19: JSON Layer Structure
+# ============================================
+
+echo -e "${BLUE}=== SECTION 19: JSON Layer Structure ===${NC}"
+echo ""
+
+run_test \
+    "Message layers contain neurons" \
+    "grep -q '\"neurons\"' $OUTPUT_DIR/json_test.json && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Neurons have weights array" \
+    "grep -q '\"weights\"' $OUTPUT_DIR/json_test.json && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Neurons have bias value" \
+    "grep -q '\"bias\"' $OUTPUT_DIR/json_test.json && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Layers have num_outputs" \
+    "grep -q '\"num_outputs\"' $OUTPUT_DIR/json_test.json && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Layers have num_inputs" \
+    "grep -q '\"num_inputs\"' $OUTPUT_DIR/json_test.json && echo 'ok'" \
+    "ok"
+
+echo ""
+
+# ============================================
+# SECTION 20: Dimension Edge Cases
+# ============================================
+
+echo -e "${BLUE}=== SECTION 20: Dimension Edge Cases ===${NC}"
+echo ""
+
+run_test \
+    "Minimal model (1-2-1-1)" \
+    "$GNN_BIN create --feature=1 --hidden=2 --output=1 --mp-layers=1 --save=$OUTPUT_DIR/edge_minimal.json" \
+    "Created GNN model"
+
+run_test \
+    "Deep model (5 MP layers)" \
+    "$GNN_BIN create --feature=2 --hidden=8 --output=2 --mp-layers=5 --save=$OUTPUT_DIR/edge_deep.json" \
+    "Created GNN model"
+
+run_test \
+    "Wide model (256-256-128)" \
+    "$GNN_BIN create --feature=256 --hidden=256 --output=128 --mp-layers=2 --save=$OUTPUT_DIR/edge_wide.json" \
+    "Created GNN model"
+
+run_test \
+    "Large feature dimension (512)" \
+    "$GNN_BIN create --feature=512 --hidden=64 --output=10 --mp-layers=2 --save=$OUTPUT_DIR/edge_largefeat.json" \
+    "Created GNN model"
+
+run_test \
+    "Large hidden dimension (512)" \
+    "$GNN_BIN create --feature=10 --hidden=512 --output=5 --mp-layers=2 --save=$OUTPUT_DIR/edge_largehid.json" \
+    "Created GNN model"
+
+run_test \
+    "Large output dimension (256)" \
+    "$GNN_BIN create --feature=10 --hidden=64 --output=256 --mp-layers=2 --save=$OUTPUT_DIR/edge_largeout.json" \
+    "Created GNN model"
+
+check_file_exists \
+    "Minimal model file exists" \
+    "$OUTPUT_DIR/edge_minimal.json"
+
+check_file_exists \
+    "Deep model file exists" \
+    "$OUTPUT_DIR/edge_deep.json"
+
+check_file_exists \
+    "Wide model file exists" \
+    "$OUTPUT_DIR/edge_wide.json"
+
+echo ""
+
+# ============================================
+# SECTION 21: Model Consistency Tests
+# ============================================
+
+echo -e "${BLUE}=== SECTION 21: Model Consistency Tests ===${NC}"
+echo ""
+
+# Create a model, load it twice, verify consistency
+$GNN_BIN create --feature=5 --hidden=20 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/consistency.json >/dev/null 2>&1
+
+run_test \
+    "GNN info produces consistent output (run 1 vs run 2)" \
+    "$GNN_BIN info --model=$OUTPUT_DIR/consistency.json > $OUTPUT_DIR/gnn_cons1.txt && \
+     $GNN_BIN info --model=$OUTPUT_DIR/consistency.json > $OUTPUT_DIR/gnn_cons2.txt && \
+     diff $OUTPUT_DIR/gnn_cons1.txt $OUTPUT_DIR/gnn_cons2.txt > /dev/null && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Facade info produces consistent output (run 1 vs run 2)" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/consistency.json > $OUTPUT_DIR/facade_cons1.txt && \
+     $FACADE_BIN info --model=$OUTPUT_DIR/consistency.json > $OUTPUT_DIR/facade_cons2.txt && \
+     diff $OUTPUT_DIR/facade_cons1.txt $OUTPUT_DIR/facade_cons2.txt > /dev/null && echo 'ok'" \
+    "ok"
+
+echo ""
+
+# ============================================
+# SECTION 22: GNN and Facade Parity Tests
+# ============================================
+
+echo -e "${BLUE}=== SECTION 22: GNN and Facade Parity Tests ===${NC}"
+echo ""
+
+run_test \
+    "Both binaries can load the same model" \
+    "$GNN_BIN create --feature=4 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/parity.json && \
+     $GNN_BIN info --model=$OUTPUT_DIR/parity.json > /dev/null && \
+     $FACADE_BIN info --model=$OUTPUT_DIR/parity.json > /dev/null && echo 'ok'" \
+    "ok"
+
+run_test \
+    "GNN-created model loadable by Facade (multiple models)" \
+    "$GNN_BIN create --feature=3 --hidden=12 --output=2 --mp-layers=1 --save=$OUTPUT_DIR/parity1.json && \
+     $GNN_BIN create --feature=5 --hidden=24 --output=4 --mp-layers=3 --save=$OUTPUT_DIR/parity2.json && \
+     $FACADE_BIN info --model=$OUTPUT_DIR/parity1.json > /dev/null && \
+     $FACADE_BIN info --model=$OUTPUT_DIR/parity2.json > /dev/null && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Facade-created model loadable by GNN (multiple models)" \
+    "$FACADE_BIN create --feature=6 --hidden=30 --output=5 --mp-layers=2 --save=$OUTPUT_DIR/parity3.json && \
+     $FACADE_BIN create --feature=8 --hidden=40 --output=6 --mp-layers=4 --save=$OUTPUT_DIR/parity4.json && \
+     $GNN_BIN info --model=$OUTPUT_DIR/parity3.json > /dev/null && \
+     $GNN_BIN info --model=$OUTPUT_DIR/parity4.json > /dev/null && echo 'ok'" \
+    "ok"
+
+echo ""
+
+# ============================================
+# SECTION 23: File Persistence
+# ============================================
+
+echo -e "${BLUE}=== SECTION 23: File Persistence ===${NC}"
+echo ""
+
+run_test \
+    "Created model file is not empty" \
+    "[ -s $OUTPUT_DIR/gnn_basic.json ] && echo 'ok'" \
+    "ok"
+
+run_test \
+    "Model JSON is readable text file" \
+    "file $OUTPUT_DIR/gnn_basic.json | grep -iq 'text\\|json\\|ascii' && echo 'ok'" \
     "ok"
 
 run_test \
     "Multiple models can exist independently" \
-    "[ -f $TEMP_DIR/mp1.json ] && [ -f $TEMP_DIR/mp3.json ] && [ -f $TEMP_DIR/mp5.json ] && echo 'ok'" \
+    "[ -f $OUTPUT_DIR/gnn_mp1.json ] && [ -f $OUTPUT_DIR/gnn_mp3.json ] && [ -f $OUTPUT_DIR/gnn_mp5.json ] && echo 'ok'" \
     "ok"
 
 run_test \
-    "Models with different configs have different sizes" \
-    "[ -f $TEMP_DIR/tiny.json ] && [ -f $TEMP_DIR/large_hidden.json ] && echo 'ok'" \
-    "ok"
+    "Models with different configs have different file content" \
+    "! diff -q $OUTPUT_DIR/gnn_mp1.json $OUTPUT_DIR/gnn_mp5.json > /dev/null && echo 'different'" \
+    "different"
 
 echo ""
 
 # ============================================
-# Dimension Edge Cases
+# SECTION 24: Extended Facade Function Tests
 # ============================================
 
-echo -e "${BLUE}Group: Dimension Edge Cases${NC}"
-
-run_test \
-    "Minimal model (1-2-1-1)" \
-    "$GNN_BIN create --feature=1 --hidden=2 --output=1 --mp-layers=1 --save=$TEMP_DIR/edge_minimal.json && [ -f $TEMP_DIR/edge_minimal.json ]" \
-    ""
-
-run_test \
-    "Very deep model (2-4-5)" \
-    "$GNN_BIN create --feature=2 --hidden=4 --output=2 --mp-layers=5 --save=$TEMP_DIR/edge_deep.json && [ -f $TEMP_DIR/edge_deep.json ]" \
-    ""
-
-run_test \
-    "Wide model (512-512-256)" \
-    "$GNN_BIN create --feature=512 --hidden=512 --output=256 --mp-layers=2 --save=$TEMP_DIR/edge_wide.json && [ -f $TEMP_DIR/edge_wide.json ]" \
-    ""
-
-check_json_field \
-    "Minimal model has feature_size=1" \
-    "$TEMP_DIR/edge_minimal.json" \
-    "feature_size"
-
-check_json_field \
-    "Deep model has correct mp_layers" \
-    "$TEMP_DIR/edge_deep.json" \
-    "num_message_passing_layers"
-
-check_json_field \
-    "Wide model created successfully" \
-    "$TEMP_DIR/edge_wide.json" \
-    "hidden_size"
-
+echo -e "${BLUE}=== SECTION 24: Extended Facade Function Tests ===${NC}"
 echo ""
 
-# ============================================
-# Hyperparameter Ranges
-# ============================================
+# Create a model for repeated testing
+$FACADE_BIN create --feature=4 --hidden=20 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/facade_extended.json >/dev/null 2>&1
 
-echo -e "${BLUE}Group: Hyperparameter Ranges${NC}"
-
-run_test \
-    "Very small learning rate (0.0001)" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/hp_tiny_lr.json --lr=0.0001 && [ -f $TEMP_DIR/hp_tiny_lr.json ]" \
-    ""
-
-run_test \
-    "Large learning rate (1.0)" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/hp_large_lr.json --lr=1.0 && [ -f $TEMP_DIR/hp_large_lr.json ]" \
-    ""
-
-run_test \
-    "Fractional learning rate (0.05)" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/hp_frac_lr.json --lr=0.05 && [ -f $TEMP_DIR/hp_frac_lr.json ]" \
-    ""
-
-check_json_field \
-    "Very small learning rate persists" \
-    "$TEMP_DIR/hp_tiny_lr.json" \
-    "learning_rate"
-
-check_json_field \
-    "Large learning rate persists" \
-    "$TEMP_DIR/hp_large_lr.json" \
-    "learning_rate"
-
-echo ""
-
-# ============================================
-# JSON Layer Structure
-# ============================================
-
-echo -e "${BLUE}Group: JSON Layer Structure Validation${NC}"
-
-run_test \
-    "Message layers contain neurons" \
-    "grep -q '\"neurons\"' $TEMP_DIR/basic.json && echo 'ok'" \
-    "ok"
-
-run_test \
-    "Neurons have weights" \
-    "grep -q '\"weights\"' $TEMP_DIR/basic.json && echo 'ok'" \
-    "ok"
-
-run_test \
-    "Neurons have bias" \
-    "grep -q '\"bias\"' $TEMP_DIR/basic.json && echo 'ok'" \
-    "ok"
-
-run_test \
-    "Readout layer exists in JSON" \
-    "grep -q '\"readout_layer\"' $TEMP_DIR/basic.json && echo 'ok'" \
-    "ok"
-
-run_test \
-    "Output layer exists in JSON" \
-    "grep -q '\"output_layer\"' $TEMP_DIR/basic.json && echo 'ok'" \
-    "ok"
-
-echo ""
-
-# ============================================
-# Facade Extended Facade Tests
-# ============================================
-
-echo -e "${BLUE}Group: Facade Extended Command Testing${NC}"
-
-# Test multiple calls to same facade
+# Test multiple calls to same facade commands (stability)
 for i in {1..3}; do
     run_test \
         "Facade info call $i succeeds" \
-        "$FACADE_BIN info --model=$TEMP_DIR/facade_extended.json" \
-        ""
+        "$FACADE_BIN info --model=$OUTPUT_DIR/facade_extended.json > /dev/null && echo 'ok'" \
+        "ok"
 done
 
 for i in {1..3}; do
     run_test \
-        "Facade architecture-summary call $i succeeds" \
-        "$FACADE_BIN architecture-summary --model=$TEMP_DIR/facade_extended.json" \
-        ""
+        "Facade get-embedding call $i succeeds" \
+        "$FACADE_BIN get-embedding --model=$OUTPUT_DIR/facade_extended.json --layer=0 --node=0 > /dev/null && echo 'ok'" \
+        "ok"
 done
 
 for i in {1..3}; do
     run_test \
-        "Facade parameter-count call $i succeeds" \
-        "$FACADE_BIN parameter-count --model=$TEMP_DIR/facade_extended.json" \
-        ""
+        "Facade compute-pagerank call $i succeeds" \
+        "$FACADE_BIN compute-pagerank --model=$OUTPUT_DIR/facade_extended.json > /dev/null && echo 'ok'" \
+        "ok"
 done
 
 echo ""
 
 # ============================================
-# Model Consistency
+# SECTION 25: Hyperparameter Range Tests
 # ============================================
 
-echo -e "${BLUE}Group: Model Consistency${NC}"
+echo -e "${BLUE}=== SECTION 25: Hyperparameter Range Tests ===${NC}"
+echo ""
 
-# Create a model, load it twice, verify consistency
 run_test \
-    "Model loaded twice produces same info output" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/consistency.json && \
-    $GNN_BIN info --model=$TEMP_DIR/consistency.json > /tmp/gnn_output1.txt && \
-    $GNN_BIN info --model=$TEMP_DIR/consistency.json > /tmp/gnn_output2.txt && \
-    diff /tmp/gnn_output1.txt /tmp/gnn_output2.txt > /dev/null && echo 'ok'" \
+    "Very small learning rate (0.00001)" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/hp_lr_tiny.json --lr=0.00001" \
+    "Created GNN model"
+
+run_test \
+    "Large learning rate (1.0)" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$OUTPUT_DIR/hp_lr_large.json --lr=1.0" \
+    "Created GNN model"
+
+run_test \
+    "Learning rate persists in tiny LR model" \
+    "grep -q 'learning_rate' $OUTPUT_DIR/hp_lr_tiny.json && echo 'ok'" \
     "ok"
 
 run_test \
-    "Facade loads same model consistently" \
-    "$FACADE_BIN info --model=$TEMP_DIR/consistency.json > /tmp/facade_output1.txt && \
-    $FACADE_BIN info --model=$TEMP_DIR/consistency.json > /tmp/facade_output2.txt && \
-    diff /tmp/facade_output1.txt /tmp/facade_output2.txt > /dev/null && echo 'ok'" \
+    "Learning rate persists in large LR model" \
+    "grep -q 'learning_rate' $OUTPUT_DIR/hp_lr_large.json && echo 'ok'" \
     "ok"
 
 echo ""
 
 # ============================================
-# Facade vs GNN Output Parity
+# SECTION 26: Combined Feature Tests
 # ============================================
 
-echo -e "${BLUE}Group: GNN and Facade Parity${NC}"
+echo -e "${BLUE}=== SECTION 26: Combined Feature Tests ===${NC}"
+echo ""
 
 run_test \
-    "Both binaries can load the same model" \
-    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 --save=$TEMP_DIR/parity.json && \
-    $GNN_BIN info --model=$TEMP_DIR/parity.json > /dev/null && \
-    $FACADE_BIN info --model=$TEMP_DIR/parity.json > /dev/null && echo 'ok'" \
+    "Create with all custom params (GNN)" \
+    "$GNN_BIN create --feature=8 --hidden=40 --output=5 --mp-layers=3 --save=$OUTPUT_DIR/full_custom.json --lr=0.005 --activation=tanh --loss=bce" \
+    "Created GNN model"
+
+run_test \
+    "Full custom model shows activation" \
+    "$GNN_BIN create --feature=8 --hidden=40 --output=5 --mp-layers=3 --save=$OUTPUT_DIR/full_custom2.json --lr=0.005 --activation=sigmoid --loss=mse" \
+    "Activation: sigmoid"
+
+run_test \
+    "Full custom model shows loss" \
+    "$GNN_BIN create --feature=8 --hidden=40 --output=5 --mp-layers=3 --save=$OUTPUT_DIR/full_custom3.json --lr=0.005 --activation=relu --loss=bce" \
+    "Loss function: bce"
+
+run_test \
+    "Facade can load full custom GNN model" \
+    "$FACADE_BIN info --model=$OUTPUT_DIR/full_custom.json" \
+    "GNN Architecture Summary"
+
+echo ""
+
+# ============================================
+# SECTION 27: Train Command Tests
+# ============================================
+
+echo -e "${BLUE}=== SECTION 27: Train Command Tests ===${NC}"
+echo ""
+
+run_test \
+    "GNN train command requires --model" \
+    "$GNN_BIN train --graph=test.json --save=out.json 2>&1" \
+    "model is required"
+
+run_test \
+    "GNN train command requires --graph" \
+    "$GNN_BIN train --model=$OUTPUT_DIR/gnn_basic.json --save=out.json 2>&1" \
+    "graph is required"
+
+run_test \
+    "GNN train command requires --save" \
+    "$GNN_BIN train --model=$OUTPUT_DIR/gnn_basic.json --graph=test.json 2>&1" \
+    "save is required"
+
+run_test \
+    "Facade train command requires --model" \
+    "$FACADE_BIN train --save=out.json 2>&1" \
+    "model is required"
+
+run_test \
+    "Facade train command requires --save" \
+    "$FACADE_BIN train --model=$OUTPUT_DIR/facade_basic.json 2>&1" \
+    "save is required"
+
+echo ""
+
+# ============================================
+# SECTION 28: Predict Command Tests
+# ============================================
+
+echo -e "${BLUE}=== SECTION 28: Predict Command Tests ===${NC}"
+echo ""
+
+run_test \
+    "GNN predict command requires --model" \
+    "$GNN_BIN predict --graph=test.json 2>&1" \
+    "model is required"
+
+run_test \
+    "GNN predict command requires --graph" \
+    "$GNN_BIN predict --model=$OUTPUT_DIR/gnn_basic.json 2>&1" \
+    "graph is required"
+
+run_test \
+    "Facade predict command requires --model" \
+    "$FACADE_BIN predict 2>&1" \
+    "model is required"
+
+echo ""
+
+# ============================================
+# SECTION 29: Error Handling Tests
+# ============================================
+
+echo -e "${BLUE}=== SECTION 29: Error Handling Tests ===${NC}"
+echo ""
+
+run_test \
+    "GNN create missing --feature shows error" \
+    "$GNN_BIN create --hidden=16 --output=2 --mp-layers=2 --save=test.json 2>&1" \
+    "feature is required"
+
+run_test \
+    "GNN create missing --hidden shows error" \
+    "$GNN_BIN create --feature=3 --output=2 --mp-layers=2 --save=test.json 2>&1" \
+    "hidden is required"
+
+run_test \
+    "GNN create missing --output shows error" \
+    "$GNN_BIN create --feature=3 --hidden=16 --mp-layers=2 --save=test.json 2>&1" \
+    "output is required"
+
+run_test \
+    "GNN create missing --mp-layers shows error" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --save=test.json 2>&1" \
+    "mp-layers is required"
+
+run_test \
+    "GNN create missing --save shows error" \
+    "$GNN_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 2>&1" \
+    "save is required"
+
+run_test \
+    "Facade create missing --feature shows error" \
+    "$FACADE_BIN create --hidden=16 --output=2 --mp-layers=2 --save=test.json 2>&1" \
+    "feature is required"
+
+run_test \
+    "Facade create missing --hidden shows error" \
+    "$FACADE_BIN create --feature=3 --output=2 --mp-layers=2 --save=test.json 2>&1" \
+    "hidden is required"
+
+run_test \
+    "Facade create missing --output shows error" \
+    "$FACADE_BIN create --feature=3 --hidden=16 --mp-layers=2 --save=test.json 2>&1" \
+    "output is required"
+
+run_test \
+    "Facade create missing --mp-layers shows error" \
+    "$FACADE_BIN create --feature=3 --hidden=16 --output=2 --save=test.json 2>&1" \
+    "mp-layers is required"
+
+run_test \
+    "Facade create missing --save shows error" \
+    "$FACADE_BIN create --feature=3 --hidden=16 --output=2 --mp-layers=2 2>&1" \
+    "save is required"
+
+run_test \
+    "Unknown command shows error (GNN)" \
+    "$GNN_BIN unknown_command 2>&1" \
+    "Unknown command"
+
+run_test \
+    "Unknown command shows error (Facade)" \
+    "$FACADE_BIN unknown_command 2>&1" \
+    "Unknown command"
+
+echo ""
+
+# ============================================
+# SECTION 30: Binary Format vs JSON Format
+# ============================================
+
+echo -e "${BLUE}=== SECTION 30: Binary Format vs JSON Format ===${NC}"
+echo ""
+
+# Facade supports both .json and binary format
+run_test \
+    "Facade creates JSON when extension is .json" \
+    "$FACADE_BIN create --feature=4 --hidden=20 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/format_test.json && \
+     grep -q '\"feature_size\"' $OUTPUT_DIR/format_test.json && echo 'ok'" \
     "ok"
 
 run_test \
-    "Facade parameter-count exists for all created models" \
-    "$FACADE_BIN parameter-count --model=$TEMP_DIR/mp1.json && \
-    $FACADE_BIN parameter-count --model=$TEMP_DIR/mp3.json && \
-    $FACADE_BIN parameter-count --model=$TEMP_DIR/mp5.json && echo 'ok'" \
+    "JSON file is human-readable" \
+    "head -1 $OUTPUT_DIR/format_test.json | grep -q '{' && echo 'ok'" \
     "ok"
 
+echo ""
+
+# ============================================
+# SECTION 31: Complete Workflow Tests
+# ============================================
+
+echo -e "${BLUE}=== SECTION 31: Complete Workflow Tests ===${NC}"
+echo ""
+
 run_test \
-    "Facade architecture summary exists for all models" \
-    "$FACADE_BIN architecture-summary --model=$TEMP_DIR/relu.json && \
-    $FACADE_BIN architecture-summary --model=$TEMP_DIR/tanh.json && echo 'ok'" \
-    "ok"
+    "Workflow: Create -> Info (GNN)" \
+    "$GNN_BIN create --feature=4 --hidden=20 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/wf_gnn.json && \
+     $GNN_BIN info --model=$OUTPUT_DIR/wf_gnn.json" \
+    "Loading model from JSON"
+
+run_test \
+    "Workflow: Create -> Info (Facade)" \
+    "$FACADE_BIN create --feature=4 --hidden=20 --output=3 --mp-layers=2 --save=$OUTPUT_DIR/wf_facade.json && \
+     $FACADE_BIN info --model=$OUTPUT_DIR/wf_facade.json" \
+    "GNN Architecture Summary"
+
+run_test \
+    "Workflow: GNN Create -> Facade Load -> Facade Info" \
+    "$GNN_BIN create --feature=5 --hidden=25 --output=4 --mp-layers=3 --save=$OUTPUT_DIR/wf_cross1.json && \
+     $FACADE_BIN info --model=$OUTPUT_DIR/wf_cross1.json" \
+    "Feature Size: 5"
+
+run_test \
+    "Workflow: Facade Create -> GNN Load -> GNN Info" \
+    "$FACADE_BIN create --feature=6 --hidden=30 --output=5 --mp-layers=2 --save=$OUTPUT_DIR/wf_cross2.json && \
+     $GNN_BIN info --model=$OUTPUT_DIR/wf_cross2.json" \
+    "Loading model from JSON"
+
+run_test \
+    "Workflow: Create with all params -> Cross-load" \
+    "$GNN_BIN create --feature=8 --hidden=40 --output=6 --mp-layers=4 --save=$OUTPUT_DIR/wf_full.json --lr=0.002 --activation=leakyrelu --loss=bce && \
+     $FACADE_BIN info --model=$OUTPUT_DIR/wf_full.json" \
+    "GNN Architecture Summary"
 
 echo ""
 
@@ -942,6 +1331,7 @@ echo ""
 # Summary
 # ============================================
 
+echo ""
 echo "========================================="
 echo "Test Summary"
 echo "========================================="
