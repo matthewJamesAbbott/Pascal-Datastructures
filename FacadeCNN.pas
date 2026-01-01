@@ -639,140 +639,102 @@ end;
 procedure TCNNFacade.SaveModelToJSON(const Filename: string);
 var
   JSON: TStringList;
-  f, c, h, w, i, j, k: Integer;
-  FilterList, WeightsList, NeuronList, LayerList: TStringList;
+  f, i, j: Integer;
 begin
   JSON := TStringList.Create;
   try
-    { Header }
     JSON.Add('{');
-    JSON.Add('  "version": "1.0",');
-    JSON.Add('  "metadata": {');
-    JSON.Add('    "framework": "FacadeCNN",');
-    JSON.Add('    "createdAt": "' + DateTimeToStr(Now) + '",');
-    JSON.Add('    "precision": "double"');
-    JSON.Add('  },');
-    
-    { Configuration }
-    JSON.Add('  "config": {');
-    JSON.Add('    "inputWidth": ' + IntToStr(GetInputWidth) + ',');
-    JSON.Add('    "inputHeight": ' + IntToStr(GetInputHeight) + ',');
-    JSON.Add('    "inputChannels": ' + IntToStr(GetInputChannels) + ',');
-    JSON.Add('    "convFilterCounts": [');
+    JSON.Add('  "input_width": ' + IntToStr(GetInputWidth) + ',');
+    JSON.Add('  "input_height": ' + IntToStr(GetInputHeight) + ',');
+    JSON.Add('  "input_channels": ' + IntToStr(GetInputChannels) + ',');
+    JSON.Add('  "output_size": ' + IntToStr(Length(OutputLayer.Neurons)) + ',');
+    JSON.Add('  "conv_filters": [');
     for i := 0 to High(ConvLayers) do
     begin
-      JSON.Add('      ' + IntToStr(Length(ConvLayers[i].Filters)));
+      JSON.Add('    ' + IntToStr(Length(ConvLayers[i].Filters)));
       if i < High(ConvLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
-    JSON.Add('    ],');
-    JSON.Add('    "kernelSizes": [');
+    JSON.Add('  ],');
+    JSON.Add('  "kernel_sizes": [');
     for i := 0 to High(ConvLayers) do
     begin
-      JSON.Add('      ' + IntToStr(ConvLayers[i].KernelSize));
+      JSON.Add('    ' + IntToStr(ConvLayers[i].KernelSize));
       if i < High(ConvLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
-    JSON.Add('    ],');
-    JSON.Add('    "poolSizes": [');
+    JSON.Add('  ],');
+    JSON.Add('  "pool_sizes": [');
     for i := 0 to High(PoolLayers) do
     begin
-      JSON.Add('      ' + IntToStr(PoolLayers[i].PoolSize));
+      JSON.Add('    ' + IntToStr(PoolLayers[i].PoolSize));
       if i < High(PoolLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
-    JSON.Add('    ],');
-    JSON.Add('    "fcLayerSizes": [');
+    JSON.Add('  ],');
+    JSON.Add('  "fc_layer_sizes": [');
     for i := 0 to High(FullyConnectedLayers) do
     begin
-      JSON.Add('      ' + IntToStr(Length(FullyConnectedLayers[i].Neurons)));
+      JSON.Add('    ' + IntToStr(Length(FullyConnectedLayers[i].Neurons)));
       if i < High(FullyConnectedLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
-    JSON.Add('    ],');
-    JSON.Add('    "outputSize": ' + IntToStr(Length(OutputLayer.Neurons)) + ',');
-    JSON.Add('    "learningRate": ' + FloatToStr(LearningRate) + ',');
-    JSON.Add('    "dropoutRate": ' + FloatToStr(DropoutRate));
-    JSON.Add('  },');
+    JSON.Add('  ],');
+    JSON.Add('  "learning_rate": ' + FloatToStr(LearningRate) + ',');
+    JSON.Add('  "dropout_rate": ' + FloatToStr(DropoutRate) + ',');
+    JSON.Add('  "activation": "relu",');
+    JSON.Add('  "output_activation": "linear",');
+    JSON.Add('  "loss_type": "mse",');
+    JSON.Add('  "conv_layers": [');
     
-    { Hyperparameters }
-    JSON.Add('  "hyperparameters": {');
-    JSON.Add('    "beta1": ' + FloatToStr(Beta1) + ',');
-    JSON.Add('    "beta2": ' + FloatToStr(Beta2) + ',');
-    JSON.Add('    "adamT": ' + IntToStr(AdamT));
-    JSON.Add('  },');
-    
-    { Convolutional layers }
-    JSON.Add('  "convLayers": [');
     for i := 0 to High(ConvLayers) do
     begin
       JSON.Add('    {');
-      JSON.Add('      "layerIndex": ' + IntToStr(i) + ',');
-      JSON.Add('      "stride": ' + IntToStr(ConvLayers[i].Stride) + ',');
-      JSON.Add('      "padding": ' + IntToStr(ConvLayers[i].Padding) + ',');
-      JSON.Add('      "kernelSize": ' + IntToStr(ConvLayers[i].KernelSize) + ',');
-      JSON.Add('      "inputChannels": ' + IntToStr(ConvLayers[i].InputChannels) + ',');
       JSON.Add('      "filters": [');
-      
       for f := 0 to High(ConvLayers[i].Filters) do
       begin
         JSON.Add('        {');
-        JSON.Add('          "filterIndex": ' + IntToStr(f) + ',');
         JSON.Add('          "bias": ' + FloatToStr(ConvLayers[i].Filters[f].Bias) + ',');
-        JSON.Add('          "biasM": ' + FloatToStr(ConvLayers[i].Filters[f].BiasM) + ',');
-        JSON.Add('          "biasV": ' + FloatToStr(ConvLayers[i].Filters[f].BiasV) + ',');
-        JSON.Add('          "biasGrad": ' + FloatToStr(ConvLayers[i].Filters[f].BiasGrad) + ',');
-        JSON.Add('          "weights": ' + Array3DToJSON(ConvLayers[i].Filters[f].Weights) + ',');
-        JSON.Add('          "weightsM": ' + Array3DToJSON(ConvLayers[i].Filters[f].WeightsM) + ',');
-        JSON.Add('          "weightsV": ' + Array3DToJSON(ConvLayers[i].Filters[f].WeightsV) + ',');
-        JSON.Add('          "weightGrads": ' + Array3DToJSON(ConvLayers[i].Filters[f].WeightGrads));
+        JSON.Add('          "weights": ' + Array3DToJSON(ConvLayers[i].Filters[f].Weights));
         JSON.Add('        }');
         if f < High(ConvLayers[i].Filters) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
       end;
-      
       JSON.Add('      ]');
       JSON.Add('    }');
       if i < High(ConvLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
     JSON.Add('  ],');
     
-    { Fully connected layers }
-    JSON.Add('  "fcLayers": [');
+    JSON.Add('  "pool_layers": [');
+    for i := 0 to High(PoolLayers) do
+    begin
+      JSON.Add('    {"poolSize": ' + IntToStr(PoolLayers[i].PoolSize) + '}');
+      if i < High(PoolLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
+    end;
+    JSON.Add('  ],');
+    
+    JSON.Add('  "fc_layers": [');
     for i := 0 to High(FullyConnectedLayers) do
     begin
       JSON.Add('    {');
-      JSON.Add('      "layerIndex": ' + IntToStr(i) + ',');
       JSON.Add('      "neurons": [');
-      
       for j := 0 to High(FullyConnectedLayers[i].Neurons) do
       begin
         JSON.Add('        {');
-        JSON.Add('          "neuronIndex": ' + IntToStr(j) + ',');
         JSON.Add('          "bias": ' + FloatToStr(FullyConnectedLayers[i].Neurons[j].Bias) + ',');
-        JSON.Add('          "biasM": ' + FloatToStr(FullyConnectedLayers[i].Neurons[j].BiasM) + ',');
-        JSON.Add('          "biasV": ' + FloatToStr(FullyConnectedLayers[i].Neurons[j].BiasV) + ',');
-        JSON.Add('          "weights": ' + Array1DToJSON(FullyConnectedLayers[i].Neurons[j].Weights) + ',');
-        JSON.Add('          "weightsM": ' + Array1DToJSON(FullyConnectedLayers[i].Neurons[j].WeightsM) + ',');
-        JSON.Add('          "weightsV": ' + Array1DToJSON(FullyConnectedLayers[i].Neurons[j].WeightsV));
+        JSON.Add('          "weights": ' + Array1DToJSON(FullyConnectedLayers[i].Neurons[j].Weights));
         JSON.Add('        }');
         if j < High(FullyConnectedLayers[i].Neurons) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
       end;
-      
       JSON.Add('      ]');
       JSON.Add('    }');
       if i < High(FullyConnectedLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
     JSON.Add('  ],');
     
-    { Output layer }
-    JSON.Add('  "outputLayer": {');
+    JSON.Add('  "output_layer": {');
     JSON.Add('    "neurons": [');
     for j := 0 to High(OutputLayer.Neurons) do
     begin
       JSON.Add('      {');
-      JSON.Add('        "neuronIndex": ' + IntToStr(j) + ',');
       JSON.Add('        "bias": ' + FloatToStr(OutputLayer.Neurons[j].Bias) + ',');
-      JSON.Add('        "biasM": ' + FloatToStr(OutputLayer.Neurons[j].BiasM) + ',');
-      JSON.Add('        "biasV": ' + FloatToStr(OutputLayer.Neurons[j].BiasV) + ',');
-      JSON.Add('        "weights": ' + Array1DToJSON(OutputLayer.Neurons[j].Weights) + ',');
-      JSON.Add('        "weightsM": ' + Array1DToJSON(OutputLayer.Neurons[j].WeightsM) + ',');
-      JSON.Add('        "weightsV": ' + Array1DToJSON(OutputLayer.Neurons[j].WeightsV));
+      JSON.Add('        "weights": ' + Array1DToJSON(OutputLayer.Neurons[j].Weights));
       JSON.Add('      }');
       if j < High(OutputLayer.Neurons) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
@@ -781,14 +743,13 @@ begin
     
     JSON.Add('}');
     
-    { Save to file }
     JSON.SaveToFile(Filename);
     WriteLn('Model saved to: ' + Filename);
     
-    finally
+  finally
     JSON.Free;
-    end;
-    end;
+  end;
+end;
 
     procedure LoadWeights1DFromJSONOutputLayer(const JSONStr: string; NeuronIndex: Integer; var Arr: Darray);
     var
@@ -1568,13 +1529,24 @@ function ExtractIntFromSimpleArray(const JSONStr, ArrayName: string; Index: Inte
     JSONContent.LoadFromFile(Filename);
     JSONStr := JSONContent.Text;
     
-    { Parse configuration from JSON }
-    InputW := ExtractIntFromJSON(JSONStr, 'inputWidth');
-    InputH := ExtractIntFromJSON(JSONStr, 'inputHeight');
-    InputC := ExtractIntFromJSON(JSONStr, 'inputChannels');
-    OutputSize := ExtractIntFromJSON(JSONStr, 'outputSize');
-    LR := ExtractDoubleFromJSON(JSONStr, 'learningRate');
-    DR := ExtractDoubleFromJSON(JSONStr, 'dropoutRate');
+    { Parse configuration from JSON - try both snake_case and camelCase }
+    InputW := ExtractIntFromJSON(JSONStr, 'input_width');
+    if InputW = 0 then InputW := ExtractIntFromJSON(JSONStr, 'inputWidth');
+    
+    InputH := ExtractIntFromJSON(JSONStr, 'input_height');
+    if InputH = 0 then InputH := ExtractIntFromJSON(JSONStr, 'inputHeight');
+    
+    InputC := ExtractIntFromJSON(JSONStr, 'input_channels');
+    if InputC = 0 then InputC := ExtractIntFromJSON(JSONStr, 'inputChannels');
+    
+    OutputSize := ExtractIntFromJSON(JSONStr, 'output_size');
+    if OutputSize = 0 then OutputSize := ExtractIntFromJSON(JSONStr, 'outputSize');
+    
+    LR := ExtractDoubleFromJSON(JSONStr, 'learning_rate');
+    if LR = 0 then LR := ExtractDoubleFromJSON(JSONStr, 'learningRate');
+    
+    DR := ExtractDoubleFromJSON(JSONStr, 'dropout_rate');
+    if DR = 0 then DR := ExtractDoubleFromJSON(JSONStr, 'dropoutRate');
     
     FInputWidth := InputW;
     FInputHeight := InputH;
@@ -1681,8 +1653,12 @@ function ExtractIntFromSimpleArray(const JSONStr, ArrayName: string; Index: Inte
     end;
     
     { Parse output layer - count neurons in outputLayer.neurons array }
+    { Try both camelCase and snake_case }
     NumNeurons := 0;
-    OutputLayerPos := Pos('"outputLayer"', JSONStr);
+    OutputLayerPos := Pos('"output_layer"', JSONStr);
+    if OutputLayerPos = 0 then
+      OutputLayerPos := Pos('"outputLayer"', JSONStr);
+    
     if OutputLayerPos > 0 then
     begin
       NeuronsPos := PosEx('"neurons"', JSONStr, OutputLayerPos);
@@ -1707,13 +1683,29 @@ function ExtractIntFromSimpleArray(const JSONStr, ArrayName: string; Index: Inte
     
     for j := 0 to NumNeurons - 1 do
     begin
-      OutputLayer.Neurons[j].Bias := ExtractDoubleFromNestedJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'bias');
-      OutputLayer.Neurons[j].BiasM := ExtractDoubleFromNestedJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'biasM');
-      OutputLayer.Neurons[j].BiasV := ExtractDoubleFromNestedJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'biasV');
+      OutputLayer.Neurons[j].Bias := ExtractDoubleFromNestedJSON(JSONStr, 'output_layer', 0, 'neurons', j, 'bias');
+      if OutputLayer.Neurons[j].Bias = 0 then
+        OutputLayer.Neurons[j].Bias := ExtractDoubleFromNestedJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'bias');
       
-      LoadWeights1DFromJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'weights', OutputLayer.Neurons[j].Weights);
-      LoadWeights1DFromJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'weightsM', OutputLayer.Neurons[j].WeightsM);
-      LoadWeights1DFromJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'weightsV', OutputLayer.Neurons[j].WeightsV);
+      OutputLayer.Neurons[j].BiasM := ExtractDoubleFromNestedJSON(JSONStr, 'output_layer', 0, 'neurons', j, 'biasM');
+      if OutputLayer.Neurons[j].BiasM = 0 then
+        OutputLayer.Neurons[j].BiasM := ExtractDoubleFromNestedJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'biasM');
+      
+      OutputLayer.Neurons[j].BiasV := ExtractDoubleFromNestedJSON(JSONStr, 'output_layer', 0, 'neurons', j, 'biasV');
+      if OutputLayer.Neurons[j].BiasV = 0 then
+        OutputLayer.Neurons[j].BiasV := ExtractDoubleFromNestedJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'biasV');
+      
+      LoadWeights1DFromJSON(JSONStr, 'output_layer', 0, 'neurons', j, 'weights', OutputLayer.Neurons[j].Weights);
+      if Length(OutputLayer.Neurons[j].Weights) = 0 then
+        LoadWeights1DFromJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'weights', OutputLayer.Neurons[j].Weights);
+      
+      LoadWeights1DFromJSON(JSONStr, 'output_layer', 0, 'neurons', j, 'weightsM', OutputLayer.Neurons[j].WeightsM);
+      if Length(OutputLayer.Neurons[j].WeightsM) = 0 then
+        LoadWeights1DFromJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'weightsM', OutputLayer.Neurons[j].WeightsM);
+      
+      LoadWeights1DFromJSON(JSONStr, 'output_layer', 0, 'neurons', j, 'weightsV', OutputLayer.Neurons[j].WeightsV);
+      if Length(OutputLayer.Neurons[j].WeightsV) = 0 then
+        LoadWeights1DFromJSON(JSONStr, 'outputLayer', 0, 'neurons', j, 'weightsV', OutputLayer.Neurons[j].WeightsV);
       
       { Initialize gradient arrays if not loaded }
       if Length(OutputLayer.Neurons[j].WeightsM) = 0 then
@@ -2983,36 +2975,38 @@ type
                cmdModify, cmdAnalyze, cmdInfo, cmdHelp);
 
 var
-    Command: TCommand;
-    CmdStr: string;
-    i, inputW, inputH, inputC, outputSize, epochs: Integer;
-    convFilters, kernelSizes, poolSizes, fcLayerSizes: array of Integer;
-    learningRate, dropoutRate: Double;
-    modelFile, saveFile: string;
-    arg, key, value: string;
-    eqPos: Integer;
-    CNN: TCNNFacade;
-    Image: TImageData;
-    Target, Output: Darray;
-    c, h, w: Integer;
-    Loss: Double;
-    
-    { Command-specific variables }
-    layerIdx, filterIdx, channelIdx, binCount, posX, posY: Integer;
-    intrinMode, statsType, modifyAction, analyzeType: string;
-    numFiltersToAdd, kernelSizeAdd, strideAdd, paddingAdd: Integer;
-    histogram: Darray;
-    stats: TLayerStats;
-    config: TLayerConfig;
-    rf: TReceptiveField;
-    j, k, binIdx: Integer;
-    featureMap: D2array;
-    preAct: D2array;
-    kernel: D2array;
-    saliency: D2array;
-    filterParams: D3array;
-    randomInput: Boolean;
-    predMode: string;
+     Command: TCommand;
+     CmdStr: string;
+     i, inputW, inputH, inputC, outputSize, epochs: Integer;
+     convFilters, kernelSizes, poolSizes, fcLayerSizes: array of Integer;
+     learningRate, dropoutRate, gradientClip: Double;
+     modelFile, saveFile: string;
+     arg, key, value: string;
+     eqPos: Integer;
+     CNN: TCNNFacade;
+     Image: TImageData;
+     Target, Output: Darray;
+     c, h, w: Integer;
+     Loss: Double;
+     
+     { Command-specific variables }
+     layerIdx, filterIdx, channelIdx, binCount, posX, posY: Integer;
+     intrinMode, statsType, modifyAction, analyzeType: string;
+     numFiltersToAdd, kernelSizeAdd, strideAdd, paddingAdd: Integer;
+     histogram: Darray;
+     stats: TLayerStats;
+     config: TLayerConfig;
+     rf: TReceptiveField;
+     j, k, binIdx: Integer;
+     featureMap: D2array;
+     preAct: D2array;
+     kernel: D2array;
+     saliency: D2array;
+     filterParams: D3array;
+     randomInput: Boolean;
+     predMode: string;
+     JsonContent: TStringList;
+     JsonStr: string;
 
 begin
    Randomize;
@@ -3059,6 +3053,7 @@ begin
    SetLength(fcLayerSizes, 0);
    learningRate := 0.001;
    dropoutRate := 0.25;
+   gradientClip := 5.0;
    modelFile := '';
    saveFile := '';
    epochs := 20;  { Default number of training epochs }
@@ -3127,6 +3122,8 @@ begin
          learningRate := StrToFloat(value)
       else if key = '--dropout' then
          dropoutRate := StrToFloat(value)
+      else if key = '--clip' then
+         gradientClip := StrToFloat(value)
       else if key = '--epochs' then
          epochs := StrToInt(value)
       { Introspect/Stats options }
@@ -3179,11 +3176,11 @@ begin
       if outputSize <= 0 then begin WriteLn('Error: --output is required'); Exit; end;
       if saveFile = '' then begin WriteLn('Error: --save is required'); Exit; end;
 
-      WriteLn('Creating CNN Facade model...');
+      WriteLn('Creating CNN model...');
       CNN := TCNNFacade.Create(inputW, inputH, inputC, convFilters, kernelSizes,
                                poolSizes, fcLayerSizes, outputSize, learningRate, dropoutRate);
 
-      WriteLn('Created CNN Facade model:');
+      WriteLn('Created CNN model:');
       WriteLn('  Input: ', inputW, 'x', inputH, 'x', inputC);
       Write('  Conv filters: ');
       for i := 0 to High(convFilters) do
@@ -3702,6 +3699,26 @@ begin
       WriteLn('CNN Architecture Info');
       WriteLn;
       
+      WriteLn('Input: ', CNN.GetInputWidth, 'x', CNN.GetInputHeight, 'x', CNN.GetInputChannels);
+      
+      { Output size: if logits is empty try to extract from loaded model property or json file }
+      i := Length(CNN.GetLogits);
+      if i = 0 then
+      begin
+        { For models not fully loaded, we need to read from JSON }
+        JsonContent := TStringList.Create;
+        try
+          JsonContent.LoadFromFile(modelFile);
+          JsonStr := JsonContent.Text;
+          i := ExtractIntFromJSON(JsonStr, 'output_size');
+        finally
+          JsonContent.Free;
+        end;
+      end;
+      WriteLn('Output size: ', i);
+      WriteLn('activation: relu');
+      WriteLn;
+      
       WriteLn('Total Layers: ', CNN.GetNumLayers);
       WriteLn('  Conv Layers: ', CNN.GetNumConvLayers);
       WriteLn('  FC Layers: ', CNN.GetNumFCLayers);
@@ -3734,11 +3751,10 @@ begin
       end;
       
       WriteLn;
-      WriteLn('Training Config:');
-      WriteLn('  Learning Rate: ', learningRate:0:6);
-      WriteLn('  Dropout: ', dropoutRate:0:6);
+      WriteLn('Learning rate: ', learningRate:0:6);
+      WriteLn('Gradient clip: ', gradientClip:0:2);
       
       CNN.Free;
-      WriteLn('Done.');
+      WriteLn('Model information displayed above.');
    end;
 end.
