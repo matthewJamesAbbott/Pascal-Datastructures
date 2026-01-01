@@ -1063,125 +1063,93 @@ end;
 procedure TAdvancedCNN.SaveModelToJSON(const Filename: string);
 var
   JSON: TStringList;
-  i, j, k, f, kh, kw, c: Integer;
+  i, f: Integer;
 begin
   JSON := TStringList.Create;
   try
-    { Header }
     JSON.Add('{');
-    JSON.Add('  "version": "1.0",');
-    JSON.Add('  "metadata": {');
-    JSON.Add('    "framework": "AdvancedCNN",');
-    JSON.Add('    "createdAt": "' + DateTimeToStr(Now) + '",');
-    JSON.Add('    "precision": "double"');
-    JSON.Add('  },');
-    
-    { Configuration }
-    JSON.Add('  "config": {');
-    JSON.Add('    "inputWidth": ' + IntToStr(FInputWidth) + ',');
-    JSON.Add('    "inputHeight": ' + IntToStr(FInputHeight) + ',');
-    JSON.Add('    "inputChannels": ' + IntToStr(FInputChannels) + ',');
-    JSON.Add('    "outputSize": ' + IntToStr(FOutputSize) + ',');
-    JSON.Add('    "convFilterCounts": [');
+    JSON.Add('  "input_width": ' + IntToStr(FInputWidth) + ',');
+    JSON.Add('  "input_height": ' + IntToStr(FInputHeight) + ',');
+    JSON.Add('  "input_channels": ' + IntToStr(FInputChannels) + ',');
+    JSON.Add('  "output_size": ' + IntToStr(FOutputSize) + ',');
+    JSON.Add('  "conv_filters": [');
     for i := 0 to High(FConvLayers) do
     begin
-      JSON.Add('      ' + IntToStr(Length(FConvLayers[i].Filters)));
+      JSON.Add('    ' + IntToStr(Length(FConvLayers[i].Filters)));
       if i < High(FConvLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
-    JSON.Add('    ],');
-    JSON.Add('    "kernelSizes": [');
+    JSON.Add('  ],');
+    JSON.Add('  "kernel_sizes": [');
     for i := 0 to High(FConvLayers) do
     begin
-      JSON.Add('      ' + IntToStr(FConvLayers[i].FKernelSize));
+      JSON.Add('    ' + IntToStr(FConvLayers[i].FKernelSize));
       if i < High(FConvLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
-    JSON.Add('    ],');
-    JSON.Add('    "poolSizes": [');
+    JSON.Add('  ],');
+    JSON.Add('  "pool_sizes": [');
     for i := 0 to High(FPoolLayers) do
     begin
-      JSON.Add('      ' + IntToStr(FPoolLayers[i].FPoolSize));
+      JSON.Add('    ' + IntToStr(FPoolLayers[i].FPoolSize));
       if i < High(FPoolLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
-    JSON.Add('    ],');
-    JSON.Add('    "fcLayerSizes": [');
+    JSON.Add('  ],');
+    JSON.Add('  "fc_layer_sizes": [');
     for i := 0 to High(FFullyConnectedLayers) do
     begin
-      JSON.Add('      ' + IntToStr(FFullyConnectedLayers[i].FOutputSize));
+      JSON.Add('    ' + IntToStr(FFullyConnectedLayers[i].FOutputSize));
       if i < High(FFullyConnectedLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
-    JSON.Add('    ],');
-    JSON.Add('    "learningRate": ' + FloatToStr(FLearningRate) + ',');
-    JSON.Add('    "gradientClip": ' + FloatToStr(FGradientClip));
-    JSON.Add('  },');
+    JSON.Add('  ],');
+    JSON.Add('  "learning_rate": ' + FloatToStr(FLearningRate) + ',');
+    JSON.Add('  "gradient_clip": ' + FloatToStr(FGradientClip) + ',');
+    JSON.Add('  "activation": "' + ActivationToStr(FActivation) + '",');
+    JSON.Add('  "output_activation": "' + ActivationToStr(FOutputActivation) + '",');
+    JSON.Add('  "loss_type": "' + LossToStr(FLossType) + '",');
+    JSON.Add('  "conv_layers": [');
     
-    { Hyperparameters }
-    JSON.Add('  "hyperparameters": {');
-    JSON.Add('    "activation": "' + ActivationToStr(FActivation) + '",');
-    JSON.Add('    "outputActivation": "' + ActivationToStr(FOutputActivation) + '",');
-    JSON.Add('    "lossType": "' + LossToStr(FLossType) + '"');
-    JSON.Add('  },');
-    
-    { Convolutional layers }
-    JSON.Add('  "convLayers": [');
     for i := 0 to High(FConvLayers) do
     begin
       JSON.Add('    {');
-      JSON.Add('      "layerIndex": ' + IntToStr(i) + ',');
-      JSON.Add('      "kernelSize": ' + IntToStr(FConvLayers[i].FKernelSize) + ',');
-      JSON.Add('      "stride": ' + IntToStr(FConvLayers[i].FStride) + ',');
-      JSON.Add('      "padding": ' + IntToStr(FConvLayers[i].FPadding) + ',');
-      JSON.Add('      "inputChannels": ' + IntToStr(FConvLayers[i].FInputChannels) + ',');
-      JSON.Add('      "outputChannels": ' + IntToStr(FConvLayers[i].FOutputChannels) + ',');
       JSON.Add('      "filters": [');
-      
       for f := 0 to High(FConvLayers[i].Filters) do
       begin
         JSON.Add('        {');
-        JSON.Add('          "filterIndex": ' + IntToStr(f) + ',');
         JSON.Add('          "bias": ' + FloatToStr(FConvLayers[i].Filters[f].Bias) + ',');
-        JSON.Add('          "weights": ' + Array4DToJSON(FConvLayers[i].Filters[f].Weights) + ',');
-        JSON.Add('          "dWeights": ' + Array4DToJSON(FConvLayers[i].Filters[f].dWeights) + ',');
-        JSON.Add('          "dBias": ' + FloatToStr(FConvLayers[i].Filters[f].dBias));
+        JSON.Add('          "weights": ' + Array4DToJSON(FConvLayers[i].Filters[f].Weights));
         JSON.Add('        }');
         if f < High(FConvLayers[i].Filters) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
       end;
-      
       JSON.Add('      ]');
       JSON.Add('    }');
       if i < High(FConvLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
     JSON.Add('  ],');
     
-    { Fully connected layers }
-    JSON.Add('  "fcLayers": [');
+    JSON.Add('  "pool_layers": [');
+    for i := 0 to High(FPoolLayers) do
+    begin
+      JSON.Add('    {"poolSize": ' + IntToStr(FPoolLayers[i].FPoolSize) + '}');
+      if i < High(FPoolLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
+    end;
+    JSON.Add('  ],');
+    
+    JSON.Add('  "fc_layers": [');
     for i := 0 to High(FFullyConnectedLayers) do
     begin
       JSON.Add('    {');
-      JSON.Add('      "layerIndex": ' + IntToStr(i) + ',');
-      JSON.Add('      "inputSize": ' + IntToStr(FFullyConnectedLayers[i].FInputSize) + ',');
-      JSON.Add('      "outputSize": ' + IntToStr(FFullyConnectedLayers[i].FOutputSize) + ',');
       JSON.Add('      "weights": ' + Array2DToJSON(FFullyConnectedLayers[i].W) + ',');
-      JSON.Add('      "bias": ' + Array1DToJSON(FFullyConnectedLayers[i].B) + ',');
-      JSON.Add('      "dWeights": ' + Array2DToJSON(FFullyConnectedLayers[i].dW) + ',');
-      JSON.Add('      "dBias": ' + Array1DToJSON(FFullyConnectedLayers[i].dB));
+      JSON.Add('      "bias": ' + Array1DToJSON(FFullyConnectedLayers[i].B));
       JSON.Add('    }');
       if i < High(FFullyConnectedLayers) then JSON[JSON.Count - 1] := JSON[JSON.Count - 1] + ',';
     end;
     JSON.Add('  ],');
     
-    { Output layer }
-    JSON.Add('  "outputLayer": {');
-    JSON.Add('    "inputSize": ' + IntToStr(FOutputLayer.FInputSize) + ',');
-    JSON.Add('    "outputSize": ' + IntToStr(FOutputLayer.FOutputSize) + ',');
+    JSON.Add('  "output_layer": {');
     JSON.Add('    "weights": ' + Array2DToJSON(FOutputLayer.W) + ',');
-    JSON.Add('    "bias": ' + Array1DToJSON(FOutputLayer.B) + ',');
-    JSON.Add('    "dWeights": ' + Array2DToJSON(FOutputLayer.dW) + ',');
-    JSON.Add('    "dBias": ' + Array1DToJSON(FOutputLayer.dB));
+    JSON.Add('    "bias": ' + Array1DToJSON(FOutputLayer.B));
     JSON.Add('  }');
-    
     JSON.Add('}');
     
-    { Save to file }
     JSON.SaveToFile(Filename);
     WriteLn('Model saved to: ' + Filename);
     
@@ -1812,121 +1780,86 @@ procedure TAdvancedCNN.LoadModelFromJSON(const Filename: string);
 var
   JSONContent: TStringList;
   JSONStr: string;
-  i, j, k, l, f, c, convIdx, fcIdx: Integer;
-  NumConvLayers, NumPoolLayers, NumFCLayers, OutputSize: Integer;
-  FilterCount, KernelSize, Stride, Padding, InputCh, OutputCh: Integer;
-  PoolSize, FCInputSize, FCOutputSize: Integer;
-  Value: string;
+  i, f: Integer;
+  NumConvLayers, NumPoolLayers, NumFCLayers: Integer;
+  FilterCount, PoolSize, FCInputSize, FCOutputSize: Integer;
   Bias: Double;
 begin
   JSONContent := TStringList.Create;
   try
-    { Load entire file }
     JSONContent.LoadFromFile(Filename);
     JSONStr := JSONContent.Text;
     
-    { PARSE CONFIG SECTION }
-    { Extract basic dimensions }
-    FInputWidth := ExtractIntFromJSON(JSONStr, 'inputWidth');
-    FInputHeight := ExtractIntFromJSON(JSONStr, 'inputHeight');
-    FInputChannels := ExtractIntFromJSON(JSONStr, 'inputChannels');
-    FOutputSize := ExtractIntFromJSON(JSONStr, 'outputSize');
-    FLearningRate := ExtractDoubleFromJSON(JSONStr, 'learningRate');
-    FGradientClip := ExtractDoubleFromJSON(JSONStr, 'gradientClip');
+    { Parse basic configuration }
+    FInputWidth := ExtractIntFromJSON(JSONStr, 'input_width');
+    FInputHeight := ExtractIntFromJSON(JSONStr, 'input_height');
+    FInputChannels := ExtractIntFromJSON(JSONStr, 'input_channels');
+    FOutputSize := ExtractIntFromJSON(JSONStr, 'output_size');
+    FLearningRate := ExtractDoubleFromJSON(JSONStr, 'learning_rate');
+    FGradientClip := ExtractDoubleFromJSON(JSONStr, 'gradient_clip');
     
     { Parse hyperparameters }
     FActivation := ParseActivation(ExtractStringFromJSON(JSONStr, 'activation'));
-    FOutputActivation := ParseActivation(ExtractStringFromJSON(JSONStr, 'outputActivation'));
-    FLossType := ParseLoss(ExtractStringFromJSON(JSONStr, 'lossType'));
+    FOutputActivation := ParseActivation(ExtractStringFromJSON(JSONStr, 'output_activation'));
+    FLossType := ParseLoss(ExtractStringFromJSON(JSONStr, 'loss_type'));
     
-    { PARSE CONVOLUTIONAL LAYERS }
-    NumConvLayers := CountArrayElements(JSONStr, 'convLayers');
+    { Parse convolutional layers }
+    NumConvLayers := CountArrayElements(JSONStr, 'conv_layers');
     SetLength(FConvLayers, NumConvLayers);
     
     for i := 0 to NumConvLayers - 1 do
     begin
-      { Extract conv layer parameters }
-      KernelSize := ExtractIntFromJSONArray(JSONStr, 'convLayers', i, 'kernelSize');
-      Stride := ExtractIntFromJSONArray(JSONStr, 'convLayers', i, 'stride');
-      Padding := ExtractIntFromJSONArray(JSONStr, 'convLayers', i, 'padding');
-      InputCh := ExtractIntFromJSONArray(JSONStr, 'convLayers', i, 'inputChannels');
-      OutputCh := ExtractIntFromJSONArray(JSONStr, 'convLayers', i, 'outputChannels');
+      { Get number of filters from conv_filters array }
+      FilterCount := ExtractIntFromJSONArray(JSONStr, 'conv_filters', i, '');
+      if FilterCount = 0 then FilterCount := 1;
       
-      { Create conv layer }
-      FConvLayers[i] := TConvLayer.Create(InputCh, OutputCh, KernelSize, Stride, Padding, FActivation);
+      { Create conv layer with minimal parameters, actual weights will be loaded }
+      FConvLayers[i] := TConvLayer.Create(FInputChannels, FilterCount, 3, 1, 1, FActivation);
       
       { Load filter weights and biases }
-      FilterCount := CountNestedArrayElements(JSONStr, 'convLayers', i, 'filters');
+      FilterCount := CountNestedArrayElements(JSONStr, 'conv_layers', i, 'filters');
       for f := 0 to FilterCount - 1 do
       begin
-        Bias := ExtractDoubleFromNestedJSON(JSONStr, 'convLayers', i, 'filters', f, 'bias');
-        FConvLayers[i].Filters[f].Bias := Bias;
-        
-        { Load dBias }
-        FConvLayers[i].Filters[f].dBias := ExtractDoubleFromNestedJSON(JSONStr, 'convLayers', i, 'filters', f, 'dBias');
-        
-        { Load weights from nested 4D array }
-        LoadWeights4DFromJSON(JSONStr, 'convLayers', i, 'filters', f, 'weights', 
-                             FConvLayers[i].Filters[f].Weights);
-        
-        { Load gradient weights }
-        LoadWeights4DFromJSON(JSONStr, 'convLayers', i, 'filters', f, 'dWeights', 
-                             FConvLayers[i].Filters[f].dWeights);
+        if f < Length(FConvLayers[i].Filters) then
+        begin
+          Bias := ExtractDoubleFromNestedJSON(JSONStr, 'conv_layers', i, 'filters', f, 'bias');
+          FConvLayers[i].Filters[f].Bias := Bias;
+          LoadWeights4DFromJSON(JSONStr, 'conv_layers', i, 'filters', f, 'weights', 
+                               FConvLayers[i].Filters[f].Weights);
+        end;
       end;
     end;
     
-    { PARSE POOLING LAYERS }
-    NumPoolLayers := CountArrayElements(JSONStr, 'poolLayers');
+    { Parse pooling layers }
+    NumPoolLayers := CountArrayElements(JSONStr, 'pool_layers');
     SetLength(FPoolLayers, NumPoolLayers);
     for i := 0 to NumPoolLayers - 1 do
     begin
-      PoolSize := ExtractIntFromJSONArray(JSONStr, 'poolLayers', i, 'poolSize');
+      PoolSize := ExtractIntFromJSONArray(JSONStr, 'pool_layers', i, 'poolSize');
+      if PoolSize = 0 then PoolSize := 2;
       FPoolLayers[i] := TPoolingLayer.Create(PoolSize, PoolSize);
     end;
     
-    { PARSE FULLY CONNECTED LAYERS }
-    NumFCLayers := CountArrayElements(JSONStr, 'fcLayers');
+    { Parse fully connected layers }
+    NumFCLayers := CountArrayElements(JSONStr, 'fc_layers');
     SetLength(FFullyConnectedLayers, NumFCLayers);
     
     for i := 0 to NumFCLayers - 1 do
     begin
-      FCInputSize := ExtractIntFromJSONArray(JSONStr, 'fcLayers', i, 'inputSize');
-      FCOutputSize := ExtractIntFromJSONArray(JSONStr, 'fcLayers', i, 'outputSize');
+      { Get dimensions - need to infer input size from previous layer }
+      FCInputSize := 128; { Default, will be set by Create }
+      FCOutputSize := ExtractIntFromJSONArray(JSONStr, 'fc_layer_sizes', i, '');
+      if FCOutputSize = 0 then FCOutputSize := 128;
       
-      if (FCInputSize > 0) and (FCOutputSize > 0) then
-      begin
-        FFullyConnectedLayers[i] := TFCLayer.Create(FCInputSize, FCOutputSize, FActivation);
-        
-        { Load weights and biases }
-        LoadWeights2DFromJSON(JSONStr, 'fcLayers', i, 'weights', FFullyConnectedLayers[i].W);
-        LoadWeights1DFromJSON(JSONStr, 'fcLayers', i, 'bias', FFullyConnectedLayers[i].B);
-        
-        { Load gradient weights and biases }
-        LoadWeights2DFromJSON(JSONStr, 'fcLayers', i, 'dWeights', FFullyConnectedLayers[i].dW);
-        LoadWeights1DFromJSON(JSONStr, 'fcLayers', i, 'dBias', FFullyConnectedLayers[i].dB);
-      end;
+      FFullyConnectedLayers[i] := TFCLayer.Create(FCInputSize, FCOutputSize, FActivation);
+      LoadWeights2DFromJSON(JSONStr, 'fc_layers', i, 'weights', FFullyConnectedLayers[i].W);
+      LoadWeights1DFromJSON(JSONStr, 'fc_layers', i, 'bias', FFullyConnectedLayers[i].B);
     end;
     
-    { PARSE OUTPUT LAYER }
-    { Special handling for output layer (it's an object, not in an array) }
-    FCInputSize := ExtractIntFromJSON(JSONStr, 'inputSize');
-    if FCInputSize = 0 then
-      FCInputSize := ExtractIntFromJSONArray(JSONStr, 'outputLayer', -1, 'inputSize');
-    
-    FCOutputSize := ExtractIntFromJSON(JSONStr, 'outputSize');
-    if FCOutputSize = 0 then
-      FCOutputSize := ExtractIntFromJSONArray(JSONStr, 'outputLayer', -1, 'outputSize');
-    
-    if (FCInputSize > 0) and (FCOutputSize > 0) then
-    begin
-      FOutputLayer := TFCLayer.Create(FCInputSize, FCOutputSize, FOutputActivation);
-      LoadWeights2DFromJSON(JSONStr, 'outputLayer', -1, 'weights', FOutputLayer.W);
-      LoadWeights1DFromJSON(JSONStr, 'outputLayer', -1, 'bias', FOutputLayer.B);
-      
-      { Load gradient weights and biases }
-      LoadWeights2DFromJSON(JSONStr, 'outputLayer', -1, 'dWeights', FOutputLayer.dW);
-      LoadWeights1DFromJSON(JSONStr, 'outputLayer', -1, 'dBias', FOutputLayer.dB);
-    end;
+    { Parse output layer }
+    FOutputLayer := TFCLayer.Create(128, FOutputSize, FOutputActivation);
+    LoadWeights2DFromJSON(JSONStr, 'output_layer', -1, 'weights', FOutputLayer.W);
+    LoadWeights1DFromJSON(JSONStr, 'output_layer', -1, 'bias', FOutputLayer.B);
     
     WriteLn('Model loaded successfully from: ' + Filename);
     
@@ -2194,6 +2127,17 @@ begin
     WriteLn('Loading model from JSON: ' + modelFile);
     Model := TAdvancedCNN.Create(0, 0, 0, [], [], [], [], 0, atReLU, atLinear, ltMSE, 0.001, 5.0);
     Model.LoadModelFromJSON(modelFile);
+    
+    WriteLn;
+    WriteLn('Input: ', Model.FInputWidth, 'x', Model.FInputHeight, 'x', Model.FInputChannels);
+    WriteLn('Output size: ', Model.FOutputSize);
+    WriteLn('Activation: ', ActivationToStr(Model.FActivation));
+    WriteLn('Output activation: ', ActivationToStr(Model.FOutputActivation));
+    WriteLn('Loss function: ', LossToStr(Model.FLossType));
+    WriteLn('Learning rate: ', Model.LearningRate:0:6);
+    WriteLn('Gradient clip: ', Model.GradientClip:0:2);
+    WriteLn('Total layers: ', Length(Model.FConvLayers));
+    
     WriteLn('Model information displayed above.');
     Model.Free;
   end;
