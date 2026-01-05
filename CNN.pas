@@ -1,7 +1,3 @@
-//
-// CNN 
-//
-
 (*
  * MIT License
  * 
