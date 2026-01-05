@@ -1,18 +1,18 @@
 (*
  * MIT License
- * 
+ *
  * Copyright (c) 2025 Matthew Abbott
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software. 
- * 
+ * copies or substantial portions of the Software.
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -22,21 +22,9 @@
  * SOFTWARE.
  *)
 
- program GANFacade;
+program GANFacade;
 
 {$mode objfpc}{$H+}
-
-//
-// Matthew Abbott 2025
-// Facaded GAN - Generative Adversarial Network with complete introspection & injection
-//
-// Features:
-//   1. Architecture/Object Introspection (Inspect)
-//   2. Training/Run-time State Inspection
-//   3. Data Flow & Input/Output Control (Inject)
-//   4. Save/Load/Export
-//   5. Monitoring & Alerting
-//
 
 uses
   SysUtils, Math, Classes, StrUtils;
@@ -141,132 +129,132 @@ type
   TGANFacade = class
   private
     // Core networks
-    generator: TNetwork;
-    discriminator: TNetwork;
+  generator: TNetwork;
+  discriminator: TNetwork;
 
     // Configuration
-    epochs: Integer;
-    batchSize: Integer;
-    noiseDepth: Integer;
-    noiseTypeVal: TNoiseTypeEnum;
-    activationType: TActivationType;
-    useSpectral: Boolean;
+  epochs: Integer;
+  batchSize: Integer;
+  noiseDepth: Integer;
+  noiseTypeVal: TNoiseTypeEnum;
+  activationType: TActivationType;
+  useSpectral: Boolean;
 
     // Training state
-    FMetrics: TTrainingMetrics;
-    FCurrentEpoch: Integer;
-    FCurrentStep: Integer;
-    FDatasetSize: Integer;
+  FMetrics: TTrainingMetrics;
+  FCurrentEpoch: Integer;
+  FCurrentStep: Integer;
+  FDatasetSize: Integer;
 
     // Monitoring
-    FAnomalies: array of TAnomalyAlert;
-    FMonitoringEnabled: Boolean;
-    FLossHistory: array of Single;
-    FDiscLossHistory: array of Single;
+  FAnomalies: array of TAnomalyAlert;
+  FMonitoringEnabled: Boolean;
+  FLossHistory: array of Single;
+  FDiscLossHistory: array of Single;
 
     // Weight injection/patching
-    FWeightInjection: TMatrix;
-    FInjectionLayerIdx: Integer;
-    FInjectionEnabled: Boolean;
+  FWeightInjection: TMatrix;
+  FInjectionLayerIdx: Integer;
+  FInjectionEnabled: Boolean;
 
     // Noise injection/patching
-    FNoiseInjection: TMatrix;
-    FNoiseInjectionEnabled: Boolean;
+  FNoiseInjection: TMatrix;
+  FNoiseInjectionEnabled: Boolean;
 
     // Bit-depth tracking
-    FLayerBitDepths: array of Integer;
+  FLayerBitDepths: array of Integer;
 
     {----- INTERNAL UTILITIES -----}
-    function CreateMatrix(rows, cols: Integer): TMatrix;
-    function CreateVector(size: Integer): TVector;
-    function RandomGaussian: Single;
-    function RandomUniform(min, max: Single): Single;
-    function RandomAnalog: Single;
-    function MatrixReLU(const A: TMatrix): TMatrix;
-    function MatrixSigmoid(const A: TMatrix): TMatrix;
-    function MatrixTanh(const A: TMatrix): TMatrix;
-    function ApplyActivation(const A: TMatrix; activation: TActivationType): TMatrix;
-    function MatrixMultiply(const A, B: TMatrix): TMatrix;
-    function MatrixAdd(const A, B: TMatrix): TMatrix;
-    function MatrixScale(const A: TMatrix; scale: Single): TMatrix;
-    function MatrixTranspose(const A: TMatrix): TMatrix;
-    function MatrixNormalize(const A: TMatrix): TMatrix;
-    function BinaryCrossEntropy(const predicted, target: TMatrix): Single;
-    function IsFiniteNum(x: Single): Boolean;
-    procedure DetectAnomalies(const data: TMatrix; layerIdx: Integer);
-    procedure AddAnomaly(alertType, message, severity: string; layerIdx: Integer; value: Single);
-    function ComputeLayerStats(const data: TMatrix): TLayerStats;
-    function ComputeGradientStats(const grads: TMatrix): TGradientStats;
+function CreateMatrix(rows, cols: Integer): TMatrix;
+function CreateVector(size: Integer): TVector;
+function RandomGaussian: Single;
+function RandomUniform(min, max: Single): Single;
+function RandomAnalog: Single;
+function MatrixReLU(const A: TMatrix): TMatrix;
+function MatrixSigmoid(const A: TMatrix): TMatrix;
+function MatrixTanh(const A: TMatrix): TMatrix;
+function ApplyActivation(const A: TMatrix; activation: TActivationType): TMatrix;
+function MatrixMultiply(const A, B: TMatrix): TMatrix;
+function MatrixAdd(const A, B: TMatrix): TMatrix;
+function MatrixScale(const A: TMatrix; scale: Single): TMatrix;
+function MatrixTranspose(const A: TMatrix): TMatrix;
+function MatrixNormalize(const A: TMatrix): TMatrix;
+function BinaryCrossEntropy(const predicted, target: TMatrix): Single;
+function IsFiniteNum(x: Single): Boolean;
+procedure DetectAnomalies(const data: TMatrix; layerIdx: Integer);
+procedure AddAnomaly(alertType, message, severity: string; layerIdx: Integer; value: Single);
+function ComputeLayerStats(const data: TMatrix): TLayerStats;
+function ComputeGradientStats(const grads: TMatrix): TGradientStats;
 
-  public
+public
     {================= CONSTRUCTION / TEARDOWN =================}
-    constructor Create(generatorSizes: array of Integer; discriminatorSizes: array of Integer;
-      aEpochs, aBatchSize, aNoiseDepth: Integer; aActivation: TActivationType; aOptimizer: TOptimizer);
-    destructor Destroy; override;
+constructor Create(generatorSizes: array of Integer; discriminatorSizes: array of Integer;
+                   aEpochs, aBatchSize, aNoiseDepth: Integer; aActivation: TActivationType; aOptimizer: TOptimizer);
+destructor Destroy; override;
 
     {================= MAIN FUNCTIONALITY =====================}
-    function TrainStep(var dataset: TMatrixArray): Single;
-    function GenerateSample: TMatrix;
-    procedure SaveModel(const filename: string);
-    procedure LoadModel(const filename: string);
+function TrainStep(var dataset: TMatrixArray): Single;
+function GenerateSample: TMatrix;
+procedure SaveModel(const filename: string);
+procedure LoadModel(const filename: string);
 
     {================= 1. ARCHITECTURE/OBJECT INTROSPECTION =====================}
-    function InspectModelTopology: string;
-    function InspectLayerConfig(networkType: string; layerIdx: Integer): string;
-    function InspectWeightDimensions(networkType: string; layerIdx: Integer): string;
-    function GetParameterCount(networkType: string): Integer;
-    function GetTotalParameterCount: Integer;
-    function GetLayerCount(networkType: string): Integer;
-    function InspectActivationFunctions: string;
-    function GetVersionInfo: string;
-    function InspectOptimizerConfig: string;
+function InspectModelTopology: string;
+function InspectLayerConfig(networkType: string; layerIdx: Integer): string;
+function InspectWeightDimensions(networkType: string; layerIdx: Integer): string;
+function GetParameterCount(networkType: string): Integer;
+function GetTotalParameterCount: Integer;
+function GetLayerCount(networkType: string): Integer;
+function InspectActivationFunctions: string;
+function GetVersionInfo: string;
+function InspectOptimizerConfig: string;
 
     {================= 2. TRAINING/RUNTIME STATE INSPECTION =====================}
-    function GetCurrentEpoch: Integer;
-    function GetCurrentStep: Integer;
-    function GetMetrics: TTrainingMetrics;
-    function GetGeneratorLoss: Single;
-    function GetDiscriminatorLoss: Single;
-    function GetAverageLossWindow(windowSize: Integer): Single;
-    function InspectLayerActivations(networkType: string; layerIdx: Integer; var activations: TMatrix): Boolean;
-    function InspectLayerWeightStats(networkType: string; layerIdx: Integer): TLayerStats;
-    function InspectLayerGradientStats(networkType: string; layerIdx: Integer): TGradientStats;
-    function GetLearningRate: Single;
-    procedure SetLearningRate(newRate: Single);
+function GetCurrentEpoch: Integer;
+function GetCurrentStep: Integer;
+function GetMetrics: TTrainingMetrics;
+function GetGeneratorLoss: Single;
+function GetDiscriminatorLoss: Single;
+function GetAverageLossWindow(windowSize: Integer): Single;
+function InspectLayerActivations(networkType: string; layerIdx: Integer; var activations: TMatrix): Boolean;
+function InspectLayerWeightStats(networkType: string; layerIdx: Integer): TLayerStats;
+function InspectLayerGradientStats(networkType: string; layerIdx: Integer): TGradientStats;
+function GetLearningRate: Single;
+procedure SetLearningRate(newRate: Single);
 
     {================= 3. DATA FLOW & INJECTION CONTROL =====================}
-    procedure InjectNoise(const noise: TMatrix; useAsInput: Boolean = True);
-    procedure SetNoiseType(newType: TNoiseTypeEnum);
-    procedure SetNoiseDepth(newDepth: Integer);
-    procedure InjectWeights(networkType: string; layerIdx: Integer; const weights: TMatrix);
-    procedure InjectBias(networkType: string; layerIdx: Integer; const bias: TVector);
-    procedure SetActivationFunction(networkType: string; layerIdx: Integer; newActivation: TActivationType);
-    procedure InjectInput(const input: TMatrix; layerIdx: Integer; networkType: string = 'generator');
-    procedure SetBitDepth(networkType: string; layerIdx: Integer; bitDepth: Integer);
-    function GetBitDepth(networkType: string; layerIdx: Integer): Integer;
-    procedure SetLayerLearningRate(networkType: string; layerIdx: Integer; rate: Single);
+procedure InjectNoise(const noise: TMatrix; useAsInput: Boolean = True);
+procedure SetNoiseType(newType: TNoiseTypeEnum);
+procedure SetNoiseDepth(newDepth: Integer);
+procedure InjectWeights(networkType: string; layerIdx: Integer; const weights: TMatrix);
+procedure InjectBias(networkType: string; layerIdx: Integer; const bias: TVector);
+procedure SetActivationFunction(networkType: string; layerIdx: Integer; newActivation: TActivationType);
+procedure InjectInput(const input: TMatrix; layerIdx: Integer; networkType: string = 'generator');
+procedure SetBitDepth(networkType: string; layerIdx: Integer; bitDepth: Integer);
+function GetBitDepth(networkType: string; layerIdx: Integer): Integer;
+procedure SetLayerLearningRate(networkType: string; layerIdx: Integer; rate: Single);
 
     {================= 4. SAVE/LOAD/EXPORT =====================}
-    procedure ExportActivations(const filename: string; networkType: string; layerIdx: Integer);
-    procedure ExportWeights(const filename: string; networkType: string; layerIdx: Integer);
-    procedure ExportGradients(const filename: string; networkType: string; layerIdx: Integer);
-    procedure ExportLossHistory(const filename: string);
-    procedure ExportGeneratedData(const filename: string; count: Integer);
+procedure ExportActivations(const filename: string; networkType: string; layerIdx: Integer);
+procedure ExportWeights(const filename: string; networkType: string; layerIdx: Integer);
+procedure ExportGradients(const filename: string; networkType: string; layerIdx: Integer);
+procedure ExportLossHistory(const filename: string);
+procedure ExportGeneratedData(const filename: string; count: Integer);
 
     {================= 5. MONITORING & ALERTING =====================}
-    procedure EnableMonitoring;
-    procedure DisableMonitoring;
-    function GetAnomalies: string;
-    function HasAnomalies: Boolean;
-    function GetLastAnomaly: TAnomalyAlert;
-    procedure ClearAnomalies;
-    procedure SetAnomalyThreshold(thresholdType: string; value: Single);
+procedure EnableMonitoring;
+procedure DisableMonitoring;
+function GetAnomalies: string;
+function HasAnomalies: Boolean;
+function GetLastAnomaly: TAnomalyAlert;
+procedure ClearAnomalies;
+procedure SetAnomalyThreshold(thresholdType: string; value: Single);
 
     {================= UTILITY INSPECTION =====================}
-    function GetNetworkMemoryUsage(networkType: string): Integer;
-    function GetTotalMemoryUsage: Integer;
-    function InspectFullArchitecture: string;
-  end;
+function GetNetworkMemoryUsage(networkType: string): Integer;
+function GetTotalMemoryUsage: Integer;
+function InspectFullArchitecture: string;
+end;
 
 { ============================================================================= }
 { IMPLEMENTATION }
@@ -359,8 +347,8 @@ begin
     atSigmoid: Result := MatrixSigmoid(A);
     atTanh: Result := MatrixTanh(A);
     atLeakyReLU: Result := MatrixReLU(A); // Simplified
-  else
-    Result := A;
+    else
+      Result := A;
   end;
 end;
 
@@ -584,7 +572,7 @@ end;
 { Constructor/Destructor }
 
 constructor TGANFacade.Create(generatorSizes: array of Integer; discriminatorSizes: array of Integer;
-  aEpochs, aBatchSize, aNoiseDepth: Integer; aActivation: TActivationType; aOptimizer: TOptimizer);
+                              aEpochs, aBatchSize, aNoiseDepth: Integer; aActivation: TActivationType; aOptimizer: TOptimizer);
 var
   i: Integer;
 begin
@@ -720,7 +708,7 @@ begin
       atLeakyReLU: actStr := 'LeakyReLU';
     end;
     Result := Result + Format('  Layer %d: %d -> %d | Activation: %s | Bits: %d' + sLineBreak,
-      [i, generator.layers[i].inputSize, generator.layers[i].outputSize, actStr, FLayerBitDepths[i]]);
+                              [i, generator.layers[i].inputSize, generator.layers[i].outputSize, actStr, FLayerBitDepths[i]]);
   end;
 
   Result := Result + sLineBreak + 'DISCRIMINATOR:' + sLineBreak;
@@ -734,8 +722,8 @@ begin
       atLeakyReLU: actStr := 'LeakyReLU';
     end;
     Result := Result + Format('  Layer %d: %d -> %d | Activation: %s | Bits: %d' + sLineBreak,
-      [i, discriminator.layers[i].inputSize, discriminator.layers[i].outputSize, actStr,
-       FLayerBitDepths[generator.layerCount + i]]);
+                              [i, discriminator.layers[i].inputSize, discriminator.layers[i].outputSize, actStr,
+                               FLayerBitDepths[generator.layerCount + i]]);
   end;
 end;
 
@@ -863,12 +851,12 @@ begin
     genOptStr := 'Adam'
   else
     genOptStr := 'SGD';
-  
+
   if discriminator.optimizer = optAdam then
     discOptStr := 'Adam'
   else
     discOptStr := 'SGD';
-  
+
   Result := Result + '=== OPTIMIZER CONFIG ===' + sLineBreak;
   Result := Result + Format('Generator Optimizer: %s' + sLineBreak, [genOptStr]);
   Result := Result + Format('Generator LR: %g' + sLineBreak, [generator.learningRate]);
@@ -1284,8 +1272,8 @@ begin
   for i := 0 to Length(FAnomalies) - 1 do
   begin
     Result := Result + Format('  [%s] %s - Layer %d: %s (value: %g)' + sLineBreak,
-      [FAnomalies[i].severity, FAnomalies[i].alertType, FAnomalies[i].layerIndex,
-       FAnomalies[i].message, FAnomalies[i].value]);
+                              [FAnomalies[i].severity, FAnomalies[i].alertType, FAnomalies[i].layerIndex,
+                               FAnomalies[i].message, FAnomalies[i].value]);
   end;
 end;
 
@@ -1353,6 +1341,332 @@ begin
 end;
 
 { ============================================================================= }
+{ JSON SERIALIZATION }
+{ ============================================================================= }
+
+function Vector1DToJSON(const v: TVector): string;
+var
+  i: Integer;
+begin
+  Result := '[';
+  for i := 0 to High(v) do
+  begin
+    if i > 0 then Result := Result + ',';
+    Result := Result + FloatToStr(v[i]);
+  end;
+  Result := Result + ']';
+end;
+
+function Matrix2DToJSON(const m: TMatrix): string;
+var
+  i: Integer;
+begin
+  Result := '[';
+  for i := 0 to High(m) do
+  begin
+    if i > 0 then Result := Result + ',';
+    Result := Result + Vector1DToJSON(m[i]);
+  end;
+  Result := Result + ']';
+end;
+
+procedure SaveGANFacadeToJSON(const generator, discriminator: TNetwork; const filename: string);
+var
+  f: TextFile;
+  i: Integer;
+begin
+  AssignFile(f, filename);
+  Rewrite(f);
+  try
+    WriteLn(f, '{');
+    
+    { Generator }
+    WriteLn(f, '  "generator": {');
+    WriteLn(f, '    "layer_count": ' + IntToStr(generator.layerCount) + ',');
+    WriteLn(f, '    "optimizer": "' + IfThen(generator.optimizer = optAdam, 'adam', 'sgd') + '",');
+    WriteLn(f, '    "learning_rate": ' + FloatToStr(generator.learningRate) + ',');
+    WriteLn(f, '    "layers": [');
+    
+    for i := 0 to generator.layerCount - 1 do
+    begin
+      WriteLn(f, '      {');
+      WriteLn(f, '        "input_size": ' + IntToStr(generator.layers[i].inputSize) + ',');
+      WriteLn(f, '        "output_size": ' + IntToStr(generator.layers[i].outputSize) + ',');
+      WriteLn(f, '        "weights": ' + Matrix2DToJSON(generator.layers[i].weights) + ',');
+      Write(f, '        "bias": ' + Vector1DToJSON(generator.layers[i].bias));
+      if i < generator.layerCount - 1 then
+        WriteLn(f, '      },')
+      else
+        WriteLn(f, '      }');
+    end;
+    
+    WriteLn(f, '    ]');
+    WriteLn(f, '  },');
+    
+    { Discriminator }
+    WriteLn(f, '  "discriminator": {');
+    WriteLn(f, '    "layer_count": ' + IntToStr(discriminator.layerCount) + ',');
+    WriteLn(f, '    "optimizer": "' + IfThen(discriminator.optimizer = optAdam, 'adam', 'sgd') + '",');
+    WriteLn(f, '    "learning_rate": ' + FloatToStr(discriminator.learningRate) + ',');
+    WriteLn(f, '    "layers": [');
+    
+    for i := 0 to discriminator.layerCount - 1 do
+    begin
+      WriteLn(f, '      {');
+      WriteLn(f, '        "input_size": ' + IntToStr(discriminator.layers[i].inputSize) + ',');
+      WriteLn(f, '        "output_size": ' + IntToStr(discriminator.layers[i].outputSize) + ',');
+      WriteLn(f, '        "weights": ' + Matrix2DToJSON(discriminator.layers[i].weights) + ',');
+      Write(f, '        "bias": ' + Vector1DToJSON(discriminator.layers[i].bias));
+      if i < discriminator.layerCount - 1 then
+        WriteLn(f, '      },')
+      else
+        WriteLn(f, '      }');
+    end;
+    
+    WriteLn(f, '    ]');
+    WriteLn(f, '  }');
+    WriteLn(f, '}');
+    
+    WriteLn('Model saved to JSON: ' + filename);
+  finally
+    CloseFile(f);
+  end;
+end;
+
+function ExtractIntFromJSON(const JSONStr, FieldName: string): Integer;
+var
+  P, EndP: Integer;
+  Value: string;
+begin
+  P := Pos('"' + FieldName + '"', JSONStr);
+  if P = 0 then Exit(0);
+  
+  P := PosEx(':', JSONStr, P);
+  if P = 0 then Exit(0);
+  
+  P := P + 1;
+  while (P <= Length(JSONStr)) and (JSONStr[P] in [' ', #9, #10, #13]) do Inc(P);
+  
+  EndP := P;
+  while (EndP <= Length(JSONStr)) and (JSONStr[EndP] in ['0'..'9', '-']) do Inc(EndP);
+  
+  Value := Copy(JSONStr, P, EndP - P);
+  try
+    Result := StrToInt(Value);
+  except
+    Result := 0;
+  end;
+end;
+
+function ExtractFloatFromJSON(const JSONStr, FieldName: string): Single;
+var
+  P, EndP: Integer;
+  Value: string;
+begin
+  P := Pos('"' + FieldName + '"', JSONStr);
+  if P = 0 then Exit(0.0);
+  
+  P := PosEx(':', JSONStr, P);
+  if P = 0 then Exit(0.0);
+  
+  P := P + 1;
+  while (P <= Length(JSONStr)) and (JSONStr[P] in [' ', #9, #10, #13]) do Inc(P);
+  
+  EndP := P;
+  while (EndP <= Length(JSONStr)) and (JSONStr[EndP] in ['0'..'9', '-', '.', 'e', 'E']) do Inc(EndP);
+  
+  Value := Copy(JSONStr, P, EndP - P);
+  try
+    Result := StrToFloat(Value);
+  except
+    Result := 0.0;
+  end;
+end;
+
+procedure LoadVector1DFromJSON(const JSONStr: string; var v: TVector);
+var
+  P, EndP, CurrentPos, NumPos: Integer;
+  Value: string;
+  Count: Integer;
+begin
+  P := Pos('[', JSONStr);
+  if P = 0 then Exit;
+  
+  EndP := P;
+  Count := 1;
+  while (Count > 0) and (EndP <= Length(JSONStr)) do
+  begin
+    if JSONStr[EndP] = '[' then Inc(Count)
+    else if JSONStr[EndP] = ']' then Dec(Count);
+    Inc(EndP);
+  end;
+  
+  SetLength(v, 0);
+  CurrentPos := P + 1;
+  Count := 0;
+  
+  while (CurrentPos < EndP) and (JSONStr[CurrentPos] <> ']') do
+  begin
+    if JSONStr[CurrentPos] in ['0'..'9', '-', '.'] then
+    begin
+      NumPos := CurrentPos;
+      while (NumPos <= Length(JSONStr)) and (JSONStr[NumPos] in ['0'..'9', '-', '.', 'e', 'E']) do
+        Inc(NumPos);
+      
+      Value := Copy(JSONStr, CurrentPos, NumPos - CurrentPos);
+      SetLength(v, Count + 1);
+      try
+        v[Count] := StrToFloat(Value);
+      except
+        v[Count] := 0.0;
+      end;
+      Inc(Count);
+      CurrentPos := NumPos;
+    end
+    else
+      Inc(CurrentPos);
+  end;
+end;
+
+procedure LoadMatrix2DFromJSON(const JSONStr: string; var m: TMatrix);
+var
+  P, CurrentPos, Count, RowCount, ColCount: Integer;
+  NumPos, ArrayEnd: Integer;
+  Value: string;
+begin
+  P := Pos('[', JSONStr);
+  if P = 0 then Exit;
+  
+  { Find end of array }
+  CurrentPos := P;
+  Count := 1;
+  ArrayEnd := P + 1;
+  while (Count > 0) and (ArrayEnd <= Length(JSONStr)) do
+  begin
+    if JSONStr[ArrayEnd] = '[' then Inc(Count)
+    else if JSONStr[ArrayEnd] = ']' then Dec(Count);
+    Inc(ArrayEnd);
+  end;
+  
+  SetLength(m, 0);
+  CurrentPos := P + 1;
+  RowCount := 0;
+  
+  while (CurrentPos < ArrayEnd) do
+  begin
+    if JSONStr[CurrentPos] = '[' then
+    begin
+      SetLength(m, RowCount + 1);
+      SetLength(m[RowCount], 0);
+      
+      Inc(CurrentPos);
+      ColCount := 0;
+      while (CurrentPos < ArrayEnd) and (JSONStr[CurrentPos] <> ']') do
+      begin
+        if JSONStr[CurrentPos] in ['0'..'9', '-', '.'] then
+        begin
+          NumPos := CurrentPos;
+          while (NumPos <= Length(JSONStr)) and (JSONStr[NumPos] in ['0'..'9', '-', '.', 'e', 'E']) do
+            Inc(NumPos);
+          
+          Value := Copy(JSONStr, CurrentPos, NumPos - CurrentPos);
+          SetLength(m[RowCount], ColCount + 1);
+          try
+            m[RowCount][ColCount] := StrToFloat(Value);
+          except
+            m[RowCount][ColCount] := 0.0;
+          end;
+          Inc(ColCount);
+          CurrentPos := NumPos;
+        end
+        else
+          Inc(CurrentPos);
+      end;
+      
+      if CurrentPos < ArrayEnd then Inc(CurrentPos);
+      Inc(RowCount);
+    end
+    else
+      Inc(CurrentPos);
+  end;
+end;
+
+procedure LoadGANFromJSON(var generator, discriminator: TNetwork; const filename: string);
+var
+  JSONFile: TStringList;
+  JSONStr: string;
+  i, LayerCount: Integer;
+  OptimizerStr: string;
+  P: Integer;
+begin
+  JSONFile := TStringList.Create;
+  try
+    JSONFile.LoadFromFile(filename);
+    JSONStr := JSONFile.Text;
+    
+    { Parse generator }
+    P := Pos('"generator"', JSONStr);
+    if P > 0 then
+    begin
+      LayerCount := ExtractIntFromJSON(Copy(JSONStr, P, Length(JSONStr)), 'layer_count');
+      generator.layerCount := LayerCount;
+      
+      OptimizerStr := Copy(JSONStr, P, 200);
+      if Pos('adam', OptimizerStr) > 0 then
+        generator.optimizer := optAdam
+      else
+        generator.optimizer := optSGD;
+      
+      generator.learningRate := ExtractFloatFromJSON(Copy(JSONStr, P, 500), 'learning_rate');
+      
+      SetLength(generator.layers, LayerCount);
+      for i := 0 to LayerCount - 1 do
+      begin
+        generator.layers[i].inputSize := ExtractIntFromJSON(JSONStr, 'input_size');
+        generator.layers[i].outputSize := ExtractIntFromJSON(JSONStr, 'output_size');
+      end;
+    end;
+    
+    { Parse discriminator }
+    P := Pos('"discriminator"', JSONStr);
+    if P > 0 then
+    begin
+      LayerCount := ExtractIntFromJSON(Copy(JSONStr, P, Length(JSONStr)), 'layer_count');
+      discriminator.layerCount := LayerCount;
+      
+      OptimizerStr := Copy(JSONStr, P, 200);
+      if Pos('adam', OptimizerStr) > 0 then
+        discriminator.optimizer := optAdam
+      else
+        discriminator.optimizer := optSGD;
+      
+      discriminator.learningRate := ExtractFloatFromJSON(Copy(JSONStr, P, 500), 'learning_rate');
+      
+      SetLength(discriminator.layers, LayerCount);
+      for i := 0 to LayerCount - 1 do
+      begin
+        discriminator.layers[i].inputSize := ExtractIntFromJSON(JSONStr, 'input_size');
+        discriminator.layers[i].outputSize := ExtractIntFromJSON(JSONStr, 'output_size');
+      end;
+    end;
+    
+    WriteLn('Model loaded from JSON: ' + filename);
+  finally
+    JSONFile.Free;
+  end;
+end;
+
+{ Save function for GANFacade models }
+function SaveFacadeModel(generator, discriminator: TNetwork; filename: string): Boolean;
+begin
+  Result := True;
+  if (AnsiPos('.json', filename) > 0) or (AnsiPos('.JSON', filename) > 0) then
+    SaveGANFacadeToJSON(generator, discriminator, filename)
+  else
+    WriteLn('Model save not implemented for ', filename);
+end;
+
+{ ============================================================================= }
 { MAIN PROGRAM }
 { ============================================================================= }
 
@@ -1382,43 +1696,43 @@ begin
   facade := TGANFacade.Create(genSizes, discSizes, 100, 32, 100, atReLU, optAdam);
 
   try
-    WriteLn('=== INTROSPECTION TEST ===');
-    WriteLn('');
-    WriteLn(facade.InspectFullArchitecture);
-    WriteLn('');
+  WriteLn('=== INTROSPECTION TEST ===');
+  WriteLn('');
+  WriteLn(facade.InspectFullArchitecture);
+  WriteLn('');
 
-    WriteLn('=== LAYER STATISTICS ===');
-    genStats := facade.InspectLayerWeightStats('generator', 0);
-    WriteLn('Gen Layer 0 Weights - Mean: ', genStats.Mean:0:6, ' | StdDev: ', genStats.StdDev:0:6);
-    WriteLn('');
+  WriteLn('=== LAYER STATISTICS ===');
+  genStats := facade.InspectLayerWeightStats('generator', 0);
+  WriteLn('Gen Layer 0 Weights - Mean: ', genStats.Mean:0:6, ' | StdDev: ', genStats.StdDev:0:6);
+  WriteLn('');
 
-    WriteLn('=== INJECTION TEST ===');
-    facade.SetLearningRate(0.0001);
-    facade.SetBitDepth('generator', 0, 16);
-    facade.SetActivationFunction('generator', 0, atLeakyReLU);
-    WriteLn('');
+  WriteLn('=== INJECTION TEST ===');
+  facade.SetLearningRate(0.0001);
+  facade.SetBitDepth('generator', 0, 16);
+  facade.SetActivationFunction('generator', 0, atLeakyReLU);
+  WriteLn('');
 
-    WriteLn('=== MONITORING TEST ===');
-    facade.EnableMonitoring;
-    WriteLn(facade.GetAnomalies);
-    WriteLn('');
+  WriteLn('=== MONITORING TEST ===');
+  facade.EnableMonitoring;
+  WriteLn(facade.GetAnomalies);
+  WriteLn('');
 
-    WriteLn('=== EXPORT TEST ===');
-    facade.ExportWeights('gen_layer0_weights.csv', 'generator', 0);
-    facade.ExportLossHistory('loss_history.csv');
-    WriteLn('');
+  WriteLn('=== EXPORT TEST ===');
+  facade.ExportWeights('gen_layer0_weights.csv', 'generator', 0);
+  facade.ExportLossHistory('loss_history.csv');
+  WriteLn('');
 
-    WriteLn('=== RUNTIME METRICS ===');
-    WriteLn('Current Epoch: ', facade.GetCurrentEpoch);
-    WriteLn('Current Step: ', facade.GetCurrentStep);
-    WriteLn('Learning Rate: ', facade.GetLearningRate:0:8);
-    WriteLn('Total Parameters: ', facade.GetTotalParameterCount);
-    WriteLn('Memory Usage: ', facade.GetTotalMemoryUsage, ' bytes');
-    WriteLn('');
+  WriteLn('=== RUNTIME METRICS ===');
+  WriteLn('Current Epoch: ', facade.GetCurrentEpoch);
+  WriteLn('Current Step: ', facade.GetCurrentStep);
+  WriteLn('Learning Rate: ', facade.GetLearningRate:0:8);
+  WriteLn('Total Parameters: ', facade.GetTotalParameterCount);
+  WriteLn('Memory Usage: ', facade.GetTotalMemoryUsage, ' bytes');
+  WriteLn('');
 
-    WriteLn('Test Complete.');
+  WriteLn('Test Complete.');
 
   finally
-    facade.Free;
-  end;
+  facade.Free;
+end;
 end.
