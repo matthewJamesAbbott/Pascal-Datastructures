@@ -1,18 +1,18 @@
 (*
  * MIT License
- * 
+ *
  * Copyright (c) 2025 Matthew Abbott
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software. 
- * 
+ * copies or substantial portions of the Software.
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -82,6 +82,7 @@ type
     patchConfig: string;
     saveModel: string;
     loadModel: string;
+    loadJSONModel: string;
     outputDir: string;
     learningRate: Single;
     optimizer: TOptimizer;
@@ -596,6 +597,461 @@ begin
 end;
 
 { ============================================================================= }
+{ JSON SERIALIZATION }
+{ ============================================================================= }
+
+function Vector1DToJSON(const v: TVector): string;
+var
+  i: Integer;
+begin
+  Result := '[';
+  for i := 0 to High(v) do
+  begin
+    if i > 0 then Result := Result + ',';
+    Result := Result + FloatToStr(v[i]);
+  end;
+  Result := Result + ']';
+end;
+
+function Matrix2DToJSON(const m: TMatrix): string;
+var
+  i: Integer;
+begin
+  Result := '[';
+  for i := 0 to High(m) do
+  begin
+    if i > 0 then Result := Result + ',';
+    Result := Result + Vector1DToJSON(m[i]);
+  end;
+  Result := Result + ']';
+end;
+
+procedure SaveGANToJSON(const generator, discriminator: TNetwork; const filename: string);
+var
+  f: TextFile;
+  i: Integer;
+begin
+  AssignFile(f, filename);
+  Rewrite(f);
+  try
+    WriteLn(f, '{');
+    
+    { Generator }
+    WriteLn(f, '  "generator": {');
+    WriteLn(f, '    "layer_count": ' + IntToStr(generator.layerCount) + ',');
+    WriteLn(f, '    "optimizer": "' + IfThen(generator.optimizer = optAdam, 'adam', 'sgd') + '",');
+    WriteLn(f, '    "learning_rate": ' + FloatToStr(generator.learningRate) + ',');
+    WriteLn(f, '    "layers": [');
+    
+    for i := 0 to generator.layerCount - 1 do
+    begin
+      WriteLn(f, '      {');
+      WriteLn(f, '        "input_size": ' + IntToStr(generator.layers[i].inputSize) + ',');
+      WriteLn(f, '        "output_size": ' + IntToStr(generator.layers[i].outputSize) + ',');
+      WriteLn(f, '        "weights": ' + Matrix2DToJSON(generator.layers[i].weights) + ',');
+      Write(f, '        "bias": ' + Vector1DToJSON(generator.layers[i].bias));
+      if i < generator.layerCount - 1 then
+        WriteLn(f, '      },')
+      else
+        WriteLn(f, '      }');
+    end;
+    
+    WriteLn(f, '    ]');
+    WriteLn(f, '  },');
+    
+    { Discriminator }
+    WriteLn(f, '  "discriminator": {');
+    WriteLn(f, '    "layer_count": ' + IntToStr(discriminator.layerCount) + ',');
+    WriteLn(f, '    "optimizer": "' + IfThen(discriminator.optimizer = optAdam, 'adam', 'sgd') + '",');
+    WriteLn(f, '    "learning_rate": ' + FloatToStr(discriminator.learningRate) + ',');
+    WriteLn(f, '    "layers": [');
+    
+    for i := 0 to discriminator.layerCount - 1 do
+    begin
+      WriteLn(f, '      {');
+      WriteLn(f, '        "input_size": ' + IntToStr(discriminator.layers[i].inputSize) + ',');
+      WriteLn(f, '        "output_size": ' + IntToStr(discriminator.layers[i].outputSize) + ',');
+      WriteLn(f, '        "weights": ' + Matrix2DToJSON(discriminator.layers[i].weights) + ',');
+      Write(f, '        "bias": ' + Vector1DToJSON(discriminator.layers[i].bias));
+      if i < discriminator.layerCount - 1 then
+        WriteLn(f, '      },')
+      else
+        WriteLn(f, '      }');
+    end;
+    
+    WriteLn(f, '    ]');
+    WriteLn(f, '  }');
+    WriteLn(f, '}');
+    
+    WriteLn('Model saved to JSON: ' + filename);
+  finally
+    CloseFile(f);
+  end;
+end;
+
+function ExtractIntFromJSON(const JSONStr, FieldName: string): Integer;
+var
+  P, EndP: Integer;
+  Value: string;
+begin
+  P := Pos('"' + FieldName + '"', JSONStr);
+  if P = 0 then Exit(0);
+  
+  P := PosEx(':', JSONStr, P);
+  if P = 0 then Exit(0);
+  
+  P := P + 1;
+  while (P <= Length(JSONStr)) and (JSONStr[P] in [' ', #9, #10, #13]) do Inc(P);
+  
+  EndP := P;
+  while (EndP <= Length(JSONStr)) and (JSONStr[EndP] in ['0'..'9', '-']) do Inc(EndP);
+  
+  Value := Copy(JSONStr, P, EndP - P);
+  try
+    Result := StrToInt(Value);
+  except
+    Result := 0;
+  end;
+end;
+
+function ExtractFloatFromJSON(const JSONStr, FieldName: string): Single;
+var
+  P, EndP: Integer;
+  Value: string;
+begin
+  P := Pos('"' + FieldName + '"', JSONStr);
+  if P = 0 then Exit(0.0);
+  
+  P := PosEx(':', JSONStr, P);
+  if P = 0 then Exit(0.0);
+  
+  P := P + 1;
+  while (P <= Length(JSONStr)) and (JSONStr[P] in [' ', #9, #10, #13]) do Inc(P);
+  
+  EndP := P;
+  while (EndP <= Length(JSONStr)) and (JSONStr[EndP] in ['0'..'9', '-', '.', 'e', 'E']) do Inc(EndP);
+  
+  Value := Copy(JSONStr, P, EndP - P);
+  try
+    Result := StrToFloat(Value);
+  except
+    Result := 0.0;
+  end;
+end;
+
+procedure LoadVector1DFromJSON(const JSONStr: string; var v: TVector);
+var
+  P, EndP, CurrentPos, NumPos: Integer;
+  Value: string;
+  Count: Integer;
+begin
+  P := Pos('[', JSONStr);
+  if P = 0 then Exit;
+  
+  EndP := P;
+  Count := 1;
+  while (Count > 0) and (EndP <= Length(JSONStr)) do
+  begin
+    if JSONStr[EndP] = '[' then Inc(Count)
+    else if JSONStr[EndP] = ']' then Dec(Count);
+    Inc(EndP);
+  end;
+  
+  SetLength(v, 0);
+  CurrentPos := P + 1;
+  Count := 0;
+  
+  while (CurrentPos < EndP) and (JSONStr[CurrentPos] <> ']') do
+  begin
+    if JSONStr[CurrentPos] in ['0'..'9', '-', '.'] then
+    begin
+      NumPos := CurrentPos;
+      while (NumPos <= Length(JSONStr)) and (JSONStr[NumPos] in ['0'..'9', '-', '.', 'e', 'E']) do
+        Inc(NumPos);
+      
+      Value := Copy(JSONStr, CurrentPos, NumPos - CurrentPos);
+      SetLength(v, Count + 1);
+      try
+        v[Count] := StrToFloat(Value);
+      except
+        v[Count] := 0.0;
+      end;
+      Inc(Count);
+      CurrentPos := NumPos;
+    end
+    else
+      Inc(CurrentPos);
+  end;
+end;
+
+procedure LoadMatrix2DFromJSON(const JSONStr: string; var m: TMatrix);
+var
+  P, CurrentPos, Count, RowCount, ColCount: Integer;
+  NumPos, ArrayEnd: Integer;
+  Value: string;
+begin
+  P := Pos('[', JSONStr);
+  if P = 0 then Exit;
+  
+  { Find end of array }
+  CurrentPos := P;
+  Count := 1;
+  ArrayEnd := P + 1;
+  while (Count > 0) and (ArrayEnd <= Length(JSONStr)) do
+  begin
+    if JSONStr[ArrayEnd] = '[' then Inc(Count)
+    else if JSONStr[ArrayEnd] = ']' then Dec(Count);
+    Inc(ArrayEnd);
+  end;
+  
+  SetLength(m, 0);
+  CurrentPos := P + 1;
+  RowCount := 0;
+  
+  while (CurrentPos < ArrayEnd) do
+  begin
+    if JSONStr[CurrentPos] = '[' then
+    begin
+      SetLength(m, RowCount + 1);
+      SetLength(m[RowCount], 0);
+      
+      Inc(CurrentPos);
+      ColCount := 0;
+      while (CurrentPos < ArrayEnd) and (JSONStr[CurrentPos] <> ']') do
+      begin
+        if JSONStr[CurrentPos] in ['0'..'9', '-', '.'] then
+        begin
+          NumPos := CurrentPos;
+          while (NumPos <= Length(JSONStr)) and (JSONStr[NumPos] in ['0'..'9', '-', '.', 'e', 'E']) do
+            Inc(NumPos);
+          
+          Value := Copy(JSONStr, CurrentPos, NumPos - CurrentPos);
+          SetLength(m[RowCount], ColCount + 1);
+          try
+            m[RowCount][ColCount] := StrToFloat(Value);
+          except
+            m[RowCount][ColCount] := 0.0;
+          end;
+          Inc(ColCount);
+          CurrentPos := NumPos;
+        end
+        else
+          Inc(CurrentPos);
+      end;
+      
+      if CurrentPos < ArrayEnd then Inc(CurrentPos);
+      Inc(RowCount);
+    end
+    else
+      Inc(CurrentPos);
+  end;
+end;
+
+{ Validate and fix weights/bias for NaN and Inf values }
+procedure ValidateAndCleanWeights(var layer: TLayer);
+var
+  i, j: Integer;
+begin
+  { Check and fix weights }
+  for i := 0 to High(layer.weights) do
+  begin
+    for j := 0 to High(layer.weights[i]) do
+    begin
+      if IsNaN(layer.weights[i][j]) or IsInfinite(layer.weights[i][j]) then
+        layer.weights[i][j] := RandomGaussian * 0.01;
+    end;
+  end;
+  
+  { Check and fix bias }
+  for i := 0 to High(layer.bias) do
+  begin
+    if IsNaN(layer.bias[i]) or IsInfinite(layer.bias[i]) then
+      layer.bias[i] := 0.0;
+  end;
+end;
+
+procedure LoadGANFromJSON(var generator, discriminator: TNetwork; const filename: string);
+var
+  JSONFile: TStringList;
+  JSONStr: string;
+  i, j, k, LayerCount: Integer;
+  InputSize, OutputSize: Integer;
+  OptimizerStr: string;
+  LayerStart, LayerEnd, P: Integer;
+  LayerStr: string;
+begin
+  JSONFile := TStringList.Create;
+  try
+    JSONFile.LoadFromFile(filename);
+    JSONStr := JSONFile.Text;
+    
+    { Parse generator }
+    P := Pos('"generator"', JSONStr);
+    if P > 0 then
+    begin
+      LayerCount := ExtractIntFromJSON(Copy(JSONStr, P, Length(JSONStr)), 'layer_count');
+      generator.layerCount := LayerCount;
+      
+      OptimizerStr := Copy(JSONStr, P, 200);
+      if Pos('adam', OptimizerStr) > 0 then
+        generator.optimizer := optAdam
+      else
+        generator.optimizer := optSGD;
+      
+      generator.learningRate := ExtractFloatFromJSON(Copy(JSONStr, P, 500), 'learning_rate');
+      
+      SetLength(generator.layers, LayerCount);
+      for i := 0 to LayerCount - 1 do
+      begin
+        generator.layers[i].inputSize := ExtractIntFromJSON(JSONStr, 'input_size');
+        generator.layers[i].outputSize := ExtractIntFromJSON(JSONStr, 'output_size');
+        { Allocate weight and bias matrices }
+        SetLength(generator.layers[i].weights, generator.layers[i].outputSize);
+        SetLength(generator.layers[i].bias, generator.layers[i].outputSize);
+        SetLength(generator.layers[i].input, 1, generator.layers[i].inputSize);
+        SetLength(generator.layers[i].output, 1, generator.layers[i].outputSize);
+        
+        { Load weights from JSON }
+        LayerStr := Copy(JSONStr, Pos('"weights"', JSONStr), 100000);
+        LoadMatrix2DFromJSON(LayerStr, generator.layers[i].weights);
+        
+        { Load bias from JSON }
+        LayerStr := Copy(JSONStr, Pos('"bias"', JSONStr), 10000);
+        LoadVector1DFromJSON(LayerStr, generator.layers[i].bias);
+        
+        { Fallback: if loading failed, initialize randomly }
+        if Length(generator.layers[i].weights) <> generator.layers[i].outputSize then
+        begin
+          SetLength(generator.layers[i].weights, generator.layers[i].outputSize);
+          for j := 0 to High(generator.layers[i].weights) do
+          begin
+            SetLength(generator.layers[i].weights[j], generator.layers[i].inputSize);
+            for k := 0 to High(generator.layers[i].weights[j]) do
+              generator.layers[i].weights[j][k] := RandomGaussian * 0.01;
+          end;
+        end;
+        
+        if Length(generator.layers[i].bias) <> generator.layers[i].outputSize then
+        begin
+          SetLength(generator.layers[i].bias, generator.layers[i].outputSize);
+          for j := 0 to High(generator.layers[i].bias) do
+            generator.layers[i].bias[j] := 0.0;
+        end;
+        
+        { Validate and clean weights/bias }
+        ValidateAndCleanWeights(generator.layers[i]);
+        
+        generator.layers[i].activation := atReLU;
+      end;
+      
+      { Initialize Adam optimizer states }
+      SetLength(generator.adamStates, generator.layerCount);
+      for i := 0 to generator.layerCount - 1 do
+      begin
+        SetLength(generator.adamStates[i].m, generator.layers[i].outputSize);
+        SetLength(generator.adamStates[i].v, generator.layers[i].outputSize);
+        for j := 0 to High(generator.adamStates[i].m) do
+        begin
+          SetLength(generator.adamStates[i].m[j], generator.layers[i].inputSize);
+          SetLength(generator.adamStates[i].v[j], generator.layers[i].inputSize);
+          { Initialize m and v to zeros }
+          for k := 0 to High(generator.adamStates[i].m[j]) do
+          begin
+            generator.adamStates[i].m[j][k] := 0.0;
+            generator.adamStates[i].v[j][k] := 0.0;
+          end;
+        end;
+        generator.adamStates[i].t := 0;
+      end;
+    end;
+    
+    { Parse discriminator }
+    P := Pos('"discriminator"', JSONStr);
+    if P > 0 then
+    begin
+      LayerCount := ExtractIntFromJSON(Copy(JSONStr, P, Length(JSONStr)), 'layer_count');
+      discriminator.layerCount := LayerCount;
+      
+      OptimizerStr := Copy(JSONStr, P, 200);
+      if Pos('adam', OptimizerStr) > 0 then
+        discriminator.optimizer := optAdam
+      else
+        discriminator.optimizer := optSGD;
+      
+      discriminator.learningRate := ExtractFloatFromJSON(Copy(JSONStr, P, 500), 'learning_rate');
+      
+      SetLength(discriminator.layers, LayerCount);
+      for i := 0 to LayerCount - 1 do
+      begin
+        discriminator.layers[i].inputSize := ExtractIntFromJSON(JSONStr, 'input_size');
+        discriminator.layers[i].outputSize := ExtractIntFromJSON(JSONStr, 'output_size');
+        { Allocate weight and bias matrices }
+        SetLength(discriminator.layers[i].weights, discriminator.layers[i].outputSize);
+        SetLength(discriminator.layers[i].bias, discriminator.layers[i].outputSize);
+        SetLength(discriminator.layers[i].input, 1, discriminator.layers[i].inputSize);
+        SetLength(discriminator.layers[i].output, 1, discriminator.layers[i].outputSize);
+        
+        { Load weights from JSON }
+        LayerStr := Copy(JSONStr, Pos('"weights"', JSONStr), 100000);
+        LoadMatrix2DFromJSON(LayerStr, discriminator.layers[i].weights);
+        
+        { Load bias from JSON }
+        LayerStr := Copy(JSONStr, Pos('"bias"', JSONStr), 10000);
+        LoadVector1DFromJSON(LayerStr, discriminator.layers[i].bias);
+        
+        { Fallback: if loading failed, initialize randomly }
+        if Length(discriminator.layers[i].weights) <> discriminator.layers[i].outputSize then
+        begin
+          SetLength(discriminator.layers[i].weights, discriminator.layers[i].outputSize);
+          for j := 0 to High(discriminator.layers[i].weights) do
+          begin
+            SetLength(discriminator.layers[i].weights[j], discriminator.layers[i].inputSize);
+            for k := 0 to High(discriminator.layers[i].weights[j]) do
+              discriminator.layers[i].weights[j][k] := RandomGaussian * 0.01;
+          end;
+        end;
+        
+        if Length(discriminator.layers[i].bias) <> discriminator.layers[i].outputSize then
+        begin
+          SetLength(discriminator.layers[i].bias, discriminator.layers[i].outputSize);
+          for j := 0 to High(discriminator.layers[i].bias) do
+            discriminator.layers[i].bias[j] := 0.0;
+        end;
+        
+        { Validate and clean weights/bias }
+        ValidateAndCleanWeights(discriminator.layers[i]);
+        
+        discriminator.layers[i].activation := atReLU;
+      end;
+      
+      { Initialize Adam optimizer states }
+      SetLength(discriminator.adamStates, discriminator.layerCount);
+      for i := 0 to discriminator.layerCount - 1 do
+      begin
+        SetLength(discriminator.adamStates[i].m, discriminator.layers[i].outputSize);
+        SetLength(discriminator.adamStates[i].v, discriminator.layers[i].outputSize);
+        for j := 0 to High(discriminator.adamStates[i].m) do
+        begin
+          SetLength(discriminator.adamStates[i].m[j], discriminator.layers[i].inputSize);
+          SetLength(discriminator.adamStates[i].v[j], discriminator.layers[i].inputSize);
+          { Initialize m and v to zeros }
+          for k := 0 to High(discriminator.adamStates[i].m[j]) do
+          begin
+            discriminator.adamStates[i].m[j][k] := 0.0;
+            discriminator.adamStates[i].v[j][k] := 0.0;
+          end;
+        end;
+        discriminator.adamStates[i].t := 0;
+      end;
+    end;
+    
+    WriteLn('Model loaded from JSON: ' + filename);
+  finally
+    JSONFile.Free;
+  end;
+end;
+
+{ ============================================================================= }
 { CLI ARGUMENT PARSING }
 { ============================================================================= }
 
@@ -618,6 +1074,7 @@ begin
   WriteLn('  --patch-config=file     Load patch config from JSON');
   WriteLn('  --save=MODEL.bin        Save trained model to binary file');
   WriteLn('  --load=MODEL.bin        Load pretrained model from binary file');
+  WriteLn('  --load-json=MODEL.json  Load model structure from JSON file');
   WriteLn('  --output=PATH           Output directory for results (default: ./output)');
   WriteLn('  --optimizer=adam|sgd    Optimizer type (default: adam)');
   WriteLn('  --lr=RATE               Learning rate (default: 0.0002)');
@@ -645,6 +1102,7 @@ begin
   Result.patchConfig := '';
   Result.saveModel := '';
   Result.loadModel := '';
+  Result.loadJSONModel := '';
   Result.outputDir := './output';
   Result.learningRate := 0.0002;
   Result.optimizer := optAdam;
@@ -659,6 +1117,7 @@ begin
   for i := 1 to ParamCount do
   begin
     arg := ParamStr(i);
+    WriteLn('DEBUG: Parsing arg ', i, ': [', arg, ']');
 
     if arg = '--help' then
     begin
@@ -724,10 +1183,16 @@ begin
       Result.patchConfig := Copy(arg, 16, MaxInt);
 
     if Pos('--save=', arg) = 1 then
+    begin
       Result.saveModel := Copy(arg, 8, MaxInt);
+      WriteLn('DEBUG ParseConfig: --save parsed, setting saveModel to: ', Result.saveModel);
+    end;
 
     if Pos('--load=', arg) = 1 then
       Result.loadModel := Copy(arg, 8, MaxInt);
+
+    if Pos('--load-json=', arg) = 1 then
+      Result.loadJSONModel := Copy(arg, 13, MaxInt);
 
     if Pos('--output=', arg) = 1 then
       Result.outputDir := Copy(arg, 10, MaxInt);
@@ -802,6 +1267,13 @@ begin
     LoadNetworkBinary(generator, config.loadModel);
   end;
 
+  { Load JSON model structure if specified }
+  if config.loadJSONModel <> '' then
+  begin
+    WriteLn('Loading model structure from JSON: ', config.loadJSONModel);
+    LoadGANFromJSON(generator, discriminator, config.loadJSONModel);
+  end;
+
   { Generate dummy dataset }
   WriteLn('Generating synthetic training data...');
   SetLength(dataset, 1000);
@@ -822,7 +1294,12 @@ begin
   if config.saveModel <> '' then
   begin
     WriteLn('');
-    SaveNetworkBinary(generator, config.saveModel);
+    WriteLn('DEBUG: saveModel = ', config.saveModel);
+    WriteLn('DEBUG: contains .json = ', AnsiPos('.json', config.saveModel) > 0);
+    if (AnsiPos('.json', config.saveModel) > 0) or (AnsiPos('.JSON', config.saveModel) > 0) then
+      SaveGANToJSON(generator, discriminator, config.saveModel)
+    else
+      SaveNetworkBinary(generator, config.saveModel);
   end;
 
   WriteLn('Done.');
