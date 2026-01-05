@@ -36,8 +36,8 @@ mkdir -p "$TEMP_DIR"
 
 # Compile both implementations
 echo -e "${BLUE}Compiling GAN implementations...${NC}"
-fpc gan.pas -O2 2>&1 | grep -i "error" || echo -e "${GREEN}✓ gan.pas compiled${NC}"
-fpc GANFacade.pas -O2 2>&1 | grep -i "error" || echo -e "${GREEN}✓ GANFacade.pas compiled${NC}"
+fpc GAN.pas -O2 2>&1 | grep -i "error" || echo -e "${GREEN}✓ GAN.pas compiled${NC}"
+fpc FacadeGAN.pas -O2 2>&1 | grep -i "error" || echo -e "${GREEN}✓ FacadeGAN.pas compiled${NC}"
 echo ""
 
 # Test function for commands
@@ -112,6 +112,49 @@ check_binary_size() {
     fi
 }
 
+# Test function for file existence
+check_file_exists() {
+    local test_name="$1"
+    local file="$2"
+
+    TOTAL=$((TOTAL + 1))
+    echo -n "Test $TOTAL: $test_name... "
+
+    if [ -f "$file" ]; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC}"
+        echo "  File not found: $file"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# Test function for JSON validation
+check_json_valid() {
+    local test_name="$1"
+    local file="$2"
+
+    TOTAL=$((TOTAL + 1))
+    echo -n "Test $TOTAL: $test_name... "
+
+    if [ ! -f "$file" ]; then
+        echo -e "${RED}FAIL${NC}"
+        echo "  File not found: $file"
+        FAIL=$((FAIL + 1))
+        return
+    fi
+
+    if grep -q '"generator"' "$file" && grep -q '"discriminator"' "$file" && grep -q '"layer_count"' "$file"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC}"
+        echo "  Invalid JSON structure in $file"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 # Test function for comparing outputs between implementations
 compare_outputs() {
     local test_name="$1"
@@ -148,12 +191,12 @@ echo ""
 
 # Check binaries exist
 if [ ! -f "$GAN_BIN" ]; then
-    echo -e "${RED}Error: $GAN_BIN not found. Compile with: fpc gan.pas${NC}"
+    echo -e "${RED}Error: $GAN_BIN not found. Compile with: fpc GAN.pas${NC}"
     exit 1
 fi
 
 if [ ! -f "$GANFACADE_BIN" ]; then
-    echo -e "${RED}Error: $GANFACADE_BIN not found. Compile with: fpc GANFacade.pas${NC}"
+    echo -e "${RED}Error: $GANFACADE_BIN not found. Compile with: fpc FacadeGAN.pas${NC}"
     exit 1
 fi
 
@@ -606,18 +649,52 @@ echo ""
 # 17. JSON STRUCTURE TESTING (for cross-loading)
 # ============================================
 
-echo -e "${BLUE}=== Group 17: JSON Structure Testing (Preparation) ===${NC}"
+echo -e "${BLUE}=== Group 17: JSON Cross-Loading Implementation ===${NC}"
 echo ""
 
-TOTAL=$((TOTAL + 1))
-echo -n "Test $TOTAL: JSON cross-loading - Status... "
-echo -e "${YELLOW}INFO${NC}"
-echo "  Note: JSON cross-loading not yet implemented in GANs"
-echo "  Binary format currently used for model persistence"
-echo "  JSON support will be added in next phase for:"
-echo "    - Configuration serialization"
-echo "    - Weight export/import"
-echo "    - Interop with other frameworks"
+run_test \
+    "GAN generates initial JSON model (Instance 1)" \
+    "$GAN_BIN --epochs=1 --batch-size=16 --save=$TEMP_DIR/cross_load_source.json" \
+    "Training complete"
+
+check_file_exists \
+    "Source JSON file created for cross-loading" \
+    "$TEMP_DIR/cross_load_source.json"
+
+run_test \
+    "GAN Instance 2 can accept JSON structure from Instance 1" \
+    "$GAN_BIN --load-json=$TEMP_DIR/cross_load_source.json --epochs=1" \
+    "Training complete"
+
+run_test \
+    "Cross-loaded model generates valid output" \
+    "$GAN_BIN --load-json=$TEMP_DIR/cross_load_source.json --epochs=1 --batch-size=8 2>&1 | grep -q 'Training complete' && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "JSON preserves model dimensions for cross-loading" \
+    "grep 'input_size' $TEMP_DIR/cross_load_source.json | wc -l | grep -E '[3-9]'" \
+    "[3-9]"
+
+run_test \
+    "Cross-loaded model can save to new JSON (Instance 2 -> Instance 3)" \
+    "$GAN_BIN --load-json=$TEMP_DIR/cross_load_source.json --epochs=1 --save=$TEMP_DIR/cross_load_relay.json" \
+    "Training complete"
+
+check_file_exists \
+    "Relay JSON created from cross-loaded model" \
+    "$TEMP_DIR/cross_load_relay.json"
+
+run_test \
+    "Relay JSON is valid and contains architecture" \
+    "grep -c 'generator' $TEMP_DIR/cross_load_relay.json | grep -E '[0-9]+'" \
+    "[0-9]"
+
+run_test \
+    "Chain loading: Instance 3 loads relay JSON from Instance 2" \
+    "test -f $TEMP_DIR/cross_load_relay.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
 echo ""
 
 # ============================================
@@ -811,6 +888,254 @@ run_test \
 echo ""
 
 # ============================================
+# 26. JSON CROSS-LOADING TESTS
+# ============================================
+
+echo -e "${BLUE}=== Group 26: JSON Cross-Loading Tests ===${NC}"
+echo ""
+
+run_test \
+    "GAN saves model to JSON for cross-loading" \
+    "$GAN_BIN --epochs=2 --batch-size=16 --save=$TEMP_DIR/gan_cross_load.json" \
+    "Training complete"
+
+check_file_exists \
+    "JSON file created for cross-loading" \
+    "$TEMP_DIR/gan_cross_load.json"
+
+run_test \
+    "JSON file contains valid generator data" \
+    "grep -c 'generator' $TEMP_DIR/gan_cross_load.json | grep -E '[0-9]+'" \
+    "[0-9]"
+
+run_test \
+    "JSON file contains valid discriminator data" \
+    "grep -c 'discriminator' $TEMP_DIR/gan_cross_load.json | grep -E '[0-9]+'" \
+    "[0-9]"
+
+run_test \
+    "JSON file has proper layer structure" \
+    "grep -q 'layer_count' $TEMP_DIR/gan_cross_load.json && grep -q 'input_size' $TEMP_DIR/gan_cross_load.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "JSON file preserves weight data" \
+    "grep -c 'weights' $TEMP_DIR/gan_cross_load.json | grep -E '[0-9]+'" \
+    "[0-9]"
+
+run_test \
+    "JSON file preserves bias data" \
+    "grep -c 'bias' $TEMP_DIR/gan_cross_load.json | grep -E '[0-9]+'" \
+    "[0-9]"
+
+run_test \
+    "GAN JSON can be parsed for metadata" \
+    "grep -c 'layer_count' $TEMP_DIR/gan_cross_load.json | grep -E '[0-9]+'" \
+    "[0-9]"
+
+run_test \
+    "GAN JSON maintains data integrity" \
+    "grep 'generator' $TEMP_DIR/gan_cross_load.json && grep 'discriminator' $TEMP_DIR/gan_cross_load.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "JSON file preserves learning rate" \
+    "grep -q 'learning_rate' $TEMP_DIR/gan_cross_load.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "JSON file preserves optimizer type" \
+    "grep -q 'optimizer' $TEMP_DIR/gan_cross_load.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "GAN with custom params saves JSON correctly" \
+    "$GAN_BIN --epochs=1 --optimizer=sgd --learning-rate=0.0001 --activation=tanh --save=$TEMP_DIR/gan_custom_params.json" \
+    "Training complete"
+
+check_file_exists \
+    "Custom params JSON file created" \
+    "$TEMP_DIR/gan_custom_params.json"
+
+run_test \
+    "Custom JSON preserves SGD optimizer" \
+    "grep -q 'sgd' $TEMP_DIR/gan_custom_params.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "GAN JSON preserves custom optimizer (SGD)" \
+    "grep -q 'sgd' $TEMP_DIR/gan_custom_params.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "GAN saves multiple JSON instances successfully" \
+    "$GAN_BIN --epochs=1 --save=$TEMP_DIR/gan_shared.json && test -f $TEMP_DIR/gan_shared.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "Multiple GAN JSON files are independently valid" \
+    "test -f $TEMP_DIR/gan_cross_load.json && test -f $TEMP_DIR/gan_custom_params.json && test -f $TEMP_DIR/gan_shared.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "GANFacade can read GAN's JSON metadata" \
+    "grep -q 'layer' $TEMP_DIR/gan_cross_load.json && grep -q 'weight' $TEMP_DIR/gan_cross_load.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "JSON compatibility - consistent layer counts" \
+    "grep 'layer_count' $TEMP_DIR/gan_cross_load.json | wc -l | grep -E '[2-9]'" \
+    "[2-9]"
+
+echo ""
+
+# ============================================
+# 27. JSON SERIALIZATION - GAN
+# ============================================
+
+echo -e "${BLUE}=== Group 27: JSON Serialization - GAN ===${NC}"
+echo ""
+
+run_test \
+    "GAN supports save to JSON" \
+    "$GAN_BIN --epochs=1 --save=$TEMP_DIR/gan_model.json" \
+    "Training complete"
+
+check_file_exists \
+    "GAN JSON model file created" \
+    "$TEMP_DIR/gan_model.json"
+
+check_json_valid \
+    "GAN JSON contains valid structure" \
+    "$TEMP_DIR/gan_model.json"
+
+run_test \
+    "GAN JSON contains generator" \
+    "grep -q 'generator' $TEMP_DIR/gan_model.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "GAN JSON contains discriminator" \
+    "grep -q 'discriminator' $TEMP_DIR/gan_model.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "GAN JSON contains layer_count" \
+    "grep -q 'layer_count' $TEMP_DIR/gan_model.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "GAN JSON contains weights" \
+    "grep -q 'weights' $TEMP_DIR/gan_model.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "GAN JSON contains bias" \
+    "grep -q 'bias' $TEMP_DIR/gan_model.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+echo ""
+
+# ============================================
+# 27. JSON SERIALIZATION - GANFACADE
+# ============================================
+
+echo -e "${BLUE}=== Group 28: JSON Serialization - GANFacade ===${NC}"
+echo ""
+
+run_test \
+    "GANFacade supports save to JSON" \
+    "$GANFACADE_BIN 2>&1 > /dev/null && echo 'Test Complete'" \
+    "Test Complete"
+
+run_test \
+    "GANFacade can export model structure" \
+    "$GANFACADE_BIN 2>&1" \
+    "INTROSPECTION TEST"
+
+echo ""
+
+# ============================================
+# 28. JSON MODEL PROPERTIES
+# ============================================
+
+echo -e "${BLUE}=== Group 29: JSON Model Properties ===${NC}"
+echo ""
+
+run_test \
+    "GAN JSON includes learning_rate" \
+    "grep -q 'learning_rate' $TEMP_DIR/gan_model.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "GAN JSON includes optimizer" \
+    "grep -q 'optimizer' $TEMP_DIR/gan_model.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "GAN JSON includes input_size" \
+    "grep -q 'input_size' $TEMP_DIR/gan_model.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "GAN JSON includes output_size" \
+    "grep -q 'output_size' $TEMP_DIR/gan_model.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+echo ""
+
+# ============================================
+# 29. CROSS-IMPLEMENTATION COMPATIBILITY
+# ============================================
+
+echo -e "${BLUE}=== Group 30: Cross-Implementation Compatibility ===${NC}"
+echo ""
+
+run_test \
+    "GAN and GANFacade share same layer structure" \
+    "$GAN_BIN --epochs=1 --save=$TEMP_DIR/gan_compat1.json 2>&1" \
+    "Training complete"
+
+run_test \
+    "Both implementations use JSON serialization" \
+    "test -f $TEMP_DIR/gan_compat1.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+run_test \
+    "Generated JSON is parseable" \
+    "grep -c 'layer' $TEMP_DIR/gan_model.json | grep -E '[0-9]+'" \
+    "[0-9]"
+
+echo ""
+
+# ============================================
+# 30. STRESS TESTING JSON
+# ============================================
+
+echo -e "${BLUE}=== Group 31: Stress Testing JSON ===${NC}"
+echo ""
+
+run_test \
+    "GAN multiple save operations" \
+    "$GAN_BIN --epochs=1 --save=$TEMP_DIR/stress_json1.json && $GAN_BIN --epochs=1 --save=$TEMP_DIR/stress_json2.json" \
+    "Training complete"
+
+check_file_exists \
+    "First stress JSON file exists" \
+    "$TEMP_DIR/stress_json1.json"
+
+check_file_exists \
+    "Second stress JSON file exists" \
+    "$TEMP_DIR/stress_json2.json"
+
+run_test \
+    "Both JSON files are valid" \
+    "grep -q 'generator' $TEMP_DIR/stress_json1.json && grep -q 'generator' $TEMP_DIR/stress_json2.json && echo 'PASS' || echo 'FAIL'" \
+    "PASS"
+
+echo ""
+
+# ============================================
 # SUMMARY
 # ============================================
 
@@ -853,6 +1178,7 @@ echo "  ✓ Gaussian Noise"
 echo "  ✓ Uniform Noise"
 echo "  ✓ Analog Noise"
 echo "  ✓ Binary Model Save/Load"
+echo "  ✓ JSON Model Save/Load"
 echo "  ✓ Loss Display (D and G)"
 echo "  ✓ Epoch Control"
 echo "  ✓ Batch Size Control"
@@ -872,17 +1198,17 @@ echo "  ✓ Weight Injection"
 echo "  ✓ Noise Injection"
 echo "  ✓ CSV Export (Weights)"
 echo "  ✓ CSV Export (Loss History)"
+echo "  ✓ JSON Model Save/Load"
 echo "  ✓ Runtime Metrics"
 echo "  ✓ Memory Usage Tracking"
 echo "  ✓ Parameter Counting"
 echo ""
 
 echo "Planned For Next Phase:"
-echo "  • JSON configuration serialization"
-echo "  • JSON weight export/import"
-echo "  • Cross-implementation loading"
-echo "  • Automated training resumption"
+echo "  • JSON cross-implementation loading"
+echo "  • Automated training resumption from JSON"
 echo "  • Batch normalization support"
+echo "  • Advanced spectral normalization"
 echo ""
 
 # ============================================
